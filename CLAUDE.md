@@ -1,114 +1,113 @@
 # CLAUDE.md
 
-Guidance for Claude Code when working in this repo. **Detail lives in `docs/*.md` and memory files — this is the navigation layer, not the encyclopedia.** Don't re-add history, post-mortems, or dated narratives here; those belong in git/memory.
+Navigation layer, not the encyclopedia. Detail lives in `docs/*.md` and memory files. Don't add history, post-mortems, or dated narratives here — those belong in git/memory.
 
 ## Commands
 
 ```bash
-npm run dev        # Vite dev server — proxies /api to production (see vite.config.js)
+npm run dev        # Vite dev server — proxies /api to production (vite.config.js)
 npm run build      # Production build → dist/
 npm test           # Node test runner: simulate, utils, parse-teams, dedup, category gate
-npm run test:jxa   # osascript JXA version of the simulate tests (macOS only)
 git push origin main  # Deploys to Vercel automatically
 ```
 
-Admin/debug one-liners (pull ADMIN_KEY via `vercel env pull`):
+Admin/debug (pull `ADMIN_KEY` via `vercel env pull`):
 ```bash
 curl -s "https://scoreboard-ivory-xi.vercel.app/api/tonight?debug=1" | jq '.plays | length'
-curl -s "https://scoreboard-ivory-xi.vercel.app/api/shadow-snapshot" -H "Authorization: Bearer $ADMIN_KEY" | jq '{ok, snapshotDate, logged, durationMs}'
 curl -s "https://scoreboard-ivory-xi.vercel.app/api/auth/shadow-stats?resolvetrigger=1" -H "Authorization: Bearer $ADMIN_KEY" | jq '{resolved, skipped}'
-curl -s "https://scoreboard-ivory-xi.vercel.app/api/shadow-report?makerDay=2026-07-27" -H "Authorization: Bearer $ADMIN_KEY" | jq '{totals, byBand}'   # single-day V1 maker attribution
-curl -s "https://scoreboard-ivory-xi.vercel.app/api/shadow-snapshot?makerBackfill=2026-06-15&offset=0" -H "Authorization: Bearer $ADMIN_KEY" | jq '{quoted, segments, fills, nextOffset}'   # replay one historical maker day; loop on nextOffset
 ```
 
 ## Workflow for New Features and Debugging
 
-1. **Check memory and CLAUDE.md** — Read `MEMORY.md` + relevant memory files. Scan CLAUDE.md for the area; load `docs/INFRA.md` or `docs/FRONTEND.md` if the change touches those.
-2. **Plan and get approval** — Present the full plan as text only (files, logic, edge cases). **Greenfield check:** for plans that build on existing code, ask "what would this look like from scratch?" — name any divergence as either real tech debt to pay down now or a load-bearing constraint to keep. **Core principles to check the plan against:** (1) single source of truth (edit `config.js`/`teams.js`/shared helpers, don't duplicate), (2) DRY/chokepoint (one upstream point, not N call sites), (3) least change / YAGNI, (4) don't break contracts (additive over destructive; forward-only formula changes via `FORMULA_CUTOFFS`), (5) failure-closed (new external/data paths degrade to empty/null, never throw into the hot path), (6) separation of concerns (model / storage / display split), (7) match surrounding idiom (Web-API style, no Node-only APIs casually), (8) **delete on the way past** — a change that supersedes code must remove the code it supersedes in the SAME commit (dead branches, orphaned helpers, now-unused imports/params/exports, obsolete comments); a change's net line count should reflect what it does, not only grow. `shadow.js`/`tonight.js` bloated precisely because cleanup was always deferred — never leave dead code "for later." Wait for explicit approval before editing.
-3. **Implement** — Make changes, and delete whatever this change orphans (dead branches, unused helpers/imports/params) as you go — don't defer it. If backend logic changed, confirm via `/api/tonight?debug=1` (or the relevant endpoint) and print fields proving correctness.
-4. **Deploy and document** — `git push origin main`. Update CLAUDE.md + the relevant `docs/*.md` in the same commit. Save a memory entry for anything non-obvious.
+1. **Check memory + CLAUDE.md** — read `MEMORY.md` + relevant memory files; load `docs/INFRA.md`/`docs/FRONTEND.md` if the change touches those.
+2. **Plan and get explicit approval** (text only — files, logic, edge cases) before editing. Greenfield check: ask "what would this look like from scratch?" and name any divergence as tech debt or a load-bearing constraint. Check the plan against these principles:
+   1. Single source of truth — edit `config.js`/`teams.js`/shared helpers, don't duplicate.
+   2. DRY/chokepoint — one upstream point, not N call sites.
+   3. Least change / YAGNI.
+   4. Don't break contracts — additive over destructive; forward-only formula changes via `FORMULA_CUTOFFS`.
+   5. Failure-closed — new external/data paths degrade to empty/null, never throw into the hot path.
+   6. Separation of concerns — model / storage / display split.
+   7. Match surrounding idiom — Web-API style, no Node-only APIs casually.
+   8. Delete on the way past — remove superseded code (dead branches, orphaned helpers/imports/params, obsolete comments) in the SAME commit.
+3. **Implement** — delete whatever the change orphans as you go. If backend logic changed, confirm via `/api/tonight?debug=1` (or the relevant endpoint) and print fields proving correctness.
+4. **Deploy and document** — `git push origin main`. Update CLAUDE.md + relevant `docs/*.md` in the same commit. Save a memory entry for anything non-obvious.
 
 ## What This Is
 
-**Model-free Kalshi prop-market capture instrument.** Pulls Kalshi prediction-market prices across a broad set of sports/markets and logs **every quoted side of every supported market** to Neon `shadow_plays` as a model-free row (`truePct`/`edge` null, `qualified` false, `modelFree` true) — there is no model and no bet. A shadow **maker** engine quotes against the captured books and detects fills (simulated / measurement-only). The **maker board** (`MakerBoardPage`, reading `/api/shadow-report`) is the only UI. Vercel **Node runtime (Fluid Compute)**, maxDuration 300 (vercel.json `functions`) — handler code stays Web-API style (fetch/Request/Response/crypto.subtle), so don't introduce Node-only APIs casually.
+**Model-free Kalshi prop-market capture instrument.** Pulls Kalshi prices across many sports/markets and logs **every quoted side** to Neon `shadow_plays` as a model-free row (`truePct`/`edge` null, `qualified` false, `modelFree` true) — no model, no bet. A shadow **maker** engine quotes against the captured books and detects fills (simulated / measurement-only). The **maker board** (`MakerBoardPage`, reading `/api/shadow-report`) is the only UI. Vercel Node runtime (Fluid Compute), maxDuration 300 — keep handler code Web-API style (fetch/Request/Response/crypto.subtle).
 
-**Production**: `https://scoreboard-ivory-xi.vercel.app`
+Production: `https://scoreboard-ivory-xi.vercel.app`
 
-**⚠️ Model + taker teardown COMPLETE (2026-08-04).** Two teardowns landed. **Taker STRATEGY (2026-07-30):** no bet is decided, placed, displayed, tracked, or notified — deleted all taker UI/tracking/order-placement, `api/lib/category-gate.js` (`passesCategoryGate`), `/api/kalshi-order`, the entire `/api/push/*` family + `web-push` + `public/sw.js`. **MODEL (2026-08-04):** every per-sport model deleted — `simulate.js`, the `mlb`/`nba`/`wnba`/`nhl` model builders + all byteam model hydration (RPG/ERA/DVP/pace/usage/injury/gamelogs), the `/api/dvp*` handler, the calibration/tune/`price-window` analysis surface (`/api/auth/shadow-calibration` + `/api/auth/shadow-analysis` + `scripts/tune/*`), and the entire frontend player/team stat browser (App.jsx → auth modal + `MakerBoardPage` only). **Everything is now model-free capture-all**: the emit modules (`props.js`/`game-totals.js`/`ml-spread.js`) iterate the parsed Kalshi markets and log **every quoted side** — no model, no edge, no dedup, no bet flag. The old bet-window / `qualified`-dedup machinery (`KALSHI_GATE`/`KALSHI_CAP`/`EDGE_GATE_SERVER`/`betWindowFor`/`CATEGORY_BET_WINDOWS`) was removed with the model — it no longer gated anything. `dcQualified`/`dataConfidence` (dc≥7; only `kalshiStale`/`playerOut` fail) are still computed per row and captured as a column. Detail → memory `project_model_teardown_2026_08_04` + `project_taker_teardown_phase1_2026_07_30`.
+Key state flags (context in memory + `docs/REENTRY.md`):
+- **`AWAITING_VALIDATED_EDGE`** (`api/lib/config.js`) — no strategy family has cleared validation; suppresses the imperative mood only, never a measurement. Instruments (boards, quoting, fills, series scan) keep running.
+- **Maker V2 SHELVED** — `SHELVED = true` in `api/lib/maker-live.js`. V1 quoting, nightly tape replay, and grading stay ON.
+- **Model + taker teardown COMPLETE** — all model/taker/push code deleted; capture-all is the only path.
 
-**Capture doctrine** — the only two gates at collection, both quote-sanity not price-preference (capture-all, 2026-07-03: log everything, filter at analysis time): (1) **band** `[CAPTURE_GATE 1, CAPTURE_CAP 99]` — a 0¢/100¢ ask is an absent quote, not a price; (2) **liquidity** `capturableSpread` / `CAPTURE_MAX_SPREAD 15¢` — a side whose book is a lone wide quote (bid-ask > 15¢) reports an ARTIFACT ask, not a tradeable price, and is rejected at parse (the 2026-06-30 lone-NO-bid-at-6¢-⇒-fake-94¢-favorite class). Applied at three sites through one `capturableSpread()` (config.js): the prop parse, the total/teamTotal/spread branches (`min(yesSpreadC,noSpreadC)`), and `_kMlLegProb` in `ml-spread.js` (a rejected ML leg fails the event's 2/3-way completeness check, dropping the event). Both YES and NO sides use their OWN ask (`no_ask_dollars`, **never** `1−yes_ask` — independent books, 3-7¢ spread). Stale-ask path (`yesAsk≥0.98` priced off `last`) is exempt. Every emitted row: `truePct`/`edge` null, `qualified` false, `modelFree` true, `modelVersion` `${sport}-modelfree-v1`. `config.test.js` pins the CAPTURE bounds + `capturableSpread`.
+## Capture doctrine
 
-**`AWAITING_VALIDATED_EDGE` (`api/lib/config.js`) — posture, not an epitaph.** No strategy family has cleared its validation bar yet, so the priority is COLLECTING data and looking for a pattern that holds; the flag suppresses the IMPERATIVE mood only ("run tune:window on X", "pull X from the gate", "Improve inputs"), never a measurement. Boards, CIs, quoting, fill detection and the series scan all keep running and rendering — that data is the only thing that can become a reliable pattern. Consumed by `maker.js` and `/api/shadow-report`'s `brief`. Data health is deliberately NOT gated (pipeline integrity, not strategy). The bar for acting: a signal in NEW data (a new market class — NFL in September is nearest) or a mechanism stated in advance and then tested; re-slicing days already in hand is 0-for-6. `config.test.js` pins the value AND that `MakerBoardPage.jsx`/`shadow.js` don't re-declare it locally. Renamed from `STRATEGY_CLOSED` 2026-07-29 — nothing here is dead, and a name saying otherwise invites the wrong conclusion and the wrong fix. Detail → `docs/REENTRY.md`.
-
-**Maker V2 is SHELVED (2026-07-28)** — `SHELVED = true` in `api/lib/maker-live.js` short-circuits `isArmed()`; `/api/maker-v2-arm` 409s. Six hypotheses, six dissolutions; the last was **pre-registered** and rejected on all three criteria (`docs/MAKER_LEADTIME_PREREG.md`). Only the **quote-side vig** replicates (+1.5-1.6¢ over 100k+ segments) — it has never been shown to survive to a fill. **Don't re-open by re-slicing the same days: slicing is 0-for-6.** V1 **quoting stays ON** (free — the cron already holds the books — and the vig is the one real effect); the V1 **nightly tape replay is back ON** (`TAPE_REPLAY_ENABLED` in `maker.js` — switched off 7/28 as "~600 fetches/night with no consumer", **re-enabled 2026-07-29**: fill detection is an *instrument*, and the closure doctrine is "instruments stay running, only the actions stop". The switch-off cost one full day of fills (7/28) and would have left the record frozen at 9 days going into the named re-entry catalyst, NFL in September — a cold instrument at the moment you need it. Note the trap in the name: "tape replay" sounds like a redundant re-fetch, but it is the ONLY thing that writes `maker_fills`. Gap repair: `/api/shadow-snapshot?makerDetectDay=YYYY-MM-DD`, which replays one past day's tape over its existing live segments and takes `force` so it works regardless of the flag); V1 **grading stays ON** until the ungraded backlog drains, then self-limits to one query. Full verdict → `docs/INFRA.md` § Maker V2 — SHELVED.
+Two gates at collection, both quote-sanity (not price-preference): (1) **band** `[CAPTURE_GATE 1, CAPTURE_CAP 99]` — a 0¢/100¢ ask is an absent quote; (2) **liquidity** `capturableSpread` / `CAPTURE_MAX_SPREAD 15¢` — a lone wide quote (bid-ask > 15¢) is an artifact ask, rejected at parse. Applied through one `capturableSpread()` (config.js) at three sites: prop parse, total/teamTotal/spread branches, and `_kMlLegProb`. Both YES and NO use their OWN ask (`no_ask_dollars`, never `1−yes_ask`). Stale-ask path (`yesAsk≥0.98` off `last`) is exempt. `config.test.js` pins the bounds.
 
 ## Where to look
 
 | Topic | File |
 |---|---|
 | Cache keys/TTLs, Upstash, env vars, deployment, testing, route contracts, cron table + DST re-pin | `docs/INFRA.md` |
-| URL routing, App.jsx state, MakerBoardPage/DoThisBanner, live tracking, sizing, color doctrine | `docs/FRONTEND.md` |
+| URL routing, App.jsx state, MakerBoardPage, live tracking, sizing, color doctrine | `docs/FRONTEND.md` |
 | Design system: palette, typography, spacing, component patterns | `docs/STYLEGUIDE.md` (tokens: `src/lib/styles.js`) |
 | Common debugging recipes | `docs/DEBUGGING.md` |
-| **What would justify betting again** (all 5 strategy families closed 2026-07-28; re-entry conditions + required method) | **`docs/REENTRY.md` — read this BEFORE any work premised on a new edge** |
+| What would justify betting again (re-entry conditions + required method) | `docs/REENTRY.md` — read before any work premised on a new edge |
 
 ## Architecture
 
-The per-module maps are lazy-loaded so they cost nothing on sessions that do not touch them:
-
-- **`api/CLAUDE.md`** — router, route handlers, and every `api/lib/*` + `api/lib/tonight/*` module (adoption dates, ticker traps, the doctrine behind each). Auto-loads when working under `api/`.
-- **`src/CLAUDE.md`** — frontend module map. Auto-loads when working under `src/`.
-- **`api-routes` skill** (`.claude/skills/api-routes/SKILL.md`) — the full route table + the per-model summary table. Invoke it when adding/debugging any `/api/*` endpoint or looking up which model backs a sport/stat.
+Per-module maps are lazy-loaded:
+- **`api/CLAUDE.md`** — router, route handlers, every `api/lib/*` + `api/lib/tonight/*` module. Auto-loads under `api/`.
+- **`src/CLAUDE.md`** — frontend module map. Auto-loads under `src/`.
+- **`api-routes` skill** — full route table + per-model summary. Invoke when adding/debugging any `/api/*` endpoint.
 
 ## Key Gotchas
 
-These bite during *any* change. Sport/model cutoffs → MODEL.md; data-pipeline → INFRA.md; display → FRONTEND.md.
+These bite during *any* change. Each links to detail in `docs/*.md` or memory.
 
-**Dropped rows are logged rows — give them full identity**: under the capture-ALL doctrine `dropped` goes to `shadow_plays` (the KV staging payload spreads the whole array), so a field missing from a `dropped.push` is a permanently corrupt column, not a cosmetic debug gap. Fixed across three files on 2026-07-27 — `game-totals.js` (`gameDate`/`gameTime`), `ml-spread.js` (8 literal drop pushes, 4 `ml` + 4 `spread` × mlb/nba/wnba/nhl, all missing `gameTime` while their sibling play push had it), and `props.js` (`_dropBase` was missing `gameDate`/`gameTime`/`kalshiTicker`; the missing **ticker** is the worst kind, because it makes a row unrecoverable — `?backfillgamedate=1` keys off the ticker). **Prefer building play and drop from ONE shared base object** (`_ttBaseFields`, `ml-spread`'s `_base`, fight's `sideBase` all did this and were all clean); the literal-object drop pushes are exactly where the two drifted apart. `game-totals.js`'s `total` branch omitted `gameDate`/`gameTime` → **17,705 rows (23.5%) with NULL `game_date`**. Consequences chain: `shadowId` falls back to the snapshot date, and the resolver's date ladder falls through to `snapshot_date` too, so a row logged on day D for a day-D+1 market grades against **the same matchup played on D** — routine in MLB, where 3-4 game series are the norm. The resolver's existing +1-day retry could NOT catch it: that pass only fires when the primary lookup finds *nothing*, and here it wrongly finds yesterday's game. Found 2026-07-27 only because the 414 fix made the settlement tripwire complete (3 markets mis-graded; ESPN was wrong, Kalshi right — **a disagreement does not imply Kalshi erred**). Fixes: ticker date is now a rung in the resolver's ladder (`kalshi-ticker.js`), `guessedDateRows` on the resolver response is the tripwire, and `/api/shadow-snapshot?backfillgamedate=1` repairs history. Only rows from 2026-07-23 on are recoverable (when `kalshi_ticker` landed).
+**Dropped rows are logged rows.** Under capture-all, `dropped` goes to `shadow_plays`, so a field missing from a `dropped.push` is a permanently corrupt column. Build play and drop from ONE shared base object; a missing `kalshiTicker` makes a row unrecoverable. Repair history via `/api/shadow-snapshot?backfillgamedate=1` (rows from 2026-07-23 on).
 
-**`state:"post"` is not "the game finished" — and a postponed game's makeup is unidentifiable from ESPN**: ESPN reports POSTPONED/CANCELED/SUSPENDED as `state:"post"` with `completed:false` and 0-0 scores, so `_resolveRow`'s old `state !== "post"` guard graded a postponement as a 0–0 final — every `under` a win, every `over` a loss. Separately, `gameTimes` keys on `sport:team:ptDate` with **last-event-wins**, so on a doubleheader date a makeup market gets the *other* game's start time and `/api/live` matches the wrong event exactly and confidently. Both fired on the 2026-07-27 CLE@CIN postponement (made up as a 7/28 doubleheader): **65 mis-graded rows**, ESPN wrong, Kalshi right. **The ticker cannot break the tie** — `26JUL271910` encodes 19:10 ET and makeup game 2 also started 23:10Z (same wall clock, next day) while the market settled against game 1; ticker time picks game 2, ticker date picks a day no game was played, and "the makeup is game 1" is an MLB habit, not a rule. Only settlement knows. Fix (2026-07-29, forward + repair): `/api/live` passes `completed` through; `isNonFinalTerminal(game)` and `isMakeupReattributed(row)` (`settlement-reconcile.js`, pure + unit-tested) name the two structural cases; flagged rows are dropped from the ESPN resolve loop **entirely** (not just their `won` — otherwise reconcile keeps an `actualValue` read off the wrong game) and settlement is promoted to authoritative **for those rows only**, which is not a preference for settlement on a calibrated family but an admission that ESPN has no answer to prefer. Two rules that are load-bearing, not stylistic: `completed === false` must never be relaxed to falsiness (the key is absent on `live:*` payloads cached before the fix — the change phases in as they expire), and the makeup test must stay **strictly forward** (`game_date` is PT-derived, ticker dates are ET, so a late game legitimately sits a day *behind* its ticker; only a forward gap is re-attribution). Tripwire: `postponedMakeup.*` on the resolver response, since these rows leave the ESPN-vs-settlement disagreement count by construction. Repair: `/api/shadow-snapshot?regradepostponed=1` (`?dry=1`, `?days=N`) — scoped **structurally** (every row of a matchup where some row was re-attributed forward), never "regrade what disagrees with settlement", which would hand settlement authority over the calibrated families wholesale. Details → `docs/DEBUGGING.md`.
+**`state:"post"` ≠ game finished.** ESPN reports POSTPONED/CANCELED/SUSPENDED as `state:"post"`, `completed:false`, 0-0. `isNonFinalTerminal`/`isMakeupReattributed` (`settlement-reconcile.js`) flag these; flagged rows drop from the ESPN resolve loop and settlement is authoritative for them. `completed === false` must never be relaxed to falsiness; the makeup test must stay strictly forward. Repair: `/api/shadow-snapshot?regradepostponed=1`. Detail → `docs/DEBUGGING.md`.
 
-**Spread alt-line dedup + category gate**: dedup key `sp|sport|seg|sortedTeams|line|gameDate`. Different alt lines compete independently; both sides of one line share a key (higher-edge side wins). Edge case: if the dedup winner fails the category gate while the demoted loser passes, `passesGate`/`_qualifiedFilter` allow the demoted play through (`_altLineDemoted && !passesCategoryGate(p)`). Opposite-side truePcts are complementary, so both sides never show at once.
+**A resolver disagreement does NOT imply Kalshi erred — only settlement knows the true outcome.**
 
-**TEAM_NORM (Kalshi → ESPN)**: NBA `{GS→GSW, SA→SAS, NY→NYK, NJ→BKN, NO→NOP, PHO→PHX, WPH→PHX, KAT→ATL}`. WNBA `{CONNECTICU→CONN, CON→CONN, DALLAS→DAL, WAS→WSH, GSV→GS, LAS→LA}`. Derived from `teams.js` (`kalshi` aliases) — edit the registry, not parse-teams.js. Identity entries (mlb `KC→KC`) mark 2-char prefixes for the 2+3 ticker split.
+**Spread alt-line dedup key** `sp|sport|seg|sortedTeams|line|gameDate`. Alt lines compete independently; both sides of one line share a key (higher-edge side wins). Demoted loser passes the gate if the winner fails it.
 
-**`parseGameTeams` validation via `_VALID_TEAMS`**: without it a 2-char prefix steals the parse (`NYKPHI` → `NY`+`KPH`). Parser tries 3+3 first when length≥6, commits only if both halves validate; falls back to validated 2+3. WNBA mixes 2/3/4-char abbrs — tries every split, longer left-side first. Symptom of breakage: duplicate matchup cards. Maintain `_VALID_TEAMS` on team rebrands.
+**TEAM_NORM (Kalshi → ESPN)** derived from `teams.js` `kalshi` aliases — edit the registry, not parse-teams.js. Identity entries (mlb `KC→KC`) mark 2-char prefixes for the 2+3 ticker split.
 
-**Kalshi ticker home/away order ≠ ESPN.** `parseGameTeams` returns ticker order. Each play loop must look up the real home team and swap: MLB `sportByteam.mlb.gameHomeTeams[gameTeam2]`; NBA/NHL scan `{nba,nhl}GameScores`. Two sites: game-total loop and team-total loop.
+**`parseGameTeams` validation via `_VALID_TEAMS`** — without it a 2-char prefix steals the parse (`NYKPHI`→`NY`+`KPH`). Tries 3+3 first (length≥6), falls back to validated 2+3. Symptom of breakage: duplicate matchup cards. Maintain `_VALID_TEAMS` on rebrands.
 
-**ESPN scoreboard abbr mismatch**: `/api/live` translates via `CANONICAL_TO_ESPN`/`ESPN_TO_CANONICAL` (sport-keyed). Unmapped → `state:"unknown"`, pick never resolves. MLB `CWS↔CHW`; NBA `GSW↔GS, SAS↔SA, NYK↔NY, NOP↔NO, UTA↔UTAH, WAS↔WSH`; WNBA `CONN↔CON`; NHL `TBL↔TB, NJD↔NJ, LAK↔LA, SJS↔SJ`. Add new mismatches to the `espnScore` field in `teams.js`. (`WNBA_CANON_TO_ESPN` is a *different* endpoint — stats/injuries, `espnStats` field — don't use it for the `/api/live` scoreboard map.)
+**Kalshi ticker home/away order ≠ ESPN.** `parseGameTeams` returns ticker order; each play loop must look up the real home team and swap (game-total loop + team-total loop).
 
-**`gameTimes` horizon = yesterday…D+2** (tonight.js scoreboard fetch): Kalshi lists markets further out than ESPN's old today+tomorrow window, so D+2 rows were captured with `gameTime: null`, silently blocking maker quoting (98 WNBA rows/day). Extended 2026-07-27. **The D+2 events are returned as a SEPARATE `eventsDayAfter` array and read ONLY by the gameTimes loop** — every other consumer of `events` (`parseGameOdds`, `parseGameScores`, `_extractMlbWeather`, `parseTopPlayers`) is keyed by TEAM with last-event-wins, so folding D+2 into `events` would let a further-out game overwrite a nearer game's odds. `gameTimes` is safe because it keys by `sport:team:ptDate`, which can't collide across days; D+2 is appended last so the bare `gameTimes[key]` fallback still prefers the nearest game. Fan-out went 3→4 fetches per sport (≤16 total, well under the 64-slot gate).
+**ESPN scoreboard abbr mismatch** — `/api/live` translates via `CANONICAL_TO_ESPN`/`ESPN_TO_CANONICAL` (sport-keyed). Unmapped → `state:"unknown"`, never resolves. Add new mismatches to the `espnScore` field in `teams.js`. (`WNBA_CANON_TO_ESPN` is a *different* endpoint — stats/injuries — don't use it for the scoreboard map.)
 
-**`gameScores` today+tomorrow merge**: each scoreboard fetch fetches today AND tomorrow in parallel; key shape `${hA}|${gameDate}|${event.date}` prevents post-midnight wipe + DH game-2 overwrite. The inline duplicate in `mlb.js` must mirror the key shape. Frontend `LineupsPage.buildGames` keys by `${sortedPair}|${gameDate}|${gameTime}`.
+**`gameTimes` horizon = yesterday…D+2.** D+2 events return as a SEPARATE `eventsDayAfter` array read ONLY by the gameTimes loop — every other `events` consumer keys by TEAM with last-event-wins, so folding D+2 in would overwrite nearer games.
 
-**Kalshi UNDER pricing — use `no_ask_dollars`, not `1 - yes_ask_dollars`**: YES/NO books are independent (3–7¢ spread). Synthesizing UNDER as `1 - yes_ask` inflates measured edge. Parse loop reads `m.no_ask_dollars`, propagates `noKalshiPct`/`noKalshiAO`.
+**`gameScores` today+tomorrow merge** — key shape `${hA}|${gameDate}|${event.date}` prevents post-midnight wipe + DH game-2 overwrite. The inline duplicate in `mlb.js` must mirror it.
 
-**Traded volume ≠ resting liquidity**: a market with `volume_fp:0` can still have a deep resting book. Cached `_depth` is top-3-only + often absent on 0-vol markets → reported slippage is a **false 0** (never measured). Order modals + Place All + push cron walk the live full book (`/api/kalshi-orderbook` → `walkFill`) for real VWAP (slip <3¢ checked even at 0 trades; ≥3¢ soft-warn; can't fill → uncheck). Shared: `api/lib/kalshi-book.js`, re-exported by `src/lib/orderbook.js`.
+**Kalshi UNDER pricing — use `no_ask_dollars`, not `1 - yes_ask_dollars`.** YES/NO books are independent (3–7¢ spread).
 
-**Kalshi snap-first read chain (`/api/tonight`)** — 2-tier (`api/lib/tonight/kalshi-pipeline.js`):
-1. `kalshi:snap:{ticker}` — written every 2 min by cron. All-or-nothing: all fresh (within 180s) → skip Kalshi REST.
-2. REST + `kalshi:stale:{ticker}` — per-ticker throttled fetch (3 parallel / 700ms, shuffled), 30-min stale fallback. Fresh non-empty fetches written back to `kalshi:snap` (chunked via `pipeWriteChunked`); stale/failed series not re-stamped.
+**Traded volume ≠ resting liquidity** — a `volume_fp:0` market can have a deep book; cached `_depth` reports a false-0 slippage. Order paths walk the live full book (`/api/kalshi-orderbook` → `walkFill`, `api/lib/kalshi-book.js`) for real VWAP.
 
-`KXMLBGAME` has the same chain. Diagnosing `usedSnaps:false`: check `kalshiSnap.meta` in `?debug=1` — `null` meta = no cron in 10 min (cron-side failure); non-zero `meta.snapWriteFailed` = Upstash rejected chunks.
+**Kalshi snap-first read chain (`/api/tonight`)** — 2-tier (`api/lib/tonight/kalshi-pipeline.js`): `kalshi:snap:{ticker}` (cron every 2 min, all-or-nothing 180s freshness) → REST + `kalshi:stale:{ticker}` (30-min fallback). `KXMLBGAME` uses the same chain. Diagnose `usedSnaps:false` via `kalshiSnap.meta` in `?debug=1`.
 
-**Server self-fetches: `selfOrigin(request)`, never `new URL(request.url).origin`**: cron invocations arrive on the deployment-generated URL, which Deployment Protection 302s to the SSO HTML page — the overnight resolver's `/api/live` self-fetch died every night with `Unexpected token '<'` (found 7/02). `selfOrigin` (`api/lib/utils.js`) pins `PROD_ORIGIN` except on localhost; used by resolver, shadow-snapshot/pregame-snap HTTP fallbacks, and shadow-stats `?trigger`/`?resolvetrigger`. Symptom: `noData≈all, games=0` on cron runs but a manual daytime trigger works.
+**Server self-fetches: `selfOrigin(request)`, never `new URL(request.url).origin`** — cron URLs 302 to the SSO page. `selfOrigin` (`api/lib/utils.js`) pins `PROD_ORIGIN` except on localhost. Symptom: `noData≈all, games=0` on cron but manual trigger works.
 
-**Outbound fetch is globally concurrency-gated (`api/lib/fetch-limit.js`)**: the instance has a 1024-fd ceiling and total open sockets ≈ the SUM of every module's peak `Promise.all` burst width (idle keep-alive sockets linger, invisible to `getActiveResourcesInfo`) — crossing it makes ALL outbound fetches fail (`TypeError: fetch failed`, cause `EMFILE`/`EBUSY`, ESPN and Upstash alike) while single-fetch routes stay healthy. `fetch-limit.js` wraps `globalThis.fetch` in a 64-slot gate (side-effect import, FIRST line of the router) — that's the guarantee; per-phase `pLimit(n)` (`api/lib/utils.js`) and batched KV reads via `cache.getMany` (chunked MGET; feature-test + parallel-GET fallback) are pacing on top. Don't add a fetch path that bypasses global `fetch`. Diagnose with `?debug=1` → `fdProbe` milestones. Details → `docs/INFRA.md` § Data Plumbing Gotchas.
+**Outbound fetch is globally concurrency-gated (`api/lib/fetch-limit.js`, 64-slot).** Crossing the fd ceiling makes ALL outbound fetches fail (`EMFILE`/`EBUSY`). Side-effect import, FIRST line of the router — don't add a fetch path that bypasses global `fetch`. Diagnose via `?debug=1` → `fdProbe`. Detail → `docs/INFRA.md`.
 
-**Upstash 10MB request cap**: any single HTTP request to Upstash >10MB 413s. Two mechanisms: (1) multi-key writes go through `pipeWriteChunked` (`api/lib/kv-pipeline.js`), size-chunked at 7MB; (2) single `cache.put` (SET) values are transparently gzipped above `KV_COMPRESS_THRESHOLD` (256KB) via `api/lib/kv-compress.js` (`gz:`-prefixed, auto-decompressed on get — zero caller changes). `kalshi:snap:*` bypass `makeCache` (raw MGET, already chunked). `cmd()` logs `[upstash] HTTP <status>` on non-OK so an oversize surfaces.
+**Upstash 10MB request cap** — multi-key writes go through `pipeWriteChunked` (7MB chunks); single SET values gzip above 256KB (`kv-compress.js`, `gz:`-prefixed, auto-decompressed). `kalshi:snap:*` bypass `makeCache`.
 
-**API handler env-var wiring**: handlers receive `env`, never read `process.env`. ALL env vars must be wired into the explicit `env` object at the bottom of `api/[...path].js` — add new ones there.
-Symptom of missing wire-up: `env?.VAR` is `undefined` even though Vercel shows it set.
+**API handler env-var wiring** — handlers receive `env`, never read `process.env`. Wire ALL env vars into the explicit `env` object at the bottom of `api/[...path].js`. Symptom of missing wire-up: `env?.VAR` undefined though Vercel shows it set.
 
-**Web Push / PWA**: background push for the installed PWA. **iOS 16.4+ delivers push ONLY to a Home-Screen-installed PWA** — a Safari tab silently no-ops, so the bell button shows an "Add to Home Screen" hint when `isIOS() && !isStandalone()` (`src/lib/push.js`). Static PWA files (`public/{manifest.json,sw.js,icon-*.png}`) serve from `dist/` before the SPA rewrite. Requires VAPID env vars. The category gate lives in `api/lib/category-gate.js` so the cron applies the identical gate the UI shows.
+**Shadow-snapshot KV staging** — tonight handler writes `shadow:staging:{date}` (TTL 6h) after DC computation; shadow-snapshot/pregame-snap read it first (~100ms) instead of re-fetching `/api/tonight?debug=1`. `dropped > 0` confirms the dropped-capture path is live.
 
-**Shadow-snapshot KV staging**: tonight handler writes `shadow:staging:{date}` to Upstash (TTL 6h) right after DC computation. Shadow-snapshot/pregame-snap read it first (~100ms) instead of re-fetching `/api/tonight?debug=1` (40-55s). `plays` = all prop + qualified game-total/ML/spread; `dropped` = non-qualifying total/teamTotal/ML/spread/F5/halves with computed truePct. Carries `writtenAt` (pregame-snap enforces a 15-min staleness gate). Diagnose: `dropped > 0` confirms the dropped-capture path is live.
+**Neon HTTP SQL API (`api/lib/neon.js`):**
+1. Uses `@neondatabase/serverless` — raw fetch fails with "missing authentication credentials".
+2. `neon().query(sql, params)` returns the rows array **directly** (not `{ rows }`).
+3. DDL must go through `neonExec()` (splits on `;`). `sql.unsafe()` is a raw-value marker, NOT an executor.
+4. DATE columns come back as JS Date objects — `new Date(row.d).toISOString().slice(0,10)`, never `String(...)`.
 
-**Neon HTTP SQL API (`api/lib/neon.js`) — four gotchas**:
-1. Uses `@neondatabase/serverless`. Raw fetch to the Neon host fails with "missing authentication credentials".
-2. `neon().query(sql, params)` returns the rows array **directly** (not `{ rows }`). Don't do `result.rows ?? []`.
-3. DDL must go through `neonExec()` (splits on `;`, runs each separately). Multi-statement DDL in one `query()` fails. `sql.unsafe()` is a raw-value marker, NOT an executor.
-4. **DATE columns come back as JS Date objects.** Always `new Date(row.date_col).toISOString().slice(0,10)`, never `String(...).slice(0,10)`.
-
-**Cold-wake replica lag**: on a cold function wake the unpooled Neon replica (and even the pooled primary on a fresh instance) can serve stale/empty reads. Read paths that gate on freshness (e.g. shadow-report resolution count) use `{write:true}` + a KV floor + cross-conn max. Safe because the counts are monotonic (only ADD) → max can only under-count when stale.
+**Cold-wake replica lag** — a cold Neon replica can serve stale/empty reads. Freshness-gated read paths use `{write:true}` + KV floor + cross-conn max (safe because counts are monotonic).
