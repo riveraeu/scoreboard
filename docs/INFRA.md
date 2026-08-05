@@ -69,7 +69,7 @@ Full schedule with pairing constraints below. Handlers:
 - `/api/keepalive` — daily noon UTC; keeps Upstash from idle-suspending. DST-exempt.
 - `/api/kalshi-snapshot` — `*/2 * * * *`; pre-warms `kalshi:snap:{ticker}`. Two-phase write (snaps always land, depth best-effort under a 21s deadline); chunked pipeline (7MB). Bearer `CRON_SECRET`. DST-exempt.
 - `/api/kalshi-series-scan` — `45 12` (5:45am PT, 15 min before the report). Diffs Kalshi's `series?category=Sports` catalog against `SERIES_CONFIG`∪`CRON_ONLY_TICKERS`; records unknowns in Neon `kalshi_series_seen` (status funnel new→shortlisted→adopted/dismissed/baseline). Screens + auto-dismisses dead books; sweeps baseline backlog. `?dry=1`, `?dismiss=`/`?promote=`. Detail → `api-routes` skill.
-- `/api/polymarket-scan` — `40 12`; Polymarket mirror of the series scan (`polymarket_sports_seen`, slug PK). Merges into the report's `newMarkets`/`shortlistedMarkets` with `venue:"polymarket"`.
+- `/api/polymarket-scan` — **no cron** (schedule dropped 2026-07-28); endpoint still reachable with `ADMIN_KEY`. Polymarket capture (`polymarket_plays`) runs inline in `shadow-snapshot`, not here.
 
 ### Cron schedule, dependencies & DST policy
 
@@ -80,7 +80,6 @@ Vercel crons are **UTC-pinned**; all timing intent is **Pacific wall-clock**. Wh
 | `0 15` | 8:00am | `/api/tonight` | — |
 | `5 15` / `10 15` | 8:05/8:10am | `/api/shadow-snapshot` | trails the `0 15` tonight by 5–10 min |
 | `45 12` | 5:45am | `/api/kalshi-series-scan` | BEFORE the `0 13` report (15 min ahead) |
-| `40 12` | 5:40am | `/api/polymarket-scan` | just ahead of the scan + report |
 | `0 13` | 6:00am | `/api/shadow-report` | trails the `50 12` resolver by 10 min; runs after the `45 12` scan |
 | `55 16` | 9:55am | `/api/tonight` | — |
 | `0 17` | 10:00am | `/api/shadow-pregame-snap` | trails the `55 16` tonight by ~5 min |
@@ -124,7 +123,7 @@ Both kept in sync. `npm test` runs the Node suite (simulate, utils, parse-teams,
 ## Route Contracts
 
 ### `/api/tonight`
-Main play generation. `?debug=1` returns `dropped[]`/`preDropped[]` + debug fields; `?bust=1` bypasses caches. 2-min poll in `App.jsx` (`POLL_MS=120_000`), paused when hidden; manual ↻ is the only `?bust=1` path. **Edge SWR:** the normal response sets `Cache-Control: public, s-maxage=120, stale-while-revalidate=86400` so the CDN serves fresh for 2 min then instant-stale up to 24h while revalidating — removes the ~7s synchronous assembly from most loads. `?bust=1`/`?debug=1` stay `no-store`.
+Main play generation. `?debug=1` returns `plays[]`/`dropped[]` + per-league market counts, `qualifyingCount`/`totalMarketsCount`, `fdProbe`, `kalshiSnap`; `?bust=1` bypasses caches. 2-min poll in `App.jsx` (`POLL_MS=120_000`), paused when hidden; manual ↻ is the only `?bust=1` path. **Edge SWR:** the normal response sets `Cache-Control: public, s-maxage=120, stale-while-revalidate=86400` so the CDN serves fresh for 2 min then instant-stale up to 24h while revalidating — removes the ~7s synchronous assembly from most loads. `?bust=1`/`?debug=1` stay `no-store`.
 
 ### `/api/kalshi-order`
 `POST`, bearer JWT. Body `{ ticker, side, price(1–99), count }`. Signs RSA-PSS / SHA-256 / saltLength=32 with `KALSHI_API_KEY_ID` + `KALSHI_PRIVATE_KEY`; message `timestamp_ms + "POST" + path` (no body). **V2 event-order endpoint** `external-api.kalshi.com/trade-api/v2/portfolio/events/orders` — one book quoted in YES terms (`side:"bid"` = buy YES; `side:"ask"` = buy NO at the complement). Handler is the translation chokepoint: client body unchanged, V2 response normalized back to the legacy `order` shape. Reads (markets/orderbook/balance/fills) stay on legacy `api.elections.kalshi.com` paths.
