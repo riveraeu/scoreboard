@@ -1155,6 +1155,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     // prefix is a season outright (futures), NOT a buildable per-game category.
     const _perGame = (t) => /(GAME|MATCH|SPREAD|TOTAL|BTTS|MONEYLINE|\dH|\dQ|WINNER)/.test(t || "");
     discovery = {
+      venue: "kalshi", // every kalshi_series_seen row is a Kalshi KX* series — the scan is Kalshi-only
       counts: Object.fromEntries(counts.map(r => [r.status, r.n])),
       autoDismissedToday: Number(act?.n || 0),
       toVet: toVet.map(r => ({
@@ -1166,8 +1167,34 @@ async function handleShadowReport({ path, request, env, cache }) {
         firstSeen: r.first_seen ? new Date(r.first_seen).toISOString().slice(0, 10) : null,
         perGame: _perGame(r.ticker), // false ⇒ likely season futures, not a per-game category
       })),
-      note: "screen=REAL_BOOK ⇒ real book, NOT buildable — vet GAME-suffix (perGame:false = futures), ESPN slug, team abbrs before building",
+      polymarket: null, // filled below (own try/catch — a missing poly table must not blank this list)
+      note: "venue=kalshi (Kalshi KX* series scan). screen=REAL_BOOK ⇒ real book, NOT buildable — vet GAME-suffix (perGame:false = futures), ESPN slug, team abbrs before building. Cross-venue Poly presence is league-level only (see .polymarket) — Gamma slugs (argcopa, bel1) share no key with Kalshi tickers, so a per-candidate poly flag is manual.",
     };
+    // Polymarket discovery lane — a SEPARATE surface (polymarket_sports_seen), per-LEAGUE not
+    // per-market-family, so it can't be joined to the Kalshi candidates per-row. Own try/catch: a
+    // missing/empty poly table (scan never ran) must not blank the Kalshi discovery above.
+    try {
+      const [polyCounts, polyToVet] = await Promise.all([
+        neonQuery(`SELECT status, COUNT(*)::int AS n FROM polymarket_sports_seen GROUP BY status`, [], env, { write: true }),
+        neonQuery(`
+          SELECT sport, market_types, sample_event, live_event_count, first_seen
+          FROM polymarket_sports_seen
+          WHERE status IN ('new','shortlisted')
+          ORDER BY live_event_count DESC NULLS LAST
+          LIMIT 25`, [], env, { write: true }),
+      ]);
+      discovery.polymarket = {
+        counts: Object.fromEntries(polyCounts.map(r => [r.status, r.n])),
+        toVet: polyToVet.map(r => ({
+          sport: r.sport,
+          marketTypes: r.market_types || null,
+          sampleEvent: r.sample_event || null,
+          liveEvents: r.live_event_count != null ? Number(r.live_event_count) : null,
+          firstSeen: r.first_seen ? new Date(r.first_seen).toISOString().slice(0, 10) : null,
+        })),
+        note: "Polymarket discovery is per-LEAGUE (Gamma sport slug), not per-market-family; marketTypes lists the families live per league. Active cross-venue CAPTURE is mlb/nba/nhl/wnba only. A Kalshi candidate whose league ALSO appears here with the matching family extends cross-venue vig coverage (venueVig).",
+      };
+    } catch (e) { console.error("[shadow-report] poly discovery skipped:", e?.message); }
   } catch (e) { console.error("[shadow-report] discovery skipped:", e?.message); }
 
   // ── Cross-venue vig (Kalshi vs Polymarket) — the [Kalshi|Poly|Δ] heatmap toggle's data ───────
