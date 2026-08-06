@@ -31,8 +31,7 @@ import { isArmed as isMakerV2Armed } from "../../maker-live.js";
 import { fetchKalshiSettlements, resolveTickerSideViaKalshi } from "../../kalshi-settlement.js";
 import { PREREG_CELLS, evaluatePrereg } from "../../maker-prereg.js";
 import { weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl, quotedOutcomesByBand,
-  adverseSelectionWithinBand, leadTimeBuckets, spearmanEdgeVsLead, mixAdjustedNearFarByDay,
-  dayLevelDiffCI, leadTimeVerdict, exitCounterfactual } from "../../maker-stats.js";
+  adverseSelectionWithinBand, exitCounterfactual } from "../../maker-stats.js";
 
 // Maker ask-price band buckets, as a SQL CASE over any ask column. ONE definition (2026-07-26) —
 // previously copy-pasted per query, and the quoted-vs-filled comparison is only meaningful if both
@@ -293,89 +292,6 @@ async function handleShadowReport({ path, request, env, cache }) {
   if (!isCron && !isAdmin && !isUser) return errorResponse("Forbidden", 403);
   if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("No Neon connection", 500);
 
-  // ── ?makerQueueCheck=1 — V1-vs-V2 fill agreement, the queue-priority calibration ──────────────
-  // V1 is a COUNTERFACTUAL simulator: it never places an order, then asserts a fill whenever a
-  // taker traded at `px >= our ask` inside a segment window (`replayFills`). That assertion rests
-  // on "we quote 1¢ inside, so price priority is ours" — true at the instant of quoting, and
-  // unverifiable afterwards, because V1 records only top-of-book and samples every 2 minutes. A
-  // competitor can improve, absorb the flow and revert between ticks, and V1 would still credit us.
-  //
-  // V2's 3 live days are the only ground truth that exists: real resting orders, same engine, same
-  // eligibility logic (`computeMakerQuote` with MAKER_V2_BAND). Joining them gives a 2x2 —
-  // per V2 order, did V1 predict a fill over the same ticker/side/window?
-  //
-  //   both filled           → V1 agrees with reality
-  //   V2 filled, V1 did not → V1 is CONSERVATIVE (under-counts fills)
-  //   V1 filled, V2 did not → V1 is OPTIMISTIC — the queue-priority assumption failing
-  //   neither               → agrees
-  if (new URL(request.url).searchParams.get("makerQueueCheck") === "1") {
-    try {
-      const rows = await neonQuery(`
-        SELECT o.id, o.ticker, o.side, o.price, o.size, o.filled_count, o.status, o.game_date,
-               COUNT(q.id)::int                          AS v1_segments,
-               COALESCE(MAX(q.quote_ask), 0)::int        AS v1_ask,
-               COALESCE(SUM(fq.c), 0)::numeric           AS v1_contracts
-          FROM maker_orders_v2 o
-          LEFT JOIN maker_quotes q
-            ON q.ticker = o.ticker
-           AND q.source = 'live'
-           AND q.quote_side = o.side
-           AND q.valid_from < COALESCE(o.canceled_at, o.expires_at, NOW())
-           AND COALESCE(q.valid_to, NOW()) > o.placed_at
-          LEFT JOIN LATERAL (
-            SELECT COALESCE(SUM(f.contracts), 0) AS c
-              FROM maker_fills f
-             WHERE f.quote_id = q.id
-               AND f.traded_at >= o.placed_at
-               AND f.traded_at <  COALESCE(o.canceled_at, o.expires_at, NOW())
-          ) fq ON TRUE
-         GROUP BY o.id, o.ticker, o.side, o.price, o.size, o.filled_count, o.status, o.game_date`,
-        [], env, { write: true });
-
-      const cell = { bothFilled: 0, v2Only: 0, v1Only: 0, neither: 0 };
-      let noSegment = 0, priceMatch = 0, priceRows = 0, sumPriceDiff = 0;
-      const byDay = new Map();
-      const v1OnlySamples = [];
-      for (const r of rows) {
-        const v2f = Number(r.filled_count) > 0;
-        const v1f = Number(r.v1_contracts) > 0;
-        if (!r.v1_segments) noSegment++;
-        const k = v2f && v1f ? "bothFilled" : v2f ? "v2Only" : v1f ? "v1Only" : "neither";
-        cell[k]++;
-        if (k === "v1Only" && v1OnlySamples.length < 10) {
-          v1OnlySamples.push({ ticker: r.ticker, side: r.side, v2Price: r.price,
-            v1Ask: r.v1_ask, v1Contracts: Number(r.v1_contracts), segments: r.v1_segments });
-        }
-        const day = String(r.game_date).slice(0, 10);
-        const d = byDay.get(day) || { bothFilled: 0, v2Only: 0, v1Only: 0, neither: 0 };
-        d[k]++; byDay.set(day, d);
-        if (r.v1_ask && r.price) {
-          priceRows++;
-          sumPriceDiff += Math.abs(Number(r.v1_ask) - Number(r.price));
-          if (Number(r.v1_ask) === Number(r.price)) priceMatch++;
-        }
-      }
-      const n = rows.length;
-      return jsonResponse({
-        ok: true,
-        n, noSegment,
-        cell,
-        rates: n ? {
-          bothFilled: +(cell.bothFilled / n * 100).toFixed(1),
-          v2Only: +(cell.v2Only / n * 100).toFixed(1),
-          v1Only: +(cell.v1Only / n * 100).toFixed(1),
-          neither: +(cell.neither / n * 100).toFixed(1),
-        } : null,
-        priceAgreement: priceRows
-          ? { exact: priceMatch, rows: priceRows, exactPct: +(priceMatch / priceRows * 100).toFixed(1),
-              meanAbsDiffC: +(sumPriceDiff / priceRows).toFixed(2) }
-          : null,
-        byDay: [...byDay.entries()].sort().map(([day, v]) => ({ day, ...v })),
-        v1OnlySamples,
-      });
-    } catch (e) { return errorResponse(`makerQueueCheck failed: ${e?.message}`, 500); }
-  }
-
   // ── ?makerTapeProbe=YYYY-MM-DD — is V1's single tape page actually covering the day? ──────────
   if (new URL(request.url).searchParams.get("makerTapeProbe")) {
     const dayPT = new URL(request.url).searchParams.get("makerTapeProbe");
@@ -600,68 +516,6 @@ async function handleShadowReport({ path, request, env, cache }) {
         ...result,
       });
     } catch (e) { return errorResponse(`makerExitCheck failed: ${e?.message}`, 500); }
-  }
-
-  // ── ?makerLeadTime=1 — the pre-registered lead-time test ──────────────────────────────────────
-  // Decision rule fixed in docs/MAKER_LEADTIME_PREREG.md BEFORE this code was written.
-  // source='live' only: replayed segments are excluded.
-  if (new URL(request.url).searchParams.get("makerLeadTime") === "1") {
-    try {
-      const rows = await neonQuery(`
-        SELECT q.game_date AS day,
-               ${_makerBandCase("f.fill_ask")} AS band,
-               CASE
-                 WHEN lead_h < 1  THEN '0-1h'
-                 WHEN lead_h < 3  THEN '1-3h'
-                 WHEN lead_h < 6  THEN '3-6h'
-                 WHEN lead_h < 12 THEN '6-12h'
-                 ELSE '12h+' END AS bucket,
-               COUNT(*)::int AS fills,
-               COALESCE(SUM(f.contracts), 0) AS contracts,
-               COALESCE(SUM(f.fill_ask * f.contracts), 0) AS sum_ask_ctr,
-               COALESCE(SUM((f.side_won)::int::numeric * f.contracts), 0) AS sum_won_ctr
-          FROM maker_fills f
-          JOIN maker_quotes q ON q.id = f.quote_id
-          CROSS JOIN LATERAL (
-            SELECT EXTRACT(EPOCH FROM (q.game_time - f.traded_at)) / 3600 AS lead_h) l
-         WHERE q.source = 'live'
-           AND f.graded_at IS NOT NULL
-           AND q.game_time IS NOT NULL
-           AND f.traded_at IS NOT NULL
-           AND lead_h >= 0
-         GROUP BY 1, 2, 3`, [], env, { write: true });
-
-      const buckets = leadTimeBuckets(rows);
-      const spearman = spearmanEdgeVsLead(buckets);
-      const { days, weights } = mixAdjustedNearFarByDay(rows);
-      const ci = dayLevelDiffCI(days);
-      const verdict = leadTimeVerdict({ ci, days, spearman });
-
-      const armEdge = (pred) => {
-        let c = 0, ask = 0, won = 0;
-        for (const r of rows) {
-          if (!pred(r.bucket)) continue;
-          c += Number(r.contracts); ask += Number(r.sum_ask_ctr); won += Number(r.sum_won_ctr);
-        }
-        return c > 0 ? Math.round(((ask - 100 * won) / c) * 100) / 100 : null;
-      };
-      const near = armEdge((b) => b === "0-1h" || b === "1-3h");
-      const far = armEdge((b) => b === "6-12h" || b === "12h+");
-
-      console.log(`[shadow-report] makerLeadTime verdict=${verdict.verdict} ci=[${ci.loCI},${ci.hiCI}] `
-        + `rho=${spearman} signs=${verdict.signPositive}/${verdict.totalDays}`);
-      return jsonResponse({
-        ok: true,
-        preregistration: "docs/MAKER_LEADTIME_PREREG.md",
-        buckets,
-        spearman,
-        dailyDiff: days,
-        bandWeights: weights,
-        dayClusteredDiff: ci,
-        unadjusted: { nearEdgeCents: near, farEdgeCents: far, diffCents: near != null && far != null ? Math.round((near - far) * 100) / 100 : null },
-        verdict,
-      });
-    } catch (e) { return errorResponse(`makerLeadTime failed: ${e?.message}`, 500); }
   }
 
   // ── ?makerCell=sport|category|band — drill into ONE heatmap cell ──────────────────────────────
