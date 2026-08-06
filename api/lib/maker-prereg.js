@@ -19,12 +19,23 @@
 // structural bar on the 8/05 tripwire (in-sample +20.29¢/ct, 66 fills / 10 days, day-clustered CI
 // [+4.39, +36.18], sideWon ~0.52 vs ~0.72 priced). Criteria fixed before the 2026-08-05 forward window
 // opened; sideWonBelow is 0.60 not 0.45 because this favorite is priced ~72¢, not a coinflip.
+//
+// `ks-1519` (docs/MAKER_KS_PREREG.md) added 2026-08-06 — second cell on the 8/06 tripwire (in-sample
+// +5.47¢/ct, 221 fills / 8 days, day-clustered CI [+0.08, +10.86], weighted sideWon ~0.114 vs ~0.165
+// priced). Longshot-side mechanism (whichever of YES/NO on KXMLBKS is in the 15-19¢ range).
+// sideWonBelow is 0.14 — materially below the ~16.5¢ avg ask, room for forward variance.
 export const PREREG_CELLS = [
   {
     id: "hrr-7074", sport: "mlb", category: "hrr", band: "70-74",
     doc: "docs/MAKER_HRR_PREREG.md", label: "MLB HRR favorite 70-74¢",
     forwardStart: "2026-08-05", checkpoint: "2026-08-19",
     criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.60, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "ks-1519", sport: "mlb", category: "strikeouts", band: "15-19",
+    doc: "docs/MAKER_KS_PREREG.md", label: "MLB strikeouts longshot 15-19¢",
+    forwardStart: "2026-08-06", checkpoint: "2026-08-20",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.14, minDays: 8, minFills: 50 },
   },
 ];
 
