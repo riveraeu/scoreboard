@@ -31,9 +31,4 @@ import { leagueSource } from "./model-free-leagues.js";
 
 const _src = leagueSource("ligamx");
 
-export const ligamxCanonTeam = _src.canonTeam;
-export const parseLigaMxEvents = _src.parseEvents;
-export const fetchLigaMxSchedule = _src.fetchSchedule;
 export const getLigaMxSchedule = _src.getSchedule;
-export const fetchLigaMxResults = _src.fetchResults;
-export const fetchLigaMxHalfResults = _src.fetchHalfResults;

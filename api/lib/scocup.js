@@ -25,7 +25,4 @@ import { makeSoccerModelFreeSource } from "./soccer-modelfree.js";
 
 const _src = makeSoccerModelFreeSource({ espnSlug: "sco.cis", canonTeam: (abbr) => abbr, cacheKeyPrefix: "scocup" });
 
-export const parseScoCupEvents = _src.parseEvents;
-export const fetchScoCupSchedule = _src.fetchSchedule;
 export const getScoCupSchedule = _src.getSchedule;
-export const fetchScoCupResults = _src.fetchResults;

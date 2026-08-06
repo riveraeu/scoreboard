@@ -29,8 +29,4 @@ import { leagueSource } from "./model-free-leagues.js";
 
 const _src = leagueSource("argprem");
 
-export const argPremCanonTeam = _src.canonTeam;
-export const parseArgPremEvents = _src.parseEvents;
-export const fetchArgPremSchedule = _src.fetchSchedule;
 export const getArgPremSchedule = _src.getSchedule;
-export const fetchArgPremResults = _src.fetchResults;

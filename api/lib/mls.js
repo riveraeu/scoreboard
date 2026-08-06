@@ -30,8 +30,4 @@ import { leagueSource } from "./model-free-leagues.js";
 const _src = leagueSource("mls");
 
 export const mlsCanonTeam = _src.canonTeam;
-export const parseMlsEvents = _src.parseEvents;
-export const fetchMlsSchedule = _src.fetchSchedule;
 export const getMlsSchedule = _src.getSchedule;
-export const fetchMlsResults = _src.fetchResults;
-export const fetchMlsHalfResults = _src.fetchHalfResults;

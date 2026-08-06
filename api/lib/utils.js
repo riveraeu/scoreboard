@@ -30,7 +30,7 @@ export function errorResponse(msg, status = 400) {
 // which sits behind Vercel Deployment Protection — a fetch to that origin 302s to the SSO
 // HTML page, never JSON. Only the pinned production alias is public, so self-fetches must
 // use it regardless of the incoming request's host. Localhost stays local (`vercel dev`).
-export const PROD_ORIGIN = "https://scoreboard-ivory-xi.vercel.app";
+const PROD_ORIGIN = "https://scoreboard-ivory-xi.vercel.app";
 
 export function selfOrigin(request) {
   const origin = new URL(request.url).origin;

@@ -732,7 +732,6 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         // (replaced the prior live walk 2026-05-31; see blend-fill.js). Player props are always
         // a YES buy. Markets without cached depth keep top-of-book (blendMarketPrice → null).
         for (const m of qualifyingMarkets) {
-          m.rawKalshiPct = m.kalshiPct; // pre-blend top-of-book — lets the client measure true slippage
           const blended = blendMarketPrice(m._depth, "yes", m.kalshiPct);
           if (blended) { m.kalshiPct = blended.pct; m.americanOdds = blended.americanOdds; }
           // Under props (totalBases) actually buy the NO side — re-price it from the NO book
@@ -740,7 +739,6 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           // direction (props.js decides the flip) — their NO price needs the same re-price so
           // the flip compares blended fills on both sides.
           if (m.noKalshiPct != null) {
-            m.rawNoKalshiPct = m.noKalshiPct;
             const nb = blendMarketPrice(m._depth, "no", m.noKalshiPct);
             if (nb) { m.noKalshiPct = nb.pct; m.noKalshiAO = nb.americanOdds; }
           }
@@ -752,8 +750,6 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         // already-slippage-adjusted kalshiPct/noKalshiPct. YES re-prices kalshiPct+americanOdds;
         // NO re-prices noKalshiPct+noKalshiAO. Markets without cached depth keep top-of-book.
         for (const m of [...totalMarkets, ...teamTotalMarkets, ...spreadMarkets]) {
-          m.rawKalshiPct = m.kalshiPct;     // pre-blend top-of-book (YES) — client slippage measure
-          m.rawNoKalshiPct = m.noKalshiPct; // pre-blend top-of-book (NO)
           const yb = blendMarketPrice(m._depth, "yes", m.kalshiPct);
           if (yb) { m.kalshiPct = yb.pct; m.americanOdds = yb.americanOdds; }
           const nb = blendMarketPrice(m._depth, "no", m.noKalshiPct);
