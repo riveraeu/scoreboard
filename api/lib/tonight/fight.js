@@ -78,7 +78,7 @@ export async function emitFightPlays(ctx) {
       }
       // NO / "reaches round N" — gated on the NO price.
       if (inWindow(s.noPct)) {
-        fightPlays.push({ ...sideBase, direction: "under", kalshiPct: s.yesPct, noKalshiPct: s.noPct, americanOdds: s.noAO ?? null });
+        fightPlays.push({ ...sideBase, direction: "under", kalshiPct: s.noPct, noKalshiPct: s.yesPct, americanOdds: s.noAO ?? null });
       }
     }
   }
