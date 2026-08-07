@@ -39,10 +39,10 @@ export const SERIES_CONFIG = {
   // routes these to the dedicated fight emit path (api/lib/tonight/fight.js): one weight-class
   // finish-rate → fight-duration CDF per bout. Shadow-only: `fight|rounds` is NOT in the gate.
   KXUFCROUNDS:   { sport: "fight", league: "ufc", stat: "rounds", col: "RD", gameType: "fight" },
-  // Golf PGA H2H (KXPGAH2H — `golfH2h`) REMOVED 2026-08-04 with the model teardown: no
-  // per-matchup tee-time in the data source meant rows were always gameTime:null (never
-  // maker-quotable), so it had no maker value once the OWGR model was deleted. Historical
-  // `golf|h2h` rows keep grading off Kalshi settlement.
+  // Golf PGA H2H — model-free maker (rebuilt 2026-08-07). gameTime from ESPN PGA scoreboard
+  // round `date` field (tournament-level, sufficient for the pre-game gate). YES + NO sides
+  // captured independently. Resolution: settlement-authoritative.
+  KXPGAH2H: { sport: "golf", league: "pga", stat: "h2h", col: "ML", gameType: "golfH2h" },
   // NASCAR — Cup head-to-head ("Will A beat B?") + Top-10 finish ("Will <driver> finish top 10?").
   // The `nascar` gameType routes both to the dedicated emit path (api/lib/tonight/nascar.js):
   // recent-form finishing-position model. Binary favorite side. Cup-only by construction (the

@@ -26,6 +26,7 @@ import { emitModelFreeMlPlays } from "../tonight/model-free-ml.js";
 import { MODEL_FREE_LEAGUE_KEYS } from "../model-free-leagues.js";
 import { emitClubSoccerThresholdPlays } from "../tonight/club-soccer-threshold.js";
 import { emitScoCupPlays } from "../tonight/scocup.js";
+import { emitGolfModelFreePlays } from "../tonight/golf-modelfree.js";
 import { emitMlbOutsPlays } from "../tonight/mlb-outs.js";
 import { fetchPolymarketGames } from "../polymarket.js";
 import { emitPolymarketDeltas } from "../tonight/polymarket-deltas.js";
@@ -115,6 +116,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         const fightMarkets = []; // UFC rounds O/U — every priced threshold, grouped by event in emit
         const nascarMarkets = []; // NASCAR Cup H2H + Top-10 — each priced side carries its own driver(s)
         const lmbMarkets = []; // LMB (Mexican League) game winner — each priced side carries its own pick + opponent
+        const golfH2hMarkets = []; // PGA H2H (KXPGAH2H) — one object per market; emit handles YES + NO sides
         // Model-free soccer game winners, keyed by league (was six separate hand-declared arrays).
         // Each priced side (home/away/tie) lands in its league's bucket and is grouped by event in
         // the emit path; the buckets stay separate because each league resolves gameTime/results
@@ -166,6 +168,40 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
               }
               const _tAO = _tPct >= 50 ? Math.round(-(_tPct / (100 - _tPct)) * 100) : Math.round((100 - _tPct) / _tPct * 100);
               tennisMatchMarkets.push({ gameType: "tennisMatch", sport, tour: cfg.tour, eventTicker: m.event_ticker, player: _tPick, opponentRaw: _tOpp, matchup: _tMatchup, kalshiPct: _tPct, americanOdds: _tAO, kalshiVolume: _tVol, gameDate: _tGameDate, _ticker: m.ticker, _yesAsk: _tYesAsk, _depth: m._depth });
+              continue;
+            }
+            // ── Golf PGA H2H branch ── binary "A beats B in the Nth Round" markets (KXPGAH2H).
+            // Player names parsed from yes_sub_title (no team registry — players are arbitrary
+            // strings). gameDate from close_time (the round date). capturableSpread gates on the
+            // tighter of the two side spreads; the emit module then checks each side's price
+            // independently against CAPTURE_GATE/CAPTURE_CAP. One object per market (emit handles
+            // YES + NO). Rows go into golfH2hMarkets → emitGolfModelFreePlays → shadow:staging.
+            if (cfg.gameType === "golfH2h") {
+              const _gYesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _gNoAsk = parseFloat(m.no_ask_dollars) || 0;
+              const _gLast = parseFloat(m.last_price_dollars) || 0;
+              const _gYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _gNoBid = parseFloat(m.no_bid_dollars) || 0;
+              const _gStale = _gYesAsk >= 0.98 && _gYesBid === 0 && _gLast > 0;
+              const _gYesPrice = _gStale ? _gLast : _gYesAsk;
+              if (_gYesPrice === 0 && _gNoAsk === 0) continue; // no book on either side
+              const _gYesSpreadC = _gYesAsk > 0 ? Math.round((_gYesAsk - _gYesBid) * 100) : 999;
+              const _gNoSpreadC = _gNoAsk > 0 ? Math.round((_gNoAsk - _gNoBid) * 100) : 999;
+              if (!_gStale && !capturableSpread(Math.min(_gYesSpreadC, _gNoSpreadC))) continue;
+              const _gYesPct = _gYesPrice > 0 ? Math.round(_gYesPrice * 100) : 0;
+              const _gNoPct = _gNoAsk > 0 ? Math.round(_gNoAsk * 100) : 0;
+              const _gVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+              // "Scottie Scheffler beats Wyndham Clark in the 4th Round"
+              const _gSub = m.yes_sub_title || m.subtitle || "";
+              const _gNameMatch = _gSub.match(/^(.+?)\s+beats\s+(.+?)\s+in\s+the\s+\d/i);
+              if (!_gNameMatch) continue; // unparseable subtitle — skip
+              const _gGameDate = m.close_time ? m.close_time.slice(0, 10) : null;
+              golfH2hMarkets.push({
+                eventTicker: m.event_ticker,
+                player: _gNameMatch[1].trim(), opponent: _gNameMatch[2].trim(),
+                yesPct: _gYesPct, noPct: _gNoPct,
+                kalshiVolume: _gVol, gameDate: _gGameDate, _ticker: m.ticker,
+              });
               continue;
             }
             // ── Fighting (UFC rounds O/U) branch ── binary "ends before round N" markets, grouped
@@ -1132,6 +1168,13 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           lmbMarkets, lmbPlays, cutoffStr,
           cache: CACHE2, isBustCache,
         });
+        // ── Golf PGA H2H — model-free maker (KXPGAH2H). Both YES and NO sides captured per
+        // market; gameTime from ESPN PGA scoreboard round date. Merged into shadow:staging only.
+        const golfPlays = [];
+        await emitGolfModelFreePlays({
+          markets: golfH2hMarkets, plays: golfPlays, cutoffStr,
+          cache: CACHE2, isBustCache,
+        });
         // ── Model-free soccer game winners (MLS, Brasileirão, NWSL, Chinese Super League,
         // Liga MX, Argentina Liga Profesional) — Phase 1, no probability model at all; see
         // project_maker_modelfree_clubsoccer_2026_07_23. One loop over MODEL_FREE_LEAGUES
@@ -1300,7 +1343,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...fightPlays, ...nascarPlays, ...lmbPlays, ...modelFreeAllPlays, ...clubSoccerThresholdPlays, ...scocupPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...fightPlays, ...nascarPlays, ...lmbPlays, ...golfPlays, ...modelFreeAllPlays, ...clubSoccerThresholdPlays, ...scocupPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const sf = reportSportFilter;
@@ -1311,7 +1354,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, clubSoccerPlays: modelFreePlays.mls, clubSoccerMarketCount: (modelFreeMarkets.mls || []).length, brasileiraoPlays: modelFreePlays.brasileirao, brasileiraoMarketCount: (modelFreeMarkets.brasileirao || []).length, nwslPlays: modelFreePlays.nwsl, nwslMarketCount: (modelFreeMarkets.nwsl || []).length, chnslPlays: modelFreePlays.chnsl, chnslMarketCount: (modelFreeMarkets.chnsl || []).length, ligamxPlays: modelFreePlays.ligamx, ligamxMarketCount: (modelFreeMarkets.ligamx || []).length, argPremPlays: modelFreePlays.argprem, argPremMarketCount: (modelFreeMarkets.argprem || []).length, modelFreePlays, modelFreeMarketCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreeMarkets[k] || []).length])), modelFreePlayCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreePlays[k] || []).length])), clubSoccerThresholdPlays, clubSoccerThresholdMarketCount: clubSoccerThresholdMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length }, true);
+          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, golfPlays, golfMarketCount: golfH2hMarkets.length, clubSoccerPlays: modelFreePlays.mls, clubSoccerMarketCount: (modelFreeMarkets.mls || []).length, brasileiraoPlays: modelFreePlays.brasileirao, brasileiraoMarketCount: (modelFreeMarkets.brasileirao || []).length, nwslPlays: modelFreePlays.nwsl, nwslMarketCount: (modelFreeMarkets.nwsl || []).length, chnslPlays: modelFreePlays.chnsl, chnslMarketCount: (modelFreeMarkets.chnsl || []).length, ligamxPlays: modelFreePlays.ligamx, ligamxMarketCount: (modelFreeMarkets.ligamx || []).length, argPremPlays: modelFreePlays.argprem, argPremMarketCount: (modelFreeMarkets.argprem || []).length, modelFreePlays, modelFreeMarketCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreeMarkets[k] || []).length])), modelFreePlayCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreePlays[k] || []).length])), clubSoccerThresholdPlays, clubSoccerThresholdMarketCount: clubSoccerThresholdMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length }, true);
         }
         // mlbMeta/nbaMeta/wnbaMeta/nhlMeta were deleted 2026-08-04 (Tier 3b) — the frontend no
         // longer fetches this response (shadow reads KV staging / the ?debug path, both of which
