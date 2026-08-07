@@ -424,7 +424,7 @@ async function handleShadowResolver({ path, request, env, cache }) {
   // stays "one MODEL_FREE_LEAGUES entry + teams.js + a SERIES_CONFIG row", with no Nth place to forget.
   const _ownResolverSports = new Set([
     "tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb", "scocup",
-    "mlb", "wnba",
+    "mlb", "wnba", "dota2",
     ...MODEL_FREE_LEAGUE_KEYS,
   ]);
   const teamRows = rows.filter(r => !_ownResolverSports.has(r.sport));

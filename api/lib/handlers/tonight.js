@@ -27,6 +27,8 @@ import { MODEL_FREE_LEAGUE_KEYS } from "../model-free-leagues.js";
 import { emitClubSoccerThresholdPlays } from "../tonight/club-soccer-threshold.js";
 import { emitScoCupPlays } from "../tonight/scocup.js";
 import { emitGolfModelFreePlays } from "../tonight/golf-modelfree.js";
+import { emitDota2ModelFreePlays } from "../tonight/dota2-modelfree.js";
+import { kalshiTickerDate, kalshiTickerGameTime } from "../kalshi-ticker.js";
 import { emitMlbOutsPlays } from "../tonight/mlb-outs.js";
 import { fetchPolymarketGames } from "../polymarket.js";
 import { emitPolymarketDeltas } from "../tonight/polymarket-deltas.js";
@@ -126,6 +128,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         const scocupSpreadMarkets = []; // Scottish League Cup spread (model-free, threshold shape) — each priced threshold carries its team's subtitle name
         const scocupTotalMarkets = []; // Scottish League Cup total (model-free, threshold shape) — no team identity, joined to spread siblings by event segment
         const outsMarkets = []; // MLB pitcher outs-recorded O/U (KXMLBOUTS) — each priced threshold carries its pitcher
+        const dota2Markets = []; // Dota 2 (KXDOTA2GAME) match-winner — one market per team per match
         const globalSeen = /* @__PURE__ */ new Set();
         for (let i = 0; i < seriesTickers.length; i++) {
           const ticker = seriesTickers[i];
@@ -201,6 +204,29 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
                 player: _gNameMatch[1].trim(), opponent: _gNameMatch[2].trim(),
                 yesPct: _gYesPct, noPct: _gNoPct,
                 kalshiVolume: _gVol, gameDate: _gGameDate, _ticker: m.ticker,
+              });
+              continue;
+            }
+            // ── Dota 2 match-winner (KXDOTA2GAME) branch ── one YES market per team per match.
+            // teamCode from ticker suffix (last `-` segment); gameDate/gameTime from ticker date
+            // segment (YYMONDDHHMMM, ET→UTC, same format as MLB props). YES-side only — Kalshi
+            // lists one market per team, so both teams are covered by their own YES market.
+            if (cfg.gameType === "dota2Game") {
+              const _d2YesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _d2NoAsk = parseFloat(m.no_ask_dollars) || 0;
+              const _d2YesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _d2NoBid = parseFloat(m.no_bid_dollars) || 0;
+              if (_d2YesAsk === 0 && _d2NoAsk === 0) continue;
+              const _d2YesSpreadC = _d2YesAsk > 0 ? Math.round((_d2YesAsk - _d2YesBid) * 100) : 999;
+              const _d2NoSpreadC = _d2NoAsk > 0 ? Math.round((_d2NoAsk - _d2NoBid) * 100) : 999;
+              if (!capturableSpread(Math.min(_d2YesSpreadC, _d2NoSpreadC))) continue;
+              const _d2TeamCode = (m.ticker || "").split("-").pop();
+              if (!_d2TeamCode) continue;
+              dota2Markets.push({
+                eventTicker: m.event_ticker, teamCode: _d2TeamCode,
+                gameDate: kalshiTickerDate(m.ticker), gameTime: kalshiTickerGameTime(m.ticker),
+                yesPct: Math.round(_d2YesAsk * 100), noPct: Math.round(_d2NoAsk * 100),
+                kalshiVolume: parseInt(m.volume_fp) || parseInt(m.volume) || 0, _ticker: m.ticker,
               });
               continue;
             }
@@ -1175,6 +1201,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           markets: golfH2hMarkets, plays: golfPlays, cutoffStr,
           cache: CACHE2, isBustCache,
         });
+        // ── Dota 2 (KXDOTA2GAME) match-winner — model-free maker. YES-side only; gameTime from
+        // ticker (no external fetch). Merged into shadow:staging only.
+        const dota2Plays = [];
+        emitDota2ModelFreePlays({ markets: dota2Markets, plays: dota2Plays, cutoffStr });
         // ── Model-free soccer game winners (MLS, Brasileirão, NWSL, Chinese Super League,
         // Liga MX, Argentina Liga Profesional) — Phase 1, no probability model at all; see
         // project_maker_modelfree_clubsoccer_2026_07_23. One loop over MODEL_FREE_LEAGUES
@@ -1343,7 +1373,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...fightPlays, ...nascarPlays, ...lmbPlays, ...golfPlays, ...modelFreeAllPlays, ...clubSoccerThresholdPlays, ...scocupPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...fightPlays, ...nascarPlays, ...lmbPlays, ...golfPlays, ...dota2Plays, ...modelFreeAllPlays, ...clubSoccerThresholdPlays, ...scocupPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const sf = reportSportFilter;
@@ -1354,7 +1384,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, golfPlays, golfMarketCount: golfH2hMarkets.length, clubSoccerPlays: modelFreePlays.mls, clubSoccerMarketCount: (modelFreeMarkets.mls || []).length, brasileiraoPlays: modelFreePlays.brasileirao, brasileiraoMarketCount: (modelFreeMarkets.brasileirao || []).length, nwslPlays: modelFreePlays.nwsl, nwslMarketCount: (modelFreeMarkets.nwsl || []).length, chnslPlays: modelFreePlays.chnsl, chnslMarketCount: (modelFreeMarkets.chnsl || []).length, ligamxPlays: modelFreePlays.ligamx, ligamxMarketCount: (modelFreeMarkets.ligamx || []).length, argPremPlays: modelFreePlays.argprem, argPremMarketCount: (modelFreeMarkets.argprem || []).length, modelFreePlays, modelFreeMarketCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreeMarkets[k] || []).length])), modelFreePlayCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreePlays[k] || []).length])), clubSoccerThresholdPlays, clubSoccerThresholdMarketCount: clubSoccerThresholdMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length }, true);
+          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, golfPlays, golfMarketCount: golfH2hMarkets.length, dota2Plays, dota2MarketCount: dota2Markets.length, clubSoccerPlays: modelFreePlays.mls, clubSoccerMarketCount: (modelFreeMarkets.mls || []).length, brasileiraoPlays: modelFreePlays.brasileirao, brasileiraoMarketCount: (modelFreeMarkets.brasileirao || []).length, nwslPlays: modelFreePlays.nwsl, nwslMarketCount: (modelFreeMarkets.nwsl || []).length, chnslPlays: modelFreePlays.chnsl, chnslMarketCount: (modelFreeMarkets.chnsl || []).length, ligamxPlays: modelFreePlays.ligamx, ligamxMarketCount: (modelFreeMarkets.ligamx || []).length, argPremPlays: modelFreePlays.argprem, argPremMarketCount: (modelFreeMarkets.argprem || []).length, modelFreePlays, modelFreeMarketCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreeMarkets[k] || []).length])), modelFreePlayCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreePlays[k] || []).length])), clubSoccerThresholdPlays, clubSoccerThresholdMarketCount: clubSoccerThresholdMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length }, true);
         }
         // mlbMeta/nbaMeta/wnbaMeta/nhlMeta were deleted 2026-08-04 (Tier 3b) — the frontend no
         // longer fetches this response (shadow reads KV staging / the ?debug path, both of which

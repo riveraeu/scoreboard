@@ -149,6 +149,13 @@ export const SERIES_CONFIG = {
   // collision (Dundee FC vs Dunfermline) that makes an abbr-keyed map unsafe here.
   KXSCOCUPSPREAD: { sport: "scocup", league: "scocup", stat: "spread", col: "G", gameType: "scocupSpread" },
   KXSCOCUPTOTAL:  { sport: "scocup", league: "scocup", stat: "total",  col: "G", gameType: "scocupTotal"  },
+  // eSports — Dota 2 match-winner (KXDOTA2GAME). Kalshi lists one YES market per team per match
+  // (e.g. KXDOTA2GAME-26AUG071100LVLUPFTS-LVLUP and -FTS for the same event). gameType:dota2Game
+  // routes to emitDota2ModelFreePlays (api/lib/tonight/dota2-modelfree.js); YES-side only captured
+  // since each team has its own YES market. gameTime from ticker (YYMONDDHHMMM ET→UTC). 1¢ median
+  // spread, overround ~1.00. Settlement-authoritative (dota2 in SETTLEMENT_AUTHORITATIVE_SPORTS).
+  // Team codes are ephemeral eSports orgs — no teams.js registry; ticker suffix is the team code.
+  KXDOTA2GAME: { sport: "dota2", league: "dota2", stat: "ml", col: "ML", gameType: "dota2Game" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },
