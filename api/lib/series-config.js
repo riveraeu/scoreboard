@@ -129,6 +129,9 @@ export const SERIES_CONFIG = {
   // DIMAYOR. Surfaced by the morning-report discovery vet queue (REAL_BOOK, 2¢ median spread,
   // overround 1.02). ESPN slug bra.copa_do_brazil; registry shares brasileirao's espnScore aliases.
   KXCOPADOBRASILGAME: { sport: "copadobrasil", league: "copadobrasil", stat: "game", col: "ML", gameType: "modelFreeMl" },
+  // Dutch Eredivisie game winner — 9th model-free maker league, pure config (adopted 2026-08-07).
+  // 30/30 real books, 1¢ median spread, overround 1.01. ESPN slug ned.1.
+  KXEREDIVISIEGAME:   { sport: "eredivisie", league: "eredivisie", stat: "game", col: "ML", gameType: "modelFreeMl" },
   KXCOPADOBRASILTOTAL:  { sport: "copadobrasil", league: "copadobrasil", stat: "total",  col: "G", gameType: "clubSoccerThreshold", subtype: "total" },
   KXCOPADOBRASILSPREAD: { sport: "copadobrasil", league: "copadobrasil", stat: "spread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread" },
   KXARGPREMDIVGAME:   { sport: "argprem", league: "argprem", stat: "game",     col: "ML", gameType: "modelFreeMl" },

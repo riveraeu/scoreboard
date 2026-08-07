@@ -76,6 +76,11 @@ export const MODEL_FREE_LEAGUES = {
     wrapCanonTeam: (base) => (abbr, displayName) =>
       abbr === "RIV" ? ((displayName || "").includes("Rivadavia") ? "IRM" : "RIV") : base(abbr),
   },
+  // 9th league, adopted 2026-08-07 — Dutch Eredivisie (KXEREDIVISIEGAME). ESPN slug ned.1
+  // verified live: Aug 8-9 fixtures on ned.1 matched Kalshi's slate exactly. Three espnScore
+  // remaps (AZA→AZ, FCU→UTR, ZWO→PEC) confirmed by cross-referencing both sides. Default
+  // canonTeam suffices — no ESPN-internal abbr collision in the Eredivisie registry.
+  eredivisie: { espnSlug: "ned.1" },
 };
 
 export const MODEL_FREE_LEAGUE_KEYS = Object.keys(MODEL_FREE_LEAGUES);

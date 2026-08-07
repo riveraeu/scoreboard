@@ -449,6 +449,32 @@ export const TEAMS = {
     { abbr: "UNI", espnScore: "USF" },  // Unión (Santa Fe)
     { abbr: "VEL" },                    // Vélez Sarsfield
   ],
+  // Dutch Eredivisie game winner (KXEREDIVISIEGAME, adopted 2026-08-07 — 9th model-free maker
+  // league, pure config like DIMAYOR/copadobrasil). Surfaced by the morning-report discovery vet
+  // queue (REAL_BOOK, 30/30 real books, 1¢ median spread, overround 1.01). ESPN slug ned.1.
+  // Canonical = Kalshi's own 3-char ticker abbrs — all uniform 3-char, no mixed-length
+  // parseGameTeams exception needed. Three ESPN-side abbr mismatches verified live 2026-08-07
+  // by cross-referencing Kalshi tickers against ESPN ned.1 scoreboard for Aug 8-9 fixtures:
+  //   AZA → ESPN "AZ"  (AZ Alkmaar — ESPN drops the trailing A)
+  //   FCU → ESPN "UTR" (FC Utrecht — ESPN uses city abbr, not FC-prefix)
+  //   ZWO → ESPN "PEC" (PEC Zwolle — ESPN uses official club name abbreviation, not city)
+  // Remaining 5 clubs (NEC Nijmegen/Willem II/Go Ahead Eagles/Excelsior/SC Cambuur) had no live
+  // Kalshi ticker in the current market window — add when first seen, per verify-live discipline.
+  eredivisie: [
+    { abbr: "AJA" },                    // Ajax Amsterdam
+    { abbr: "FEY" },                    // Feyenoord Rotterdam
+    { abbr: "PSV" },                    // PSV Eindhoven
+    { abbr: "AZA", espnScore: "AZ" },   // AZ Alkmaar — see mismatch note above
+    { abbr: "TWE" },                    // FC Twente
+    { abbr: "SPA" },                    // Sparta Rotterdam
+    { abbr: "GRO" },                    // FC Groningen
+    { abbr: "HEE" },                    // Heerenveen
+    { abbr: "FCU", espnScore: "UTR" },  // FC Utrecht — see mismatch note above
+    { abbr: "ZWO", espnScore: "PEC" },  // PEC Zwolle — see mismatch note above
+    { abbr: "ADO" },                    // ADO Den Haag
+    { abbr: "FOR" },                    // Fortuna Sittard
+    { abbr: "TEL" },                    // Telstar
+  ],
 };
 
 // ── Derived maps (legacy shapes, re-exported from their historical modules) ──────

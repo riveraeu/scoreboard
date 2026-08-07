@@ -40,7 +40,7 @@ import { kalshiTickerDate } from "./kalshi-ticker.js";
 export const SETTLEMENT_AUTHORITATIVE_SPORTS = new Set([
   "tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb",
   "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem", "dimayor",
-  "copadobrasil",
+  "copadobrasil", "eredivisie",
   "mlb", "wnba",
 ]);
 
