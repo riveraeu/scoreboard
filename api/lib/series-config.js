@@ -131,7 +131,8 @@ export const SERIES_CONFIG = {
   KXCOPADOBRASILGAME: { sport: "copadobrasil", league: "copadobrasil", stat: "game", col: "ML", gameType: "modelFreeMl" },
   // Dutch Eredivisie game winner — 9th model-free maker league, pure config (adopted 2026-08-07).
   // 30/30 real books, 1¢ median spread, overround 1.01. ESPN slug ned.1.
-  KXEREDIVISIEGAME:   { sport: "eredivisie", league: "eredivisie", stat: "game", col: "ML", gameType: "modelFreeMl" },
+  KXEREDIVISIEGAME:     { sport: "eredivisie", league: "eredivisie", stat: "game",   col: "ML", gameType: "modelFreeMl" },
+  KXEREDIVISIESPREAD:   { sport: "eredivisie", league: "eredivisie", stat: "spread", col: "G",  gameType: "clubSoccerThreshold", subtype: "spread" },
   KXCOPADOBRASILTOTAL:  { sport: "copadobrasil", league: "copadobrasil", stat: "total",  col: "G", gameType: "clubSoccerThreshold", subtype: "total" },
   KXCOPADOBRASILSPREAD: { sport: "copadobrasil", league: "copadobrasil", stat: "spread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread" },
   KXARGPREMDIVGAME:   { sport: "argprem", league: "argprem", stat: "game",     col: "ML", gameType: "modelFreeMl" },
@@ -787,4 +788,23 @@ export const DISMISSED_SERIES = [
   "KXWWEFIGHTOCCUR", // WWE wrestler crossing over into a real (non-scripted) fight — a booking/
   // business decision about WHETHER a crossover event happens at all, not a competitive outcome to
   // model. Bare shell (enrichment fetch found 0 live markets). DISMISS.
+  // 8/08 triage (8 items from discovery queue):
+  "KXNCAAFCONFLEAVE", // College Football Conference Leave — futures outright ("teams to leave their
+  // Conference before Jul 1, 2027"), 67 real books but single event per season, no per-game
+  // resolution path. Same class as the CFB qualifier futures dismissed 6/28. DISMISS.
+  "KXLEAGUESCUP",    // Leagues Cup — discovered 8/08 as perGame:false; confirmed single-event:
+  // "Leagues Cup Champion 2026 Season" futures only. No per-game KXLEAGUESCUPGAME listed. DISMISS.
+  "KXUEFAEUROQUAL",  // UEFA Euros Qualifiers — single event "2028 UEFA Euros Qualifiers", a
+  // multi-year qualification outright. No per-game markets. DISMISS.
+  "KXMMACOMPETE",    // "Fighters to compete in MVP event" — MVP event participation futures
+  // (25 real books), not per-fight outcome markets. No ESPN resolver path. DISMISS.
+  "KXNBAXMASOPPONENT", // NBA Christmas Day Opponent — pre-season schedule futures (which team
+  // each franchise plays on Christmas Day). No per-game model or resolver path. DISMISS.
+  "KXMLBAWARDFIN",   // MLB Award Finalists — season-end award nomination futures (e.g. MVP, Cy
+  // Young finalists). No game-level resolution path. DISMISS.
+  "KXNBAFIRSTOPPONENT", // NBA First Opponent of the Season — pre-season futures. DISMISS.
+  "KXHEISMANSPECIAL", // Heisman Trophy Winner Specials — award futures, 9 real books (too thin
+  // even for shortlist). No college football model. DISMISS.
+  "KXNWSL", // NWSL Champion season-long futures — bare-prefix (futures), confirmed as champion
+  // outright; KXNWSLGAME (per-game) is already adopted. DISMISS.
 ];

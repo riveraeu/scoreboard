@@ -449,17 +449,15 @@ export const TEAMS = {
     { abbr: "UNI", espnScore: "USF" },  // Unión (Santa Fe)
     { abbr: "VEL" },                    // Vélez Sarsfield
   ],
-  // Dutch Eredivisie game winner (KXEREDIVISIEGAME, adopted 2026-08-07 — 9th model-free maker
-  // league, pure config like DIMAYOR/copadobrasil). Surfaced by the morning-report discovery vet
-  // queue (REAL_BOOK, 30/30 real books, 1¢ median spread, overround 1.01). ESPN slug ned.1.
-  // Canonical = Kalshi's own 3-char ticker abbrs — all uniform 3-char, no mixed-length
-  // parseGameTeams exception needed. Three ESPN-side abbr mismatches verified live 2026-08-07
-  // by cross-referencing Kalshi tickers against ESPN ned.1 scoreboard for Aug 8-9 fixtures:
+  // Dutch Eredivisie game winner (KXEREDIVISIEGAME, adopted 2026-08-07) + spread
+  // (KXEREDIVISIESPREAD, adopted 2026-08-08). ESPN slug ned.1. Canonical = Kalshi's own 3-char
+  // ticker abbrs — all uniform 3-char, no mixed-length parseGameTeams exception needed.
+  // ESPN-side abbr mismatches verified live against ned.1 scoreboard:
   //   AZA → ESPN "AZ"  (AZ Alkmaar — ESPN drops the trailing A)
   //   FCU → ESPN "UTR" (FC Utrecht — ESPN uses city abbr, not FC-prefix)
   //   ZWO → ESPN "PEC" (PEC Zwolle — ESPN uses official club name abbreviation, not city)
-  // Remaining 5 clubs (NEC Nijmegen/Willem II/Go Ahead Eagles/Excelsior/SC Cambuur) had no live
-  // Kalshi ticker in the current market window — add when first seen, per verify-live discipline.
+  //   NIJ → ESPN "NEC" (NEC Nijmegen — ESPN uses club abbreviation, not city)
+  // All 18 current-season clubs confirmed via live Kalshi tickers + ESPN ned.1 scoreboard 2026-08-08.
   eredivisie: [
     { abbr: "AJA" },                    // Ajax Amsterdam
     { abbr: "FEY" },                    // Feyenoord Rotterdam
@@ -474,6 +472,11 @@ export const TEAMS = {
     { abbr: "ADO" },                    // ADO Den Haag
     { abbr: "FOR" },                    // Fortuna Sittard
     { abbr: "TEL" },                    // Telstar
+    { abbr: "NIJ", espnScore: "NEC" },  // NEC Nijmegen — see mismatch note above
+    { abbr: "GAE" },                    // Go Ahead Eagles
+    { abbr: "WIL" },                    // Willem II
+    { abbr: "EXC" },                    // Excelsior Rotterdam
+    { abbr: "CAM" },                    // SC Cambuur
   ],
 };
 

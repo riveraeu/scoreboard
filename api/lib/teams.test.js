@@ -49,7 +49,7 @@ const LEGACY_VALID_TEAMS = {
   mls: ["ATL","ATX","CHI","CIN","CLB","CLT","COL","DAL","DCU","HOU","LAFC","LAG","MIA","MIN","MTL","NE","NSH","NYC","NYRB","ORL","PHI","POR","RSL","SD","SEA","SJ","SKC","STL","TOR","VAN"],
   brasileirao: ["BAH","BOT","RBB","CAP","ATL","CFC","CHA","COR","CRU","FLA","FLU","GPA","INT","MIR","PAL","CR","SAN","SPA","VDG","VIT"],
   copadobrasil: ["CAP","ATL","CHA","COR","CRU","FLU","FOR","GPA","INT","JUV","MIR","PAL","CR","SAN","VDG","VIT"],
-  eredivisie: ["AJA","FEY","PSV","AZA","TWE","SPA","GRO","HEE","FCU","ZWO","ADO","FOR","TEL"],
+  eredivisie: ["AJA","FEY","PSV","AZA","TWE","SPA","GRO","HEE","FCU","ZWO","ADO","FOR","TEL","NIJ","GAE","WIL","EXC","CAM"],
   nwsl: ["WSP","DEN","SAN","REI","URO","NCC","KC","BOS","PTH","GOT","OPR","CHI","HDA","BAY"],
   chnsl: ["ZHP","DAL","CHR","BJG","SHT","HEN","YUN","SHE","WUH","CHO","LIT","QIN","QWC","SHP","SHS","TTT"],
   ligamx: ["ALA","AME","ASL","ATL","CDG","JUA","LEO","MON","NCX","PAC","QUE","SLA","TIG","TIJ"],
@@ -68,7 +68,7 @@ const LEGACY_CANONICAL_TO_ESPN = {
   chnsl: { ZHP: "ZHE", DAL: "DYI", CHR: "CHE", BJG: "BG", SHE: "SHX", WUH: "WTT", LIT: "LIA", SHP: "SIPG", SHS: "SHE", TTT: "TIG" },
   ligamx: { ALA: "ATL", ATL: "ATS", CDG: "GDL", MON: "MTY", QUE: "QRO", SLA: "SAN", TIG: "UANL" },
   argprem: { BOC: "CABJ", CAA: "ALDO", CAI: "IND", CAT: "TALL", CC: "CTR", ELP: "EST", GEM: "GMZ", RCU: "AAE", SLA: "SLO", TUC: "CAT", UNI: "USF" },
-  eredivisie: { AZA: "AZ", FCU: "UTR", ZWO: "PEC" },
+  eredivisie: { AZA: "AZ", FCU: "UTR", ZWO: "PEC", NIJ: "NEC" },
 };
 
 const LEGACY_WNBA_TEAM_IDS = {
@@ -180,12 +180,13 @@ test("registry: numeric ids unique per sport", () => {
 // event ticker KXDIMAYORGAME-26AUG01DIMCAL to ESPN col.1's 2026-08-01 fixture "Deportivo Cali at
 // Independiente Medellín" (DIM vs DCI). If CAL ever maps to itself, every Deportivo Cali row
 // grades against Once Caldas and nothing throws.
-test("eredivisie: three ESPN-side abbr mismatches verified live 2026-08-07", () => {
+test("eredivisie: ESPN-side abbr mismatches verified live 2026-08-07/08", () => {
   assert.strictEqual(CANONICAL_TO_ESPN.eredivisie.AZA, "AZ");   // AZ Alkmaar — ESPN drops trailing A
   assert.strictEqual(CANONICAL_TO_ESPN.eredivisie.FCU, "UTR");  // FC Utrecht — ESPN uses city abbr
   assert.strictEqual(CANONICAL_TO_ESPN.eredivisie.ZWO, "PEC");  // PEC Zwolle — ESPN uses club name
+  assert.strictEqual(CANONICAL_TO_ESPN.eredivisie.NIJ, "NEC");  // NEC Nijmegen — ESPN uses club abbr
   // Identity teams must NOT carry an espnScore entry.
-  for (const a of ["AJA", "FEY", "PSV", "TWE", "SPA", "GRO", "HEE", "ADO", "FOR", "TEL"]) {
+  for (const a of ["AJA", "FEY", "PSV", "TWE", "SPA", "GRO", "HEE", "ADO", "FOR", "TEL", "GAE", "WIL", "EXC", "CAM"]) {
     assert.ok(!(a in CANONICAL_TO_ESPN.eredivisie), `${a} should map to itself, not be remapped`);
   }
 });

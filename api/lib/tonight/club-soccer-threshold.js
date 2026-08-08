@@ -1,8 +1,9 @@
 // api/lib/tonight/club-soccer-threshold.js
 // emitClubSoccerThresholdPlays — MLS + Liga MX 1H spread/total/BTTS + full-game team-total
 // (adopted 2026-07-23), Argentina Liga Profesional's full-game spread/total/BTTS (added 2026-07-24,
-// no `half` tag — see project_baseline_backlog_2026_07_24 memory), and Copa do Brasil's full-game
-// total/spread (added 2026-08-05, no `half` tag, same pattern as Argentina). Phase 1, model-free.
+// no `half` tag — see project_baseline_backlog_2026_07_24 memory), Copa do Brasil's full-game
+// total/spread (added 2026-08-05, no `half` tag, same pattern as Argentina), and Dutch Eredivisie
+// full-game spread (KXEREDIVISIESPREAD, added 2026-08-08, same pattern as Copa do Brasil). Phase 1, model-free.
 // One shared array + module across all four leagues (sport-tagged per row) —
 // unlike the shared GAME-winner module (model-free-ml.js, one path for all six leagues),
 // team identity here needs no subtitle-based disambiguation (none of MLS/LigaMX/Argentina have
@@ -31,6 +32,7 @@ const inWindow = (pct) => pct >= CAPTURE_GATE && pct <= CAPTURE_CAP;
 const SCHEDULE_BY_SPORT = {
   mls: getMlsSchedule, ligamx: getLigaMxSchedule, argprem: getArgPremSchedule,
   copadobrasil: leagueSource("copadobrasil").getSchedule,
+  eredivisie: leagueSource("eredivisie").getSchedule,
 };
 
 export async function emitClubSoccerThresholdPlays(ctx) {
