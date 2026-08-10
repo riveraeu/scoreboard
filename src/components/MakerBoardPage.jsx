@@ -39,74 +39,12 @@ function _cellBg(v, scale, reliable) {
 const _BANDS = ["0-4", "5-9", "10-14", "15-19", "20-24", "25-29", "30-34", "35-39", "40-44",
   "45-49", "50-54", "55-59", "60-64", "65-69", "70-74", "75-79", "80-84", "85-89", "90-96"];
 
-// ---- PRE-REGISTERED FORWARD TESTS ------------------------------------------------------------
-// The ONE honest "when will we know" surface. A cell picked off the heatmap for being bright is
-// best-of-N selection, so a data-extrapolated "ETA to arm" would just put a countdown on noise
-// (and re-slice the same days the REENTRY doctrine has gone 0-for-6 on). What CAN resolve a cell is
-// a forward test whose bar was fixed before the window opened — a CALENDAR checkpoint, not an ETA.
-// Each card reads a `preregistrations[]` entry from the report; the server evaluates the fixed
-// criteria over game_date >= forwardStart (see api/lib/maker-prereg.js). Verdict verbs, not colors,
-// carry the state — COLLECTING (too early) / ON_TRACK / FAILING (provisional, pre-checkpoint) /
-// PASS / KILL (terminal, at checkpoint).
-const _VERDICT = {
-  COLLECTING: { color: C.blue,  text: "COLLECTING" },
-  ON_TRACK:   { color: C.green, text: "ON TRACK" },
-  FAILING:    { color: C.amber, text: "FAILING" },
-  PASS:       { color: C.green, text: "PASS" },
-  KILL:       { color: C.red,   text: "KILL" },
-};
-
-function _daysUntil(checkpoint) {
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
-  return Math.round((Date.parse(`${checkpoint}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
-}
-
-function PreregTracker({ preregs }) {
-  const list = preregs || [];
-  if (!list.length) return null;
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ color:C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, marginBottom:6 }}>
-        Pre-registered forward tests — the only cell-level "arm target" (criteria fixed before the window opened)
-      </div>
-      <div style={{ display:"flex", flexWrap:"wrap", gap:10 }}>
-        {list.map((p) => {
-          const v = _VERDICT[p.verdict] || { color: C.gray, text: p.verdict };
-          const daysLeft = _daysUntil(p.checkpoint);
-          const r = p.result || {};
-          const meanTxt = r.mean != null ? `${r.mean > 0 ? "+" : ""}${r.mean}` : "—";
-          const ciTxt = r.ciLo != null ? `${r.ciLo > 0 ? "+" : ""}${r.ciLo}…${r.ciHi > 0 ? "+" : ""}${r.ciHi}` : "n/a";
-          return (
-            <div key={p.id} title={p.hypothesis} style={{ flex:"1 1 340px", minWidth:300, maxWidth:520,
-              background:C.card, border:`1px solid ${C.border}`, borderRadius:6, padding:"10px 12px" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
-                <span style={{ color:C.text, fontSize:12, fontWeight:700 }}>{p.label}</span>
-                <span style={{ color:C.dim, fontSize:10 }}>forward test</span>
-                <span style={{ marginLeft:"auto", color:v.color, fontSize:10, fontWeight:700,
-                  border:`1px solid ${v.color}`, borderRadius:4, padding:"1px 6px" }}>{v.text}</span>
-              </div>
-              <div style={{ color:C.gray, fontSize:10, marginBottom:8, fontVariantNumeric:"tabular-nums" }}>
-                OOS since {p.forwardStart} · {r.days ?? 0}d, {r.fills ?? 0} fills ·
-                {" "}mean {meanTxt}¢ · CI {ciTxt} ·
-                {" "}checkpoint {p.checkpoint} {daysLeft > 0 ? `(${daysLeft}d left)` : daysLeft === 0 ? "(today)" : "(reached)"}
-              </div>
-              {/* The 5 fixed GREEN criteria, each with its live actual. Cross = not yet met — the
-                  whole point is that ALL must hold on the forward window before this is a target. */}
-              <div style={{ display:"flex", flexWrap:"wrap", gap:"3px 10px" }}>
-                {(p.checks || []).map((c) => (
-                  <span key={c.key} style={{ fontSize:9.5, color: c.met ? C.green : C.dim, whiteSpace:"nowrap" }}>
-                    <span style={{ fontWeight:700 }}>{c.met ? "✓" : "✗"}</span> {c.label}
-                    {c.actual != null && <span style={{ color:C.gray }}> ({c.actual})</span>}
-                  </span>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+// ---- PRE-REGISTERED FORWARD TESTS — heatmap cell markers only --------------------------------
+// Cells with a pre-registered forward test are underlined in the heatmap below (colored bottom
+// inset shadow). Verdict color: blue=collecting, green=on-track/pass, amber=failing, red=kill.
+// Criteria were fixed BEFORE the forward window opened — see api/lib/maker-prereg.js + each
+// docs/MAKER_*_PREREG.md. Not a bet. Checkpoint = calendar date when terminal verdict fires.
+const _PREREG_COLOR = { COLLECTING: C.blue, ON_TRACK: C.green, FAILING: C.amber, PASS: C.green, KILL: C.red };
 
 // ---- CATEGORY × BAND HEATMAP -----------------------------------------------------------------
 // Category rows × band columns, cell = ¢/contract (graded). The grain that LOCALISES what band- or
@@ -114,7 +52,14 @@ function PreregTracker({ preregs }) {
 // Two marks a pooled view can't carry: a red ring on an ANOMALY (outcome pinned against the price —
 // the wrong-side-fill signature) and an amber dot when >50% of a cell's PnL came from ONE day (the
 // selection tell). Rows sorted by volume.
-function CategoryBandHeatmap({ cells, maxRows = 40 }) {
+function CategoryBandHeatmap({ cells, maxRows = 40, preregs = [] }) {
+  // "sport|category|band" → prereg entry; used to mark cells with a colored bottom underline.
+  const preregMap = React.useMemo(() => {
+    const m = new Map();
+    for (const p of preregs) m.set(`${p.sport}|${p.category}|${p.band}`, p);
+    return m;
+  }, [preregs]);
+
   const rows = React.useMemo(() => {
     const cs = cells || [];
     if (!cs.length) return [];
@@ -122,7 +67,7 @@ function CategoryBandHeatmap({ cells, maxRows = 40 }) {
     for (const c of cs) {
       const k = `${c.sport}|${c.category}`;
       let row = byCat.get(k);
-      if (!row) { row = { key: k, label: `${c.sport} ${c.category}`, contracts: 0, pnl: 0, cells: {} }; byCat.set(k, row); }
+      if (!row) { row = { key: k, sport: c.sport, category: c.category, label: `${c.sport} ${c.category}`, contracts: 0, pnl: 0, cells: {} }; byCat.set(k, row); }
       row.cells[c.band] = c;
       row.contracts += c.contracts;
       row.pnl += (c.perContract ?? 0) * c.contracts;
@@ -157,8 +102,15 @@ function CategoryBandHeatmap({ cells, maxRows = 40 }) {
             <div key={r.key} style={{ display:"flex", alignItems:"stretch", marginBottom:2, fontSize:10 }}>
               <span style={{ width:150, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", alignSelf:"center" }}>{r.label}</span>
               {_BANDS.map(b => {
+                const preKey = `${r.sport}|${r.category}|${b}`;
+                const pre = preregMap.get(preKey);
+                const preColor = pre ? (_PREREG_COLOR[pre.verdict] ?? C.blue) : null;
+                const preShadow = pre ? `inset 0 -3px 0 ${preColor}` : undefined;
                 const c = r.cells[b];
-                if (!c) return <span key={b} style={{ width:colW, height:22, border:`1px solid ${C.border}`, boxSizing:"border-box", marginRight:1 }} />;
+                if (!c) return (
+                  <span key={b} style={{ width:colW, height:22, border:`1px solid ${C.border}`, boxSizing:"border-box", marginRight:1,
+                    ...(preShadow && { boxShadow: preShadow }) }} />
+                );
                 const ciTxt = c.ciLo != null ? `${c.ciLo > 0 ? "+" : ""}${c.ciLo}…${c.ciHi > 0 ? "+" : ""}${c.ciHi}` : "n/a";
                 // Cells show a ROUNDED integer, not the 2-decimal mean — 479 precise numbers is the
                 // wall; full precision + fills/days/one-day%/CI all live in the tooltip. The day-count
@@ -168,14 +120,16 @@ function CategoryBandHeatmap({ cells, maxRows = 40 }) {
                 // further back (opacity) so the grid reads as a quiet field where structure + the
                 // anomaly ring are what the eye lands on — not "here is your bet".
                 const cellTxt = c.perContract != null ? `${c.perContract > 0 ? "+" : ""}${Math.round(c.perContract)}` : "";
+                const preInfo = pre ? ` · ★ pre-reg: ${pre.label} · ${pre.verdict} · checkpoint ${pre.checkpoint}` : "";
                 return (
-                  <span key={b} title={`${r.label} ${b}¢: ${c.perContract > 0 ? "+" : ""}${c.perContract}¢/ct · ${c.fills} fills · sideWon ${c.sideWon} · ${c.days}d · day-clustered CI ${ciTxt} (${c.reliable ? "clears 0" : "straddles 0 — not distinguishable from noise"}) · top day ${Math.round((c.topDayShare ?? 0) * 100)}% of |PnL|${c.anomaly ? " · ANOMALY: outcome pinned against price" : ""}`}
+                  <span key={b} title={`${r.label} ${b}¢: ${c.perContract > 0 ? "+" : ""}${c.perContract}¢/ct · ${c.fills} fills · sideWon ${c.sideWon} · ${c.days}d · day-clustered CI ${ciTxt} (${c.reliable ? "clears 0" : "straddles 0 — not distinguishable from noise"}) · top day ${Math.round((c.topDayShare ?? 0) * 100)}% of |PnL|${c.anomaly ? " · ANOMALY: outcome pinned against price" : ""}${preInfo}`}
                     style={{ position:"relative", width:colW, height:22, marginRight:1, boxSizing:"border-box",
                       display:"flex", alignItems:"center", justifyContent:"center",
                       fontVariantNumeric:"tabular-nums", color: c.reliable ? C.text : C.gray,
                       opacity: c.reliable ? 1 : 0.5,
                       background:_cellBg(c.perContract, scale, c.reliable),
-                      border: c.anomaly ? `1.5px solid ${C.red}` : `1px solid ${C.border}` }}>
+                      border: c.anomaly ? `1.5px solid ${C.red}` : `1px solid ${C.border}`,
+                      ...(preShadow && { boxShadow: preShadow }) }}>
                     {cellTxt}
                   </span>
                 );
@@ -187,7 +141,7 @@ function CategoryBandHeatmap({ cells, maxRows = 40 }) {
           );
         })}
         <div style={{ color:C.dim, fontSize:9, marginTop:5, lineHeight:1.5 }}>
-          ¢/contract (rounded), graded fills · <b>brightness = reliability</b> (day-clustered CI clear of zero), NOT size — a big number in a pale cell is noise · <span style={{ color:C.red }}>▢</span> anomaly: outcome pinned against price (P&lt;0.1%) · hover any cell for fills, days, one-day concentration + CI
+          ¢/contract (rounded), graded fills · <b>brightness = reliability</b> (day-clustered CI clear of zero), NOT size — a big number in a pale cell is noise · <span style={{ color:C.red }}>▢</span> anomaly: outcome pinned against price · <span style={{ color:C.blue }}>▬</span> underline = pre-registered forward test (blue=collecting, green=on-track, amber=failing, red=kill) · hover any cell for detail
           {rows.length > shown.length ? ` · +${rows.length - shown.length} lower-volume categories hidden` : ""}
         </div>
       </div>
@@ -324,11 +278,31 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
         <div style={{ color:C.dim, fontSize:12, padding:12 }}>Generating report…</div>
       ) : (
         <>
-          <PreregTracker preregs={shadowReportData?.preregistrations} />
+          {(() => {
+            const list = shadowReportData?.preregistrations || [];
+            if (!list.length) return null;
+            const cnt = {};
+            for (const p of list) cnt[p.verdict] = (cnt[p.verdict] || 0) + 1;
+            const order = ['KILL','FAILING','ON_TRACK','PASS','COLLECTING'];
+            const parts = order.filter(v => cnt[v]);
+            return (
+              <div style={{ fontSize:9, color:C.dim, marginBottom:10 }}>
+                <span style={{ fontWeight:700, textTransform:"uppercase", letterSpacing:0.4 }}>Pre-reg</span>
+                {" · "}{list.length} cells underlined in heatmap{" · "}
+                {parts.map((v, i) => (
+                  <span key={v}>
+                    <span style={{ color: _PREREG_COLOR[v] }}>{cnt[v]} {v.toLowerCase().replace('_', ' ')}</span>
+                    {i < parts.length - 1 && " · "}
+                  </span>
+                ))}
+                {" · "}criteria fixed before window opened, never a bet
+              </div>
+            );
+          })()}
           <div style={{ color:C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, marginBottom:6 }}>
             Category × band · ¢/contract (graded) — where PnL actually comes from
           </div>
-          {mb ? <CategoryBandHeatmap cells={mb.categoryBands} />
+          {mb ? <CategoryBandHeatmap cells={mb.categoryBands} preregs={shadowReportData?.preregistrations} />
               : <div style={{ color:C.dim, fontSize:12, padding:12 }}>Maker board not in this report yet — Refresh regenerates it.</div>}
 
           {/* Cross-venue vig — Kalshi vs Polymarket, same category × band grid, VIG (not PnL). */}
