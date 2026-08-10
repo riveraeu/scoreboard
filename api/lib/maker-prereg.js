@@ -38,6 +38,14 @@
 // WNBA total-points markets overprice the longshot side; the quoted side wins far less than priced.
 // sideWonBelow 0.15/0.15/0.22 (per-band; headroom above in-sample, materially below each avg ask).
 // All three must pass GREEN; partial cluster pass does not authorize capital.
+//
+// `wnbasp-1014/1519/2024` (docs/MAKER_WNBA_SP_PREREG.md) added 2026-08-10 — 3-band cluster from the
+// same 8/09 tripwire (wnba|spread); in-sample sideWon ~0.015/0.072/0.000 vs ~12/17/22¢ priced. The
+// 20-24 band has sideWon=0 across all 10 days (CI mechanically tight; not a data artifact). Mechanism:
+// WNBA underdog spread markets overprice the cover probability — market makers anchor off money-line
+// without accounting for the additional hurdle of covering the number. Shared bad day: 8/6 is the sole
+// losing day for 10-14 and 15-19 (same upset game); 20-24 had fills that day and still didn't cover.
+// sideWonBelow 0.08/0.12/0.12. All three must pass GREEN; partial cluster pass does not authorize capital.
 export const PREREG_CELLS = [
   {
     id: "hrr-7074", sport: "mlb", category: "hrr", band: "70-74",
@@ -74,6 +82,24 @@ export const PREREG_CELLS = [
     doc: "docs/MAKER_WNBA_TP_PREREG.md", label: "WNBA total points longshot 30-34¢",
     forwardStart: "2026-08-10", checkpoint: "2026-08-24",
     criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.22, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "wnbasp-1014", sport: "wnba", category: "spread", band: "10-14",
+    doc: "docs/MAKER_WNBA_SP_PREREG.md", label: "WNBA spread underdog 10-14¢",
+    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.08, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "wnbasp-1519", sport: "wnba", category: "spread", band: "15-19",
+    doc: "docs/MAKER_WNBA_SP_PREREG.md", label: "WNBA spread underdog 15-19¢",
+    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.12, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "wnbasp-2024", sport: "wnba", category: "spread", band: "20-24",
+    doc: "docs/MAKER_WNBA_SP_PREREG.md", label: "WNBA spread underdog 20-24¢",
+    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.12, minDays: 8, minFills: 50 },
   },
 ];
 
