@@ -54,6 +54,11 @@ export const POLY_DISMISSED_SPORTS = [
   "afcl", "argcopa", "bel1", "bel2", "cafcl", "ecs", "frtc", "gre1", "ned2", "par1", "ptsc", "qat1",
   "cricecsch", "cricecseng", "cricfalcons", "cricgermant10", "cricgsl", "cricinterprov",
   "cricjclt10", "crickerala", "cricmaharani", "cricmukono", "cricodc", "cricodcl2w", "cricppl",
+  // 8/10 triage (4 of 5 detected): usl1 (USL Championship corner props only — 1 live event, no
+  // ML; niche shape), tur2 (Turkish 2nd division — 0 live events), uae1 (UAE top flight — 0 live),
+  // saf1 (South African top flight — 0 live). clf (La Liga 1, 25 live events, moneyline) left
+  // undismissed — useful observatory even without a Kalshi La Liga 1 counterpart currently.
+  "usl1", "tur2", "uae1", "saf1",
 ];
 
 // Gamma league catalog (GET /sports): ~300 rows of { sport: slug, series: id, tags, ... }. The

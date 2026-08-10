@@ -840,4 +840,15 @@ export const DISMISSED_SERIES = [
   // (no ESPN slug), both sides captured (unlike Dota2 which is YES-only), 8-team teams.js
   // block, one SERIES_CONFIG row with gameType:"hundredMatch" or reuse a dota2Game-like emitter.
   // REVISIT June 2027 before the season opens.
+  // 8/10 triage — KXUCL, KXLEAGUESCUPSCORE, KXLEAGUESCUPFTTS:
+  "KXUCL", // UCL season champion futures — bare-prefix outright ("which club wins the 2026-27
+  // Champions League"), 29 markets all closing 2027-06-19, same class as KXNWSL dismissed.
+  // KXUCLGAME (per-game qualifier/group-stage matches, 30/30 real books, 1¢ spread) is separate
+  // and shortlisted. DISMISS this bare-prefix futures only.
+  "KXLEAGUESCUPSCORE", // Leagues Cup exact final-score longshot (e.g. "Tigres UANL wins 5-2") —
+  // 100 markets, 41 real books, 3¢ spread. Same exact-cell longshot class as KXWCWINMARGIN
+  // (dismissed 6/23). Volume 497 total across all markets. DISMISS.
+  "KXLEAGUESCUPFTTS", // Leagues Cup First Team To Score — "which team scores first" prop market,
+  // 18 markets, 23 total contracts, 7.5¢ spread. Thin and non-standard shape (3 outcomes:
+  // team-A / team-B / No Goal). DISMISS.
 ];
