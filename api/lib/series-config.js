@@ -810,7 +810,14 @@ export const DISMISSED_SERIES = [
   // even for shortlist). No college football model. DISMISS.
   "KXNWSL", // NWSL Champion season-long futures — bare-prefix (futures), confirmed as champion
   // outright; KXNWSLGAME (per-game) is already adopted. DISMISS.
-  // 8/10 vet — KXNBASTARTERS + KXHUNDREDMATCH:
+  // 8/10 vet — KXNBASTARTERS + KXKFTOUR + KXHUNDREDMATCH:
+  "KXKFTOUR", // Korn Ferry Tour (PGA developmental tour) — per-player tournament WINNER outrights
+  // ("Will X win the Boise Open?"), NOT H2H. Wrong structure for the golf framework (KXPGAH2H is
+  // H2H only). Dead books: 94 of 100 markets have no_ask=100¢ (NO side completely unquoted) —
+  // YES-only one-sided quotes. 15 total contracts across all markets; 3 markets with any volume.
+  // medianSpreadC 15 is at the cap and reflects only the YES bid-ask width, not a real two-sided
+  // spread. ESPN `golf/kft/scoreboard` returns 1 event with no league name (partial support).
+  // perGame:false confirmed — per-tournament outrights. DISMISS.
   "KXNBASTARTERS", // NBA Season-Opener Starting Lineup — per-PLAYER binary "will start the first
   // game of the 2026-27 regular season" futures. 100 markets across 9 of 30 teams (BOS/DAL/DEN/
   // GSW/LAL/MIA/MIN/NYK/PHI), 10-13 players per team. All settle once (season opener ~late Oct
