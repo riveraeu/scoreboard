@@ -59,6 +59,26 @@
 // 9/10 positive. Tail event: 7/31 sideWon=1.0 on 1 fill (3 contracts; named structural risk). ML-anchor
 // mechanism applied to F5 half-game slice. Companion f5spread|25-29 NOT registered (CI-lo +1.16¢, two
 // consecutive bad days 8/5-8/6). sideWonBelow 0.22.
+//
+// `wnba3p-6064` (docs/MAKER_WNBA_3P_PREREG.md) added 2026-08-10 — first threePointers hit on the 8/10
+// tripwire (19 total hits, 9 already registered); in-sample sideWon ~0.327 vs ~62¢ priced, +29.20¢/ct,
+// CI [+13.45, +44.95], 6/8 positive. Bad days 8/03 (sideWon 0.683) and 8/06 (0.875 — shared with wnbasp
+// cluster). Mechanism: WNBA 3-point made prop at moderate-favorite price anchors on season avg without
+// accounting for game-to-game 3PM variance. sideWonBelow 0.40.
+//
+// `wnbatp-1519` (docs/MAKER_WNBA_TP1519_PREREG.md) added 2026-08-10 — extends the wnbatp cluster to the
+// more-extreme 15-19¢ tier; in-sample sideWon = **exactly 0** on all 8 days (54 fills, 275.2 contracts),
+// +16.80¢/ct, CI [+16.42, +17.17] (mechanically tight — zero variance when every day has sideWon=0). The
+// priced threshold is so far into the tail that no game crossed it across the entire sample. Same mechanism
+// as wnbatp 20-34 but categorical: not merely underperformance, genuine non-occurrence. sideWonBelow 0.05.
+// Separate registration (not appended to the existing cluster) because all-three-must-pass applies only to
+// the cells registered together; adding a fourth post-hoc would change the cluster's decision rule.
+//
+// `mlbf5sp-2529` (docs/MAKER_MLB_F5SP_PREREG.md) added 2026-08-10 — companion to mlbf5t-2529 (F5 total);
+// this is the F5 spread (run line) underdog. Was NOT registered 8/09 (CI-lo +1.16¢, two consecutive bad
+// days 8/5-8/6); now cleared bar on 8/10 with 72 fills / 10 days, CI-lo +2.88¢ (wide: +2.88 to +21.71).
+// Weighted sideWon ≈ 0.150 vs ~27¢ priced; bad days 8/05 (0.409) and 8/06 (0.588) are a structural risk.
+// Same ML-anchor mechanism as mlbsp cluster, applied to F5 half-game. sideWonBelow 0.22.
 export const PREREG_CELLS = [
   {
     id: "hrr-7074", sport: "mlb", category: "hrr", band: "70-74",
@@ -129,6 +149,24 @@ export const PREREG_CELLS = [
   {
     id: "mlbf5t-2529", sport: "mlb", category: "f5total", band: "25-29",
     doc: "docs/MAKER_MLB_F5T_PREREG.md", label: "MLB F5 total longshot 25-29¢",
+    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.22, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "wnba3p-6064", sport: "wnba", category: "threePointers", band: "60-64",
+    doc: "docs/MAKER_WNBA_3P_PREREG.md", label: "WNBA threePointers moderate-favorite 60-64¢",
+    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.40, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "wnbatp-1519", sport: "wnba", category: "totalPoints", band: "15-19",
+    doc: "docs/MAKER_WNBA_TP1519_PREREG.md", label: "WNBA total points extreme longshot 15-19¢",
+    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.05, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "mlbf5sp-2529", sport: "mlb", category: "f5spread", band: "25-29",
+    doc: "docs/MAKER_MLB_F5SP_PREREG.md", label: "MLB F5 spread underdog 25-29¢",
     forwardStart: "2026-08-10", checkpoint: "2026-08-24",
     criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.22, minDays: 8, minFills: 50 },
   },
