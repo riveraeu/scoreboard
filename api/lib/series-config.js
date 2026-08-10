@@ -690,8 +690,10 @@ export const DISMISSED_SERIES = [
   // 7/18 wave — cricket match winners + NFL/CFB season futures:
   "KXCPLMATCH", // Caribbean Premier League T20 match winner — no cricket model or data path (KXLPL
   "KXLPLMATCH", // class, 7/15). LPL has live match rows but the books are dead shells (2/98¢, 96¢
-  // spread, 0 vol — fails CAPTURE_MAX_SPREAD 6.4×), CPL 0 markets. Revisit only if books seed AND a
-  // clean cricket stats API path is vetted. DISMISS.
+  // spread, 0 vol — fails CAPTURE_MAX_SPREAD 6.4×), CPL 0 markets. NOTE: "no data path" no longer
+  // means "no ESPN slug" — KXHUNDREDMATCH (8/10 vet) confirmed settlement-authoritative resolution
+  // works for cricket (finalized markets carry result:"yes"/"no"). CPL/LPL remain blocked on dead
+  // books (not on the data path). Revisit only if books seed. DISMISS.
   "KXNCAAFACCREGTOP", "KXNCAAFB12REGTOP", "KXNCAAFBIGTENREGTOP", "KXNCAAFSECREGTOP",
   // ^ CFB conference regular-season top-finisher futures — no CFB model; season futures class
   // (KXNCAAFH2HWINS 7/10, NCAAF qualifier futures 6/28). DISMISS.
@@ -767,7 +769,8 @@ export const DISMISSED_SERIES = [
   // decision isn't a competitive sporting outcome, no model surface exists or ever will (same
   // non-outcome class as KXWCTEAMS governance votes). 13 / 0 live. DISMISS.
   "KXT20CANADA", "KXT20CANADAMATCH", // Global T20 Canada (champion futures + match winner) —
-  // cricket, same no-model/no-data-path class as KXCPLMATCH/KXLPLMATCH (7/18). 0 live (shell). DISMISS.
+  // cricket, 0 live markets (shell). Settlement-authoritative resolution is now proven viable for
+  // cricket (KXHUNDREDMATCH 8/10 vet), so data-path is not the blocker. Dead books are. DISMISS.
   // KXTBTGAME RECLASSIFIED 2026-07-23 — dismissed same-day for "no ratings source" (true, single-
   // elim streetball with rotating alumni/pickup rosters that don't persist year to year, unlike
   // NBA Summer League's within-tournament Elo), but that's a TAKER blocker only, not a MAKER one
@@ -807,4 +810,20 @@ export const DISMISSED_SERIES = [
   // even for shortlist). No college football model. DISMISS.
   "KXNWSL", // NWSL Champion season-long futures — bare-prefix (futures), confirmed as champion
   // outright; KXNWSLGAME (per-game) is already adopted. DISMISS.
+  // 8/10 vet — KXHUNDREDMATCH:
+  "KXHUNDREDMATCH", // The Hundred cricket (men's) match winner — binary ML, BOTH sides quoted,
+  // 1¢ spread, real books with genuine day-of liquidity (~36K contracts/33K OI on TRE vs SOU;
+  // pre-game D-1 is thin: ~50-150 contracts, fills up day-of). 8 teams: BIR/LON/MLO/MSG/SOU/
+  // SUL/TRE/WEL — clean 3-char abbrs, no collision. Overround ~1.01 (both sides sum to 101¢).
+  // No ESPN cricket slug (site.api.espn.com 404s on cricket; ESPNcricinfo is a different API,
+  // blocked by Akamai). Resolution path: settlement-AUTHORITATIVE — finalized Kalshi markets
+  // carry result:"yes"/"no" within hours of game end, same class as Dota2 (no ESPN resolver
+  // needed). gameTime encodes directly in the ticker: KXHUNDREDMATCH-26AUG101330SOUTRE-SOU →
+  // Aug 10 at 13:30 UTC (same kalshiTickerGameTime parse pattern as Dota2). Ties/abandonment
+  // resolve to $0.50 (Kalshi rules). Settlement sources: Cricbuzz/ESPNcricinfo/BBC/ICC/official.
+  // BLOCKER: season ends ~Aug 14, 2026 — 4 games remained when vetted (8/10). Annual series
+  // (runs July–Aug each year). BUILD PATH for 2027: settlement-authoritative + ticker gameTime
+  // (no ESPN slug), both sides captured (unlike Dota2 which is YES-only), 8-team teams.js
+  // block, one SERIES_CONFIG row with gameType:"hundredMatch" or reuse a dota2Game-like emitter.
+  // REVISIT June 2027 before the season opens.
 ];
