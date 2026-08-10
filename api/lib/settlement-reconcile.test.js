@@ -20,13 +20,15 @@ test("authoritative set covers the shadow-only sports + mlb/wnba; nba/nhl/nfl st
   // accuracy to protect, and settlement grading makes the Kalshi side apples-to-apples with Poly's
   // own UMA settlement for the cross-venue vig). +8 2026-08-10: epl/laliga/seriea/ligue1/jleague
   // (Big 5 + J-League) and laliga2/usl/copalib (La Liga 2 / USL Championship / Copa Lib).
-  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 29);
+  // +2 2026-08-10: ufc (KXUFCFIGHT) + boxing (KXBOXING) match-winner model-free.
+  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 31);
   for (const s of ["tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb",
                    "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem", "dimayor",
                    "copadobrasil", "eredivisie",
                    "epl", "laliga", "seriea", "ligue1", "jleague",
                    "laliga2", "usl", "copalib",
-                   "mlb", "wnba", "dota2", "kleague"]) {
+                   "mlb", "wnba", "dota2", "kleague",
+                   "ufc", "boxing"]) {
     assert.ok(isSettlementAuthoritative(s), `${s} should be authoritative`);
   }
   // nba/nhl/nfl stay ESPN-graded FOR NOW — off-season / not yet started, no Poly overlap. Fold the

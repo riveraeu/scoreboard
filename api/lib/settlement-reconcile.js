@@ -45,6 +45,7 @@ export const SETTLEMENT_AUTHORITATIVE_SPORTS = new Set([
   "laliga2", "usl", "copalib",
   "mlb", "wnba",
   "dota2", "kleague",
+  "ufc", "boxing",
 ]);
 
 export function isSettlementAuthoritative(sport) {

@@ -162,6 +162,14 @@ export const SERIES_CONFIG = {
   // occurrence_datetime is post-game settlement expiration, not kickoff; no ESPN slug.
   // Settlement-authoritative (kleague in SETTLEMENT_AUTHORITATIVE_SPORTS). 12 teams in teams.js.
   KXKLEAGUEGAME: { sport: "kleague", league: "kleague", stat: "ml", col: "ML", gameType: "kleagueGame" },
+  // UFC match-winner (KXUFCFIGHT) + Boxing match-winner (KXBOXING) — model-free maker (built
+  // 2026-08-10). Kalshi lists one YES market per fighter per bout (e.g. KXUFCFIGHT-26AUG15JOHOCH-JOH
+  // and -OCH). YES-side only (same pattern as Dota2): each fighter's YES market covers one direction,
+  // so both are captured without shadowId collision. gameTime from close_time (per-bout fight start
+  // time — the ticker date segment YYMONDD is unrelated to the actual fight date). No teams.js
+  // registry; no ESPN fetch. Settlement-authoritative ("ufc"/"boxing" in SETTLEMENT_AUTHORITATIVE_SPORTS).
+  KXUFCFIGHT: { sport: "ufc",    league: "ufc",    stat: "ml", col: "UFC", gameType: "fightMl" },
+  KXBOXING:   { sport: "boxing", league: "boxing", stat: "ml", col: "BOX", gameType: "fightMl" },
   // English Premier League game winner — 3-way (home/away/tie), model-free maker (built 2026-08-10).
   // TICKER NOTE: KXPREMIERLEAGUE (bare prefix) = season champion futures (20 mkts, closes 2027-06-13)
   // — same class as KXNWSL/KXUCL; added to DISMISSED_SERIES this commit. KXEPLGAME is the per-game
