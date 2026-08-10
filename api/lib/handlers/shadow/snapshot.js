@@ -452,6 +452,28 @@ async function handleShadowSnapshot({ path, request, env, cache }) {
     } catch (e) { return errorResponse(`makerFillsPurge failed: ${e?.message}`, 500); }
   }
 
+  // ?droptables=1&confirm=DROP (ADMIN) — drop orphaned tables that are safe to remove.
+  // 2026-08-10: maker_fills_wrongside_20260729 (pre-fix fill backup, correct fills are in
+  // maker_fills; nothing reads this table anymore).
+  if (new URL(request.url).searchParams.get("droptables") === "1") {
+    if (!isAdmin) return errorResponse("Forbidden", 403);
+    if (new URL(request.url).searchParams.get("confirm") !== "DROP") return errorResponse("droptables requires &confirm=DROP", 400);
+    try {
+      const dropped = [];
+      const [{ exists: wse }] = await neonQuery(
+        `SELECT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='maker_fills_wrongside_20260729') AS exists`,
+        [], env, { write: true }
+      );
+      if (wse) {
+        const [{ n }] = await neonQuery(`SELECT COUNT(*)::int AS n FROM maker_fills_wrongside_20260729`, [], env, { write: true });
+        await neonExec(`DROP TABLE maker_fills_wrongside_20260729`, env);
+        dropped.push({ table: "maker_fills_wrongside_20260729", rows: n });
+        console.log(`[shadow-snapshot] droptables: dropped maker_fills_wrongside_20260729 (${n} rows)`);
+      }
+      return jsonResponse({ ok: true, dropped, skipped: wse ? [] : ["maker_fills_wrongside_20260729 not found"] });
+    } catch (e) { return errorResponse(`droptables failed: ${e?.message}`, 500); }
+  }
+
   // ?regradepostponed=1 (ADMIN only, ?dry=1 to report, ?days=N window, default 30) — repair for the
   // 2026-07-29 postponed/makeup bug. The forward fix (settlement-reconcile.js + _resolveRow) stops
   // NEW rows from being graded against an unidentifiable event; this re-grades the ones already

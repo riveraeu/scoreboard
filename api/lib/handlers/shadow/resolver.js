@@ -732,6 +732,26 @@ async function handleShadowResolver({ path, request, env, cache }) {
     polymarketPlays = await resolvePolymarketPlays({ env });
   } catch (e) { console.error(`[shadow-resolver] polymarket resolve failed: ${e?.message}`); }
 
+  // Nightly maker_quotes retention — delete unfilled segments older than 7 days. Rows referenced
+  // by maker_fills (via quote_id) are preserved; only segments that were never filled and whose
+  // game_date has passed the tape-walk window are removed. Own try/catch: a failure here must
+  // never interrupt grading results above.
+  let quotesCleanup = null;
+  try {
+    const [{ n: deleted }] = await neonQuery(
+      `WITH deleted AS (
+         DELETE FROM maker_quotes
+         WHERE game_date < (CURRENT_DATE - 7)::text
+           AND source = 'live'
+           AND id NOT IN (SELECT quote_id FROM maker_fills)
+         RETURNING id
+       ) SELECT COUNT(*)::int AS n FROM deleted`,
+      [], env, { write: true }
+    );
+    quotesCleanup = { deleted };
+    if (deleted > 0) console.log(`[shadow-resolver] maker_quotes retention: deleted ${deleted} unfilled segments`);
+  } catch (e) { console.error(`[shadow-resolver] maker_quotes cleanup failed: ${e?.message}`); }
+
   return jsonResponse({
     ok: true,
     resolved: finalUpdates.length,
@@ -776,6 +796,8 @@ async function handleShadowResolver({ path, request, env, cache }) {
     kalshiDryRun: kalshiDryRunSummary,
     // Polymarket capture-all grading (its own table + UMA settlement source; see polymarket-capture.js).
     polymarketPlays,
+    // Nightly unfilled maker_quotes retention (segments older than 7d with no fill detected).
+    quotesCleanup,
     durationMs: Date.now() - t0,
   });
 }
