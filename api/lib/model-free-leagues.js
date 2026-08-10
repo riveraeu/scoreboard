@@ -34,8 +34,10 @@
 // with decompression handled. **Do not re-probe those.** CANPL is therefore unbuildable on this
 // path: no ESPN feed means no gameTime and no resolution, and its ticker is date-only so
 // kalshiTickerGameTime can't fill the gap — rows would log with gameTime:null and never be
-// maker-quotable, the exact defect that left 9 Phase-1 modules silently useless. Same blocker as
-// K League.
+// maker-quotable, the exact defect that left 9 Phase-1 modules silently useless.
+// K League (KXKLEAGUEGAME) had the same ESPN-slug blocker but IS BUILT (2026-08-10) via the
+// Dota2-style ticker-parse path — ticker encodes gameDate (YYMONDD + 3+3 teams), gameTime=null
+// (occurrence_datetime is settlement expiration, not kickoff). See tonight/kleague-modelfree.js.
 // And cross-check team abbrs on BOTH sides: collisions have hit ~1 per non-US league, in
 // Kalshi-vs-ESPN (chnsl "SHE", ligamx "ATL") and ESPN-internal (argprem "RIV") flavors.
 

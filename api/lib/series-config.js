@@ -157,6 +157,11 @@ export const SERIES_CONFIG = {
   // spread, overround ~1.00. Settlement-authoritative (dota2 in SETTLEMENT_AUTHORITATIVE_SPORTS).
   // Team codes are ephemeral eSports orgs — no teams.js registry; ticker suffix is the team code.
   KXDOTA2GAME: { sport: "dota2", league: "dota2", stat: "ml", col: "ML", gameType: "dota2Game" },
+  // K League 1 match-winner (KXKLEAGUEGAME). 3-way binary markets (homeTeam / awayTeam / TIE);
+  // all three YES sides captured. gameDate from ticker (YYMONDD), gameTime=null —
+  // occurrence_datetime is post-game settlement expiration, not kickoff; no ESPN slug.
+  // Settlement-authoritative (kleague in SETTLEMENT_AUTHORITATIVE_SPORTS). 12 teams in teams.js.
+  KXKLEAGUEGAME: { sport: "kleague", league: "kleague", stat: "ml", col: "ML", gameType: "kleagueGame" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },

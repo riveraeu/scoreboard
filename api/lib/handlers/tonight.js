@@ -28,6 +28,7 @@ import { emitClubSoccerThresholdPlays } from "../tonight/club-soccer-threshold.j
 import { emitScoCupPlays } from "../tonight/scocup.js";
 import { emitGolfModelFreePlays } from "../tonight/golf-modelfree.js";
 import { emitDota2ModelFreePlays } from "../tonight/dota2-modelfree.js";
+import { emitKleagueModelFreePlays } from "../tonight/kleague-modelfree.js";
 import { kalshiTickerDate, kalshiTickerGameTime } from "../kalshi-ticker.js";
 import { emitMlbOutsPlays } from "../tonight/mlb-outs.js";
 import { fetchPolymarketGames } from "../polymarket.js";
@@ -129,6 +130,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         const scocupTotalMarkets = []; // Scottish League Cup total (model-free, threshold shape) — no team identity, joined to spread siblings by event segment
         const outsMarkets = []; // MLB pitcher outs-recorded O/U (KXMLBOUTS) — each priced threshold carries its pitcher
         const dota2Markets = []; // Dota 2 (KXDOTA2GAME) match-winner — one market per team per match
+        const kleagueMarkets = []; // K League 1 (KXKLEAGUEGAME) match-winner — 3 markets per game (home/away/tie)
         const globalSeen = /* @__PURE__ */ new Set();
         for (let i = 0; i < seriesTickers.length; i++) {
           const ticker = seriesTickers[i];
@@ -226,6 +228,31 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
                 eventTicker: m.event_ticker, teamCode: _d2TeamCode,
                 gameDate: kalshiTickerDate(m.ticker), gameTime: kalshiTickerGameTime(m.ticker),
                 yesPct: Math.round(_d2YesAsk * 100), noPct: Math.round(_d2NoAsk * 100),
+                kalshiVolume: parseInt(m.volume_fp) || parseInt(m.volume) || 0, _ticker: m.ticker,
+              });
+              continue;
+            }
+            // ── K League 1 match-winner (KXKLEAGUEGAME) branch ── 3-way binary markets
+            // (homeTeam / awayTeam / TIE). homeTeam/awayTeam from the 6-char team segment
+            // after YYMONDD; side from ticker suffix. gameDate from kalshiTickerDate,
+            // gameTime=null (occurrence_datetime is post-game expiration, not kickoff).
+            if (cfg.gameType === "kleagueGame") {
+              const _klYesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _klNoAsk = parseFloat(m.no_ask_dollars) || 0;
+              const _klYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _klNoBid = parseFloat(m.no_bid_dollars) || 0;
+              if (_klYesAsk === 0 && _klNoAsk === 0) continue;
+              const _klYesSpreadC = _klYesAsk > 0 ? Math.round((_klYesAsk - _klYesBid) * 100) : 999;
+              const _klNoSpreadC = _klNoAsk > 0 ? Math.round((_klNoAsk - _klNoBid) * 100) : 999;
+              if (!capturableSpread(Math.min(_klYesSpreadC, _klNoSpreadC))) continue;
+              const [_klHome, _klAway] = parseGameTeams(m.event_ticker, "kleague");
+              if (!_klHome || !_klAway) continue;
+              const _klSide = (m.ticker || "").split("-").pop();
+              if (!_klSide) continue;
+              kleagueMarkets.push({
+                eventTicker: m.event_ticker, homeTeam: _klHome, awayTeam: _klAway, side: _klSide,
+                gameDate: kalshiTickerDate(m.ticker),
+                yesPct: Math.round(_klYesAsk * 100), noPct: Math.round(_klNoAsk * 100),
                 kalshiVolume: parseInt(m.volume_fp) || parseInt(m.volume) || 0, _ticker: m.ticker,
               });
               continue;
@@ -1205,6 +1232,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         // ticker (no external fetch). Merged into shadow:staging only.
         const dota2Plays = [];
         emitDota2ModelFreePlays({ markets: dota2Markets, plays: dota2Plays, cutoffStr });
+        // ── K League 1 (KXKLEAGUEGAME) match-winner — model-free maker. 3-way (home/away/tie);
+        // all YES sides captured. gameTime=null (no ESPN slug; ticker carries date only).
+        const kleaguePlays = [];
+        emitKleagueModelFreePlays({ markets: kleagueMarkets, plays: kleaguePlays, cutoffStr });
         // ── Model-free soccer game winners (MLS, Brasileirão, NWSL, Chinese Super League,
         // Liga MX, Argentina Liga Profesional) — Phase 1, no probability model at all; see
         // project_maker_modelfree_clubsoccer_2026_07_23. One loop over MODEL_FREE_LEAGUES
@@ -1373,7 +1404,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...fightPlays, ...nascarPlays, ...lmbPlays, ...golfPlays, ...dota2Plays, ...modelFreeAllPlays, ...clubSoccerThresholdPlays, ...scocupPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...fightPlays, ...nascarPlays, ...lmbPlays, ...golfPlays, ...dota2Plays, ...kleaguePlays, ...modelFreeAllPlays, ...clubSoccerThresholdPlays, ...scocupPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const sf = reportSportFilter;
@@ -1384,7 +1415,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, golfPlays, golfMarketCount: golfH2hMarkets.length, dota2Plays, dota2MarketCount: dota2Markets.length, clubSoccerPlays: modelFreePlays.mls, clubSoccerMarketCount: (modelFreeMarkets.mls || []).length, brasileiraoPlays: modelFreePlays.brasileirao, brasileiraoMarketCount: (modelFreeMarkets.brasileirao || []).length, nwslPlays: modelFreePlays.nwsl, nwslMarketCount: (modelFreeMarkets.nwsl || []).length, chnslPlays: modelFreePlays.chnsl, chnslMarketCount: (modelFreeMarkets.chnsl || []).length, ligamxPlays: modelFreePlays.ligamx, ligamxMarketCount: (modelFreeMarkets.ligamx || []).length, argPremPlays: modelFreePlays.argprem, argPremMarketCount: (modelFreeMarkets.argprem || []).length, modelFreePlays, modelFreeMarketCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreeMarkets[k] || []).length])), modelFreePlayCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreePlays[k] || []).length])), clubSoccerThresholdPlays, clubSoccerThresholdMarketCount: clubSoccerThresholdMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length }, true);
+          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, golfPlays, golfMarketCount: golfH2hMarkets.length, dota2Plays, dota2MarketCount: dota2Markets.length, kleaguePlays, kleagueMarketCount: kleagueMarkets.length, clubSoccerPlays: modelFreePlays.mls, clubSoccerMarketCount: (modelFreeMarkets.mls || []).length, brasileiraoPlays: modelFreePlays.brasileirao, brasileiraoMarketCount: (modelFreeMarkets.brasileirao || []).length, nwslPlays: modelFreePlays.nwsl, nwslMarketCount: (modelFreeMarkets.nwsl || []).length, chnslPlays: modelFreePlays.chnsl, chnslMarketCount: (modelFreeMarkets.chnsl || []).length, ligamxPlays: modelFreePlays.ligamx, ligamxMarketCount: (modelFreeMarkets.ligamx || []).length, argPremPlays: modelFreePlays.argprem, argPremMarketCount: (modelFreeMarkets.argprem || []).length, modelFreePlays, modelFreeMarketCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreeMarkets[k] || []).length])), modelFreePlayCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreePlays[k] || []).length])), clubSoccerThresholdPlays, clubSoccerThresholdMarketCount: clubSoccerThresholdMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length }, true);
         }
         // mlbMeta/nbaMeta/wnbaMeta/nhlMeta were deleted 2026-08-04 (Tier 3b) — the frontend no
         // longer fetches this response (shadow reads KV staging / the ?debug path, both of which

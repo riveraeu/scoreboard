@@ -458,6 +458,23 @@ export const TEAMS = {
   //   ZWO → ESPN "PEC" (PEC Zwolle — ESPN uses official club name abbreviation, not city)
   //   NIJ → ESPN "NEC" (NEC Nijmegen — ESPN uses club abbreviation, not city)
   // All 18 current-season clubs confirmed via live Kalshi tickers + ESPN ned.1 scoreboard 2026-08-08.
+  // K League 1 — model-free maker (KXKLEAGUEGAME, built 2026-08-10). Settlement-authoritative;
+  // no ESPN slug exists. All 12 teams verified live from open Kalshi markets 2026-08-10.
+  // Uniform 3-char abbrs (no parseGameTeams variable-length path needed). No espnScore entries.
+  kleague: [
+    { abbr: "ULS" }, // Ulsan HD
+    { abbr: "GAW" }, // Gangwon FC
+    { abbr: "BUC" }, // Bucheon FC
+    { abbr: "JEO" }, // Jeonbuk Hyundai Motors
+    { abbr: "GWA" }, // Gwangju FC
+    { abbr: "POH" }, // Pohang Steelers
+    { abbr: "INC" }, // Incheon United
+    { abbr: "GIS" }, // Gimcheon Sangmu
+    { abbr: "JEJ" }, // Jeju United SK
+    { abbr: "ANY" }, // FC Anyang
+    { abbr: "SEO" }, // FC Seoul
+    { abbr: "DAJ" }, // Daejeon Citizen
+  ],
   eredivisie: [
     { abbr: "AJA" },                    // Ajax Amsterdam
     { abbr: "FEY" },                    // Feyenoord Rotterdam

@@ -19,10 +19,10 @@ test("authoritative set covers the shadow-only sports + mlb/wnba; nba/nhl/nfl st
   // 16 shadow-only/model-free + mlb + wnba (folded in 2026-08-04, post model teardown — no model
   // accuracy to protect, and settlement grading makes the Kalshi side apples-to-apples with Poly's
   // own UMA settlement for the cross-venue vig).
-  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 20);
+  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 21);
   for (const s of ["tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb",
                    "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem", "dimayor",
-                   "copadobrasil", "eredivisie", "mlb", "wnba", "dota2"]) {
+                   "copadobrasil", "eredivisie", "mlb", "wnba", "dota2", "kleague"]) {
     assert.ok(isSettlementAuthoritative(s), `${s} should be authoritative`);
   }
   // nba/nhl/nfl stay ESPN-graded FOR NOW — off-season / not yet started, no Poly overlap. Fold the
