@@ -31,6 +31,13 @@
 // side on high thresholds (over 11-14 runs) both land in 15-19¢; same game contributes both when the
 // actual total is normal (7-10 runs). sideWonBelow is 0.13 — well below ~17¢ avg ask, above in-sample
 // 0.077 for variance headroom.
+//
+// `wnbatp-2024/2529/3034` (docs/MAKER_WNBA_TP_PREREG.md) added 2026-08-10 — 3-band cluster from the
+// 8/09 tripwire (17 hits, 3 adjacent in wnba|totalPoints): in-sample sideWon ~0.056/0.051/0.120 vs
+// ~22/27/32¢ priced — near-zero on 9/10 days for the lower two bands. Mechanism: extreme-threshold
+// WNBA total-points markets overprice the longshot side; the quoted side wins far less than priced.
+// sideWonBelow 0.15/0.15/0.22 (per-band; headroom above in-sample, materially below each avg ask).
+// All three must pass GREEN; partial cluster pass does not authorize capital.
 export const PREREG_CELLS = [
   {
     id: "hrr-7074", sport: "mlb", category: "hrr", band: "70-74",
@@ -49,6 +56,24 @@ export const PREREG_CELLS = [
     doc: "docs/MAKER_TOTALRUNS_PREREG.md", label: "MLB total runs tail 15-19¢",
     forwardStart: "2026-08-10", checkpoint: "2026-08-23",
     criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.13, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "wnbatp-2024", sport: "wnba", category: "totalPoints", band: "20-24",
+    doc: "docs/MAKER_WNBA_TP_PREREG.md", label: "WNBA total points longshot 20-24¢",
+    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.15, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "wnbatp-2529", sport: "wnba", category: "totalPoints", band: "25-29",
+    doc: "docs/MAKER_WNBA_TP_PREREG.md", label: "WNBA total points longshot 25-29¢",
+    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.15, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "wnbatp-3034", sport: "wnba", category: "totalPoints", band: "30-34",
+    doc: "docs/MAKER_WNBA_TP_PREREG.md", label: "WNBA total points longshot 30-34¢",
+    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.22, minDays: 8, minFills: 50 },
   },
 ];
 
