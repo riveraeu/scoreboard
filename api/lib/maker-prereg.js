@@ -46,6 +46,13 @@
 // without accounting for the additional hurdle of covering the number. Shared bad day: 8/6 is the sole
 // losing day for 10-14 and 15-19 (same upset game); 20-24 had fills that day and still didn't cover.
 // sideWonBelow 0.08/0.12/0.12. All three must pass GREEN; partial cluster pass does not authorize capital.
+//
+// `mlbsp-2529/3539` (docs/MAKER_MLB_SP_PREREG.md) added 2026-08-10 — 2-band cluster from the same 8/09
+// tripwire (mlb|spread); in-sample sideWon ~0.149/0.227 vs ~27/37¢ priced. Different character from
+// WNBA spread: sideWon genuinely fluctuates (0–0.305 non-outlier), not near-zero — underdogs cover
+// sometimes, just less than priced. Shared bad day: 8/8 (sideWon 0.565/0.580). Same ML-anchor mechanism
+// as WNBA spread, now cross-sport. 25-29 CI-lo is thin (+4.92¢, close to the +5¢ meanFloor).
+// sideWonBelow 0.22/0.30. Both must pass GREEN; partial cluster pass does not authorize capital.
 export const PREREG_CELLS = [
   {
     id: "hrr-7074", sport: "mlb", category: "hrr", band: "70-74",
@@ -100,6 +107,18 @@ export const PREREG_CELLS = [
     doc: "docs/MAKER_WNBA_SP_PREREG.md", label: "WNBA spread underdog 20-24¢",
     forwardStart: "2026-08-10", checkpoint: "2026-08-24",
     criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.12, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "mlbsp-2529", sport: "mlb", category: "spread", band: "25-29",
+    doc: "docs/MAKER_MLB_SP_PREREG.md", label: "MLB spread underdog 25-29¢",
+    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.22, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "mlbsp-3539", sport: "mlb", category: "spread", band: "35-39",
+    doc: "docs/MAKER_MLB_SP_PREREG.md", label: "MLB spread underdog 35-39¢",
+    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.30, minDays: 8, minFills: 50 },
   },
 ];
 
