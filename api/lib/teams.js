@@ -626,6 +626,102 @@ export const TEAMS = {
     { abbr: "VIK", espnScore: "VIS" },  // Vissel Kobe
     { abbr: "VVN" },                    // V-Varen Nagasaki
   ],
+  // La Liga 2 (Spain) — model-free maker (KXLALIGA2GAME, built 2026-08-10). ESPN slug esp.2
+  // verified live: 22 teams, 33/33 real books, 5¢ median spread. KXLALIGA2 bare prefix = season
+  // champion futures (empty shell 8/10, 0 live mkts) — added to DISMISSED_SERIES this commit.
+  // All Kalshi codes are 3-char (no allowlist needed).
+  // 4 confirmed ESPN mismatches from KXLALIGA2GAME round tickers cross-referenced 2026-08-10:
+  //   CDE→ELD (CD Eldense), GIJ→RSG (Sporting Gijón), MAL→MLL (Mallorca), SAB→CDS (CD Sabadell).
+  // RS2: Kalshi code for Real Sociedad II (ESPN: RSO2 4-char) — inferred; verify on first RS2×××
+  // ticker (today's game is live but outside the 20-ticker kalshi-check sample). Wrong = 3 mkts drop.
+  laliga2: [
+    { abbr: "ALB" },                    // Albacete Balompié
+    { abbr: "ALM" },                    // UD Almería
+    { abbr: "AND" },                    // FC Andorra
+    { abbr: "BUR" },                    // Burgos CF
+    { abbr: "CAD" },                    // Cádiz CF
+    { abbr: "CAS" },                    // CD Castellón
+    { abbr: "CDE", espnScore: "ELD" },  // CD Eldense
+    { abbr: "CEL" },                    // RC Celta Fortuna
+    { abbr: "CEU" },                    // Ceuta FC
+    { abbr: "COR" },                    // Córdoba CF
+    { abbr: "EIB" },                    // SD Eibar
+    { abbr: "GIJ", espnScore: "RSG" },  // Sporting Gijón
+    { abbr: "GIR" },                    // Girona FC
+    { abbr: "GRA" },                    // Granada CF
+    { abbr: "LEG" },                    // CD Leganés
+    { abbr: "LPA" },                    // UD Las Palmas
+    { abbr: "MAL", espnScore: "MLL" },  // RCD Mallorca
+    { abbr: "OVI" },                    // Real Oviedo
+    { abbr: "RS2", espnScore: "RSO2" }, // Real Sociedad II — Kalshi code inferred as RS2
+    { abbr: "SAB", espnScore: "CDS" },  // CD Sabadell
+    { abbr: "TEN" },                    // CD Tenerife
+    { abbr: "VLL" },                    // Real Valladolid
+  ],
+  // USL Championship (USA) — model-free maker (KXUSLGAME, built 2026-08-10). ESPN slug usa.usl.1
+  // verified live: 24 teams confirmed, 39/39 real books, 2¢ median spread. KXUSL bare prefix =
+  // season champion futures (25 mkts, 1 per team) — added to DISMISSED_SERIES this commit.
+  // ESPN-internal collision: both Louisville City (Kalshi: LFC) and Loudoun United FC (Kalshi: LOU)
+  // map to ESPN abbreviation "LOU" — resolved via displayName in model-free-leagues.js wrapCanonTeam.
+  // OC (Orange County SC) is 2-char Kalshi → usl added to parse-teams.js variable-length allowlist.
+  // 11 confirmed ESPN mismatches (kalshi-check 20-ticker sample + ESPN scoreboard 2026-08-10):
+  //   SRP→SAC, LAS→LVL, BRO→BFKC(4-char), OC→OCSC(4-char), LFC→LOU (collision!), MON→MTB,
+  //   NEW→NMU, SAN→SAFC(4-char), PAS→ELP, CSS→COS, BIR→BRM. IND→INDY(4-char Indy Eleven).
+  //   9 codes inferred as identity from ESPN (CHS, DET, HFD, JAX, LOU, MIA, PIT, RHI, TBR).
+  usl: [
+    { abbr: "BIR", espnScore: "BRM" },  // Birmingham Legion FC
+    { abbr: "BRO", espnScore: "BFKC" }, // Brooklyn FC
+    { abbr: "CHS" },                    // Charleston Battery
+    { abbr: "CSS", espnScore: "COS" },  // Colorado Springs Switchbacks FC
+    { abbr: "DET" },                    // Detroit City FC
+    { abbr: "HFD" },                    // Hartford Athletic
+    { abbr: "IND", espnScore: "INDY" }, // Indy Eleven (ESPN uses 4-char "INDY")
+    { abbr: "JAX" },                    // Sporting JAX
+    { abbr: "LAS", espnScore: "LVL" },  // Las Vegas Lights FC
+    { abbr: "LEX" },                    // Lexington SC
+    { abbr: "LFC", espnScore: "LOU" },  // Louisville City FC — ESPN "LOU" also = Loudoun United
+    { abbr: "LOU" },                    // Loudoun United FC — ESPN also "LOU"; wrapCanonTeam disambiguates
+    { abbr: "MIA" },                    // Miami FC
+    { abbr: "MON", espnScore: "MTB" },  // Monterey Bay FC
+    { abbr: "NEW", espnScore: "NMU" },  // New Mexico United
+    { abbr: "OAK" },                    // Oakland Roots SC
+    { abbr: "OC",  espnScore: "OCSC" }, // Orange County SC — 2-char Kalshi code
+    { abbr: "PAS", espnScore: "ELP" },  // El Paso Locomotive FC
+    { abbr: "PIT" },                    // Pittsburgh Riverhounds SC
+    { abbr: "RHI" },                    // Rhode Island FC
+    { abbr: "SAN", espnScore: "SAFC" }, // San Antonio FC
+    { abbr: "SRP", espnScore: "SAC" },  // Sacramento Republic FC
+    { abbr: "TBR" },                    // Tampa Bay Rowdies
+    { abbr: "TUL" },                    // FC Tulsa
+  ],
+  // Copa Libertadores — model-free maker (KXCONMEBOLLIBGAME, built 2026-08-10). ESPN slug conmebol.libertadores
+  // verified live: 16 teams (QF stage), 24/24 real books, 2¢ median spread. KXCONMEBOLLIB bare prefix
+  // = tournament-winner futures (same class as KXPREMIERLEAGUE) — added to DISMISSED_SERIES this commit.
+  // UC (Universidad Católica) is 2-char Kalshi + CARC (Rosario Central) is 4-char → copalib added to
+  // parse-teams.js variable-length allowlist.
+  // 5 confirmed ESPN mismatches (kalshi-check subtitles cross-referenced 2026-08-10/11):
+  //   CARC→ROS (Rosario Central), CPO→CPT (Cerro Porteño), ELP→EST (Estudiantes de La Plata),
+  //   IND→IDV (Independiente del Valle), UC→CDUC (4-char, Universidad Católica).
+  // FLU (Fluminense) and RIV (Independiente Rivadavia) inferred as identity — not in 20-ticker sample;
+  // wrong = Aug 11 FLURIV game (3 mkts) drops. Verify on first copa lib aug 11 ticker.
+  copalib: [
+    { abbr: "CARC", espnScore: "ROS" }, // Rosario Central — 4-char Kalshi code
+    { abbr: "COQ" },                    // Coquimbo Unido
+    { abbr: "COR" },                    // Corinthians
+    { abbr: "CPO",  espnScore: "CPT" }, // Cerro Porteño
+    { abbr: "CRU" },                    // Cruzeiro
+    { abbr: "ELP",  espnScore: "EST" }, // Estudiantes de La Plata
+    { abbr: "FLA" },                    // Flamengo
+    { abbr: "FLU" },                    // Fluminense — inferred identity; see note above
+    { abbr: "IND",  espnScore: "IDV" }, // Independiente del Valle
+    { abbr: "LDU" },                    // LDU Quito
+    { abbr: "MIR" },                    // Mirassol
+    { abbr: "PAL" },                    // Palmeiras
+    { abbr: "PLA" },                    // Platense
+    { abbr: "RIV" },                    // Independiente Rivadavia — inferred identity; see note above
+    { abbr: "TOL" },                    // Deportes Tolima
+    { abbr: "UC",   espnScore: "CDUC" }, // Universidad Católica — 2-char Kalshi, 4-char ESPN
+  ],
 };
 
 // ── Derived maps (legacy shapes, re-exported from their historical modules) ──────

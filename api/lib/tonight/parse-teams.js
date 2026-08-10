@@ -31,7 +31,7 @@ export function parseGameTeams(eventTicker, sport) {
   // as CONN+IND (not CO+NNIN), NYRBCLT as NYRB+CLT (not NY+RBCLT), CRUCHA as CRU+CHA (not CR+UCHA)
   // while CRSAN still parses as CR+SAN. Uses _VALID_TEAMS (not TEAM_NORM), so registries with no
   // kalshi aliases (copadobrasil) are covered where the generic has2charPrefix path is not.
-  if ((sport === "wnba" || sport === "mls" || sport === "brasileirao" || sport === "nwsl" || sport === "argprem" || sport === "copadobrasil" || sport === "ligue1") && valid) {
+  if ((sport === "wnba" || sport === "mls" || sport === "brasileirao" || sport === "nwsl" || sport === "argprem" || sport === "copadobrasil" || sport === "ligue1" || sport === "usl" || sport === "copalib") && valid) {
     for (let i = Math.min(4, rest.length - 2); i >= 2; i--) {
       const a = normTeam(sport, rest.slice(0, i));
       for (let j = Math.min(4, rest.length - i); j >= 2; j--) {

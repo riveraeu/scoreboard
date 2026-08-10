@@ -38,6 +38,14 @@ const LEGACY_TEAM_NORM = {
   // aliases live in CANONICAL_TO_ESPN, not TEAM_NORM.
   kleague: {},    // canonical = Kalshi abbrs, no aliases; settlement-authoritative, no ESPN slug.
   eredivisie: {}, // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
+  epl: {},        // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
+  laliga: {},     // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
+  seriea: {},     // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
+  ligue1: {},     // canonical = Kalshi abbrs, no aliases (OL/OM are 2-char canonical abbrs).
+  jleague: {},    // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
+  laliga2: {},    // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
+  usl: {},        // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
+  copalib: {},    // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
 };
 
 const LEGACY_VALID_TEAMS = {
@@ -56,6 +64,14 @@ const LEGACY_VALID_TEAMS = {
   chnsl: ["ZHP","DAL","CHR","BJG","SHT","HEN","YUN","SHE","WUH","CHO","LIT","QIN","QWC","SHP","SHS","TTT"],
   ligamx: ["ALA","AME","ASL","ATL","CDG","JUA","LEO","MON","NCX","PAC","QUE","SLA","TIG","TIJ"],
   argprem: ["BAN","BAR","BOC","CAA","CAI","CAT","CC","DYJ","ELP","GEM","GLP","HUR","IACC","IRM","LAN","NOB","PLA","RAC","RCU","RIE","RIV","SLA","TIG","TUC","UNI","VEL"],
+  epl: ["ARS","AVL","BOU","BRE","BRI","CFC","COV","CRY","EVE","FUL","HUL","IPS","LEE","LFC","MCI","MUN","NEW","NFO","SUN","TOT"],
+  laliga: ["ALA","ATH","ATM","BAR","DEP","ELC","ESP","GET","LEV","MCF","OSA","RBB","RCC","RMA","RSO","RVC","SAN","SEV","VCF","VIL"],
+  seriea: ["ACM","ATA","BFC","CAG","COM","FIO","FRO","GEN","INT","JUV","LAZ","LEC","MON","NAP","PAR","ROM","SAS","TOR","UDI","VEN"],
+  ligue1: ["ANG","ASM","AUX","EST","FCL","HAC","LIL","MAN","NIC","OL","OM","PAR","PSG","RCL","RCS","REN","STB","TFC"],
+  jleague: ["AVI","CER","FAG","GAM","JEF","KAS","KAW","KYO","MAC","MAR","MIT","NGE","REY","SAN","SHI","TOK","URD","VER","VIK","VVN"],
+  laliga2: ["ALB","ALM","AND","BUR","CAD","CAS","CDE","CEL","CEU","COR","EIB","GIJ","GIR","GRA","LEG","LPA","MAL","OVI","RS2","SAB","TEN","VLL"],
+  usl: ["BIR","BRO","CHS","CSS","DET","HFD","IND","JAX","LAS","LEX","LFC","LOU","MIA","MON","NEW","OAK","OC","PAS","PIT","RHI","SAN","SRP","TBR","TUL"],
+  copalib: ["CARC","COQ","COR","CPO","CRU","ELP","FLA","FLU","IND","LDU","MIR","PAL","PLA","RIV","TOL","UC"],
 };
 
 const LEGACY_CANONICAL_TO_ESPN = {
@@ -71,6 +87,14 @@ const LEGACY_CANONICAL_TO_ESPN = {
   ligamx: { ALA: "ATL", ATL: "ATS", CDG: "GDL", MON: "MTY", QUE: "QRO", SLA: "SAN", TIG: "UANL" },
   argprem: { BOC: "CABJ", CAA: "ALDO", CAI: "IND", CAT: "TALL", CC: "CTR", ELP: "EST", GEM: "GMZ", RCU: "AAE", SLA: "SLO", TUC: "CAT", UNI: "USF" },
   eredivisie: { AZA: "AZ", FCU: "UTR", ZWO: "PEC", NIJ: "NEC" },
+  epl:     { BRI: "BHA", CFC: "CHE", LFC: "LIV", MCI: "MNC", MUN: "MAN" },
+  laliga:  { RBB: "BET", RCC: "CEL", RVC: "RAY", SAN: "RAC", VCF: "VAL" },
+  seriea:  { ACM: "MIL", BFC: "BOL", COM: "COMO", ROM: "ROMA" },
+  ligue1:  { ASM: "MON", EST: "TRY", FCL: "LOR", LIL: "LILL", MAN: "MNS", NIC: "NICE", OL: "LYON", OM: "OLM", RCS: "STR", STB: "BRE", TFC: "TOU" },
+  jleague: { AVI: "AVF", FAG: "OKA", KAS: "KAN", MAC: "ZEL", MAR: "YOK", MIT: "MITO", NGE: "NAG", REY: "KRE", URD: "URA", VER: "TYKV", VIK: "VIS" },
+  laliga2: { CDE: "ELD", GIJ: "RSG", MAL: "MLL", RS2: "RSO2", SAB: "CDS" },
+  usl:     { BIR: "BRM", BRO: "BFKC", CSS: "COS", IND: "INDY", LAS: "LVL", LFC: "LOU", MON: "MTB", NEW: "NMU", OC: "OCSC", PAS: "ELP", SAN: "SAFC", SRP: "SAC" },
+  copalib: { CARC: "ROS", CPO: "CPT", ELP: "EST", IND: "IDV", UC: "CDUC" },
 };
 
 const LEGACY_WNBA_TEAM_IDS = {

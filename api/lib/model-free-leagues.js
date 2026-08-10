@@ -95,6 +95,25 @@ export const MODEL_FREE_LEAGUES = {
   laliga: { espnSlug: "esp.1" },
   seriea: { espnSlug: "ita.1" },
   ligue1: { espnSlug: "fra.1" },
+  // 15th league, adopted 2026-08-10 — La Liga 2 (KXLALIGA2GAME). ESPN slug esp.2 verified live:
+  // 22 teams, 33/33 real books, 5¢ median spread. Default canonTeam suffices (no ESPN-internal
+  // abbr collision in the laliga2 registry; all Kalshi codes are 3-char).
+  laliga2: { espnSlug: "esp.2" },
+  // 16th league, adopted 2026-08-10 — USL Championship (KXUSLGAME). ESPN slug usa.usl.1 verified
+  // live: 24 teams, 39/39 real books, 2¢ median spread. ESPN-internal collision: both Louisville
+  // City (Kalshi: LFC) and Loudoun United FC (Kalshi: LOU) map to ESPN abbreviation "LOU" — resolved
+  // via displayName just as argprem's RIV/IRM collision is. OC (Orange County SC) is 2-char in Kalshi
+  // → usl in parse-teams.js variable-length allowlist (this commit).
+  usl: {
+    espnSlug: "usa.usl.1",
+    wrapCanonTeam: (base) => (abbr, displayName) =>
+      abbr === "LOU" ? ((displayName || "").includes("Louisville") ? "LFC" : "LOU") : base(abbr),
+  },
+  // 17th league, adopted 2026-08-10 — Copa Libertadores QF (KXCONMEBOLLIBGAME). ESPN slug
+  // conmebol.libertadores verified live: 16 QF teams, 24/24 real books, 2¢ median spread.
+  // Default canonTeam suffices (no ESPN-internal abbr collision). UC (2-char) and CARC (4-char)
+  // → copalib in parse-teams.js variable-length allowlist (this commit).
+  copalib: { espnSlug: "conmebol.libertadores" },
 };
 
 export const MODEL_FREE_LEAGUE_KEYS = Object.keys(MODEL_FREE_LEAGUES);

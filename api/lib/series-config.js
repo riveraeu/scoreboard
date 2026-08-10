@@ -182,7 +182,22 @@ export const SERIES_CONFIG = {
   // J.League 1 game winner — 3-way (home/away/tie), model-free maker (built 2026-08-10).
   // 30/30 real books, 1¢ median spread. ESPN slug jpn.1 verified. All 20 Kalshi codes are 3-char.
   // 11 ESPN mismatches resolved in teams.js (includes 2 four-char ESPN codes: MIT→MITO, VER→TYKV).
-  KXJLEAGUEGAME: { sport: "jleague", league: "jleague", stat: "game", col: "ML", gameType: "modelFreeMl" },
+  KXJLEAGUEGAME:        { sport: "jleague",  league: "jleague",  stat: "game", col: "ML", gameType: "modelFreeMl" },
+  // La Liga 2 game winner — 3-way, model-free maker (built 2026-08-10). 22 teams, 33/33 real books,
+  // 5¢ median spread. ESPN slug esp.2. KXLALIGA2 bare prefix = season champion futures (empty shell
+  // 8/10) — added to DISMISSED_SERIES this commit. All Kalshi codes are 3-char (no allowlist).
+  // 4 ESPN mismatches: CDE→ELD, GIJ→RSG, MAL→MLL, SAB→CDS. RS2=Real Sociedad II (code inferred).
+  KXLALIGA2GAME:        { sport: "laliga2",  league: "laliga2",  stat: "game", col: "ML", gameType: "modelFreeMl" },
+  // USL Championship game winner — 3-way, model-free maker (built 2026-08-10). 24 teams, 39/39
+  // real books, 2¢ median spread. ESPN slug usa.usl.1. KXUSL bare prefix = season champion futures
+  // (25 mkts, 1 per team) — added to DISMISSED_SERIES this commit. OC (2-char) → usl in parse-teams
+  // allowlist. LOU collision (Louisville/Loudoun) → wrapCanonTeam in model-free-leagues.js.
+  KXUSLGAME:            { sport: "usl",      league: "usl",      stat: "game", col: "ML", gameType: "modelFreeMl" },
+  // Copa Libertadores game winner — 3-way, model-free maker (built 2026-08-10). 16 teams (QF stage),
+  // 24/24 real books, 2¢ median spread. ESPN slug conmebol.libertadores. KXCONMEBOLLIB bare prefix
+  // = tournament-winner futures (same class as KXPREMIERLEAGUE) — added to DISMISSED_SERIES this
+  // commit. UC (2-char) + CARC (4-char) → copalib in parse-teams allowlist.
+  KXCONMEBOLLIBGAME:    { sport: "copalib",  league: "copalib",  stat: "game", col: "ML", gameType: "modelFreeMl" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },
@@ -886,4 +901,8 @@ export const DISMISSED_SERIES = [
   "KXSERIEA",        // Serie A season champion futures. Per-game = KXSERIEAGAME, adopted this commit.
   "KXLIGUE1",        // Ligue 1 season champion futures. Per-game = KXLIGUE1GAME, adopted this commit.
   "KXBUNDESLIGA",    // Bundesliga season champion futures. Per-game KXBUNDESLIGAGAME = empty shell 8/10.
+  // 8/10 — 3 more bare-prefix futures, same class as Big 5 above.
+  "KXLALIGA2",       // La Liga 2 season champion futures (empty shell 8/10, 0 live mkts). Per-game = KXLALIGA2GAME, adopted this commit.
+  "KXUSL",           // USL Championship season champion futures (25 mkts, 1 per team). Per-game = KXUSLGAME, adopted this commit.
+  "KXCONMEBOLLIB",   // Copa Libertadores tournament-winner futures (16 mkts, 1 per QF team). Per-game = KXCONMEBOLLIBGAME, adopted this commit.
 ];
