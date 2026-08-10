@@ -597,6 +597,35 @@ export const TEAMS = {
     { abbr: "STB", espnScore: "BRE" },  // Stade Brest 29
     { abbr: "TFC", espnScore: "TOU" },  // Toulouse FC
   ],
+  // J.League 1 (Japan) — model-free maker (KXJLEAGUEGAME, built 2026-08-10). ESPN slug jpn.1
+  // verified live: 30/30 real books, 1¢ median spread (round 25). All 20 teams confirmed by
+  // cross-referencing KXJLEAGUEGAME round-25 tickers with ESPN jpn.1 scoreboard 2026-08-14/15.
+  // All Kalshi codes are 3-char — no parseGameTeams allowlist needed.
+  // 11 ESPN-side mismatches: AVI→AVF, FAG→OKA, KAS→KAN, MAC→ZEL, MAR→YOK, MIT→MITO,
+  //   NGE→NAG, REY→KRE, URD→URA, VER→TYKV, VIK→VIS.
+  // NOTE: MIT→MITO and VER→TYKV are 4-char ESPN codes (same handling as ligue1's LILL/NICE/LYON).
+  jleague: [
+    { abbr: "AVI", espnScore: "AVF" },  // Avispa Fukuoka
+    { abbr: "CER" },                    // Cerezo Osaka
+    { abbr: "FAG", espnScore: "OKA" },  // Fagiano Okayama
+    { abbr: "GAM" },                    // Gamba Osaka
+    { abbr: "JEF" },                    // JEF United Ichihara-Chiba
+    { abbr: "KAS", espnScore: "KAN" },  // Kashima Antlers
+    { abbr: "KAW" },                    // Kawasaki Frontale
+    { abbr: "KYO" },                    // Kyoto Sanga
+    { abbr: "MAC", espnScore: "ZEL" },  // Machida Zelvia
+    { abbr: "MAR", espnScore: "YOK" },  // Yokohama F. Marinos
+    { abbr: "MIT", espnScore: "MITO" }, // Mito Hollyhock
+    { abbr: "NGE", espnScore: "NAG" },  // Nagoya Grampus
+    { abbr: "REY", espnScore: "KRE" },  // Kashiwa Reysol
+    { abbr: "SAN" },                    // Sanfrecce Hiroshima
+    { abbr: "SHI" },                    // Shimizu S-Pulse
+    { abbr: "TOK" },                    // FC Tokyo
+    { abbr: "URD", espnScore: "URA" },  // Urawa Red Diamonds
+    { abbr: "VER", espnScore: "TYKV" }, // Tokyo Verdy 1969
+    { abbr: "VIK", espnScore: "VIS" },  // Vissel Kobe
+    { abbr: "VVN" },                    // V-Varen Nagasaki
+  ],
 };
 
 // ── Derived maps (legacy shapes, re-exported from their historical modules) ──────

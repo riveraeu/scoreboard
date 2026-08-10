@@ -83,7 +83,12 @@ export const MODEL_FREE_LEAGUES = {
   // remaps (AZA→AZ, FCU→UTR, ZWO→PEC) confirmed by cross-referencing both sides. Default
   // canonTeam suffices — no ESPN-internal abbr collision in the Eredivisie registry.
   eredivisie: { espnSlug: "ned.1" },
-  // 10th–13th leagues, adopted 2026-08-10 — English Premier League, La Liga, Serie A, Ligue 1.
+  // 10th league, adopted 2026-08-10 — J.League 1 (KXJLEAGUEGAME). ESPN slug jpn.1 verified live:
+  // 20 teams, 30/30 real books, 1¢ median spread. K League 1 (KXKLEAGUEGAME) already tracked via
+  // the Dota2-style ticker-parse path (no ESPN feed). J.League uses the standard MODEL_FREE_LEAGUES
+  // path (ESPN jpn.1 feed exists, all abbrs confirmed).
+  jleague: { espnSlug: "jpn.1" },
+  // 11th–14th leagues, adopted 2026-08-10 — English Premier League, La Liga, Serie A, Ligue 1.
   // All 4 confirmed real books (eng.1/esp.1/ita.1/fra.1 verified live before commit).
   // KXBUNDESLIGAGAME skipped — 0 live markets (season not started yet); revisit late Aug 2026.
   epl:    { espnSlug: "eng.1" },

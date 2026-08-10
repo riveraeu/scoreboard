@@ -179,6 +179,10 @@ export const SERIES_CONFIG = {
   // TWO 2-CHAR ABBRS in ligue1 registry (OL=Lyon, OM=Marseille) — ligue1 is in the parse-teams.js
   // variable-length allowlist (this commit).
   KXLIGUE1GAME: { sport: "ligue1", league: "ligue1", stat: "game", col: "ML", gameType: "modelFreeMl" },
+  // J.League 1 game winner — 3-way (home/away/tie), model-free maker (built 2026-08-10).
+  // 30/30 real books, 1¢ median spread. ESPN slug jpn.1 verified. All 20 Kalshi codes are 3-char.
+  // 11 ESPN mismatches resolved in teams.js (includes 2 four-char ESPN codes: MIT→MITO, VER→TYKV).
+  KXJLEAGUEGAME: { sport: "jleague", league: "jleague", stat: "game", col: "ML", gameType: "modelFreeMl" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },
