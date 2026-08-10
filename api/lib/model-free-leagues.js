@@ -83,6 +83,13 @@ export const MODEL_FREE_LEAGUES = {
   // remaps (AZA→AZ, FCU→UTR, ZWO→PEC) confirmed by cross-referencing both sides. Default
   // canonTeam suffices — no ESPN-internal abbr collision in the Eredivisie registry.
   eredivisie: { espnSlug: "ned.1" },
+  // 10th–13th leagues, adopted 2026-08-10 — English Premier League, La Liga, Serie A, Ligue 1.
+  // All 4 confirmed real books (eng.1/esp.1/ita.1/fra.1 verified live before commit).
+  // KXBUNDESLIGAGAME skipped — 0 live markets (season not started yet); revisit late Aug 2026.
+  epl:    { espnSlug: "eng.1" },
+  laliga: { espnSlug: "esp.1" },
+  seriea: { espnSlug: "ita.1" },
+  ligue1: { espnSlug: "fra.1" },
 };
 
 export const MODEL_FREE_LEAGUE_KEYS = Object.keys(MODEL_FREE_LEAGUES);

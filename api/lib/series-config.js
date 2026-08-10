@@ -162,6 +162,23 @@ export const SERIES_CONFIG = {
   // occurrence_datetime is post-game settlement expiration, not kickoff; no ESPN slug.
   // Settlement-authoritative (kleague in SETTLEMENT_AUTHORITATIVE_SPORTS). 12 teams in teams.js.
   KXKLEAGUEGAME: { sport: "kleague", league: "kleague", stat: "ml", col: "ML", gameType: "kleagueGame" },
+  // English Premier League game winner — 3-way (home/away/tie), model-free maker (built 2026-08-10).
+  // TICKER NOTE: KXPREMIERLEAGUE (bare prefix) = season champion futures (20 mkts, closes 2027-06-13)
+  // — same class as KXNWSL/KXUCL; added to DISMISSED_SERIES this commit. KXEPLGAME is the per-game
+  // series: 30/30 real books, 1¢ median spread, confirmed live 2026-08-10. ESPN slug eng.1.
+  KXEPLGAME:    { sport: "epl",    league: "epl",    stat: "game", col: "ML", gameType: "modelFreeMl" },
+  // La Liga game winner — 3-way, model-free maker (built 2026-08-10). KXLALIGA bare prefix = season
+  // champion futures (same class as KXPREMIERLEAGUE above); KXLALIGAGAME is per-game: 51/51 real
+  // books, 4¢ median spread. ESPN slug esp.1.
+  KXLALIGAGAME: { sport: "laliga", league: "laliga", stat: "game", col: "ML", gameType: "modelFreeMl" },
+  // Serie A game winner — 3-way, model-free maker (built 2026-08-10). KXSERIEA bare prefix = season
+  // champion futures; KXSERIEAGAME is per-game: 30/30 real books, 3.5¢ median spread. ESPN slug ita.1.
+  KXSERIEAGAME: { sport: "seriea", league: "seriea", stat: "game", col: "ML", gameType: "modelFreeMl" },
+  // Ligue 1 game winner — 3-way, model-free maker (built 2026-08-10). KXLIGUE1 bare prefix = season
+  // champion futures; KXLIGUE1GAME is per-game: 27/27 real books, 3¢ median spread. ESPN slug fra.1.
+  // TWO 2-CHAR ABBRS in ligue1 registry (OL=Lyon, OM=Marseille) — ligue1 is in the parse-teams.js
+  // variable-length allowlist (this commit).
+  KXLIGUE1GAME: { sport: "ligue1", league: "ligue1", stat: "game", col: "ML", gameType: "modelFreeMl" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },
@@ -856,4 +873,13 @@ export const DISMISSED_SERIES = [
   "KXLEAGUESCUPFTTS", // Leagues Cup First Team To Score — "which team scores first" prop market,
   // 18 markets, 23 total contracts, 7.5¢ spread. Thin and non-standard shape (3 outcomes:
   // team-A / team-B / No Goal). DISMISS.
+  // 8/10 — Big 5 European league bare-prefix futures. Pattern identical to KXNWSL/KXUCL dismissed
+  // above: bare-prefix = season champion outright (closes ~Jun 2027); per-game series is separate.
+  // KXBUNDESLIGAGAME (per-game) also 0 live / empty shell 2026-08-10 (season not started) — stays
+  // shortlisted, not built; recheck late Aug when Bundesliga GW1 kicks off.
+  "KXPREMIERLEAGUE", // EPL season champion futures (20 mkts, all close 2027-06-13). Per-game = KXEPLGAME, adopted this commit.
+  "KXLALIGA",        // La Liga season champion futures. Per-game = KXLALIGAGAME, adopted this commit.
+  "KXSERIEA",        // Serie A season champion futures. Per-game = KXSERIEAGAME, adopted this commit.
+  "KXLIGUE1",        // Ligue 1 season champion futures. Per-game = KXLIGUE1GAME, adopted this commit.
+  "KXBUNDESLIGA",    // Bundesliga season champion futures. Per-game KXBUNDESLIGAGAME = empty shell 8/10.
 ];

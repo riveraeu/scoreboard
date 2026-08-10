@@ -495,6 +495,108 @@ export const TEAMS = {
     { abbr: "EXC" },                    // Excelsior Rotterdam
     { abbr: "CAM" },                    // SC Cambuur
   ],
+  // English Premier League — model-free maker (KXEPLGAME, built 2026-08-10). ESPN slug eng.1
+  // verified live. All 20 teams confirmed from KXPREMIERLEAGUE season-futures tickers 2026-08-10.
+  // 5 ESPN-side mismatches: BRI→BHA, CFC→CHE, LFC→LIV, MCI→MNC, MUN→MAN.
+  epl: [
+    { abbr: "ARS" },                    // Arsenal
+    { abbr: "AVL" },                    // Aston Villa
+    { abbr: "BOU" },                    // Bournemouth
+    { abbr: "BRE" },                    // Brentford
+    { abbr: "BRI", espnScore: "BHA" },  // Brighton & Hove Albion
+    { abbr: "CFC", espnScore: "CHE" },  // Chelsea
+    { abbr: "COV" },                    // Coventry City
+    { abbr: "CRY" },                    // Crystal Palace
+    { abbr: "EVE" },                    // Everton
+    { abbr: "FUL" },                    // Fulham
+    { abbr: "HUL" },                    // Hull City
+    { abbr: "IPS" },                    // Ipswich Town
+    { abbr: "LEE" },                    // Leeds United
+    { abbr: "LFC", espnScore: "LIV" },  // Liverpool
+    { abbr: "MCI", espnScore: "MNC" },  // Manchester City
+    { abbr: "MUN", espnScore: "MAN" },  // Manchester United
+    { abbr: "NEW" },                    // Newcastle United
+    { abbr: "NFO" },                    // Nottingham Forest
+    { abbr: "SUN" },                    // Sunderland
+    { abbr: "TOT" },                    // Tottenham Hotspur
+  ],
+  // La Liga (Spain) — model-free maker (KXLALIGAGAME, built 2026-08-10). ESPN slug esp.1
+  // verified live. All 20 teams confirmed from KXLALIGA season-futures tickers 2026-08-10.
+  // 5 ESPN-side mismatches: RBB→BET, RCC→CEL, RVC→RAY, SAN→RAC, VCF→VAL.
+  laliga: [
+    { abbr: "ALA" },                    // Alavés
+    { abbr: "ATH" },                    // Athletic Club
+    { abbr: "ATM" },                    // Atlético Madrid
+    { abbr: "BAR" },                    // Barcelona
+    { abbr: "DEP" },                    // Deportivo de La Coruña
+    { abbr: "ELC" },                    // Elche CF
+    { abbr: "ESP" },                    // Espanyol
+    { abbr: "GET" },                    // Getafe
+    { abbr: "LEV" },                    // Levante
+    { abbr: "MCF" },                    // Málaga CF
+    { abbr: "OSA" },                    // Osasuna
+    { abbr: "RBB", espnScore: "BET" },  // Real Betis
+    { abbr: "RCC", espnScore: "CEL" },  // Celta Vigo
+    { abbr: "RMA" },                    // Real Madrid
+    { abbr: "RSO" },                    // Real Sociedad
+    { abbr: "RVC", espnScore: "RAY" },  // Rayo Vallecano
+    { abbr: "SAN", espnScore: "RAC" },  // Racing Santander
+    { abbr: "SEV" },                    // Sevilla
+    { abbr: "VCF", espnScore: "VAL" },  // Valencia
+    { abbr: "VIL" },                    // Villarreal
+  ],
+  // Serie A (Italy) — model-free maker (KXSERIEAGAME, built 2026-08-10). ESPN slug ita.1
+  // verified live. All 20 teams confirmed from KXSERIEA season-futures tickers 2026-08-10.
+  // 4 ESPN-side mismatches: ACM→MIL, BFC→BOL, COM→COMO, ROM→ROMA.
+  seriea: [
+    { abbr: "ACM", espnScore: "MIL" },  // AC Milan
+    { abbr: "ATA" },                    // Atalanta
+    { abbr: "BFC", espnScore: "BOL" },  // Bologna FC
+    { abbr: "CAG" },                    // Cagliari
+    { abbr: "COM", espnScore: "COMO" }, // Como 1907
+    { abbr: "FIO" },                    // Fiorentina
+    { abbr: "FRO" },                    // Frosinone
+    { abbr: "GEN" },                    // Genoa
+    { abbr: "INT" },                    // Inter Milan
+    { abbr: "JUV" },                    // Juventus
+    { abbr: "LAZ" },                    // Lazio
+    { abbr: "LEC" },                    // Lecce
+    { abbr: "MON" },                    // Monza
+    { abbr: "NAP" },                    // Napoli
+    { abbr: "PAR" },                    // Parma Calcio
+    { abbr: "ROM", espnScore: "ROMA" }, // AS Roma
+    { abbr: "SAS" },                    // Sassuolo
+    { abbr: "TOR" },                    // Torino
+    { abbr: "UDI" },                    // Udinese
+    { abbr: "VEN" },                    // Venezia
+  ],
+  // Ligue 1 (France) — model-free maker (KXLIGUE1GAME, built 2026-08-10). ESPN slug fra.1
+  // verified live. All 18 teams confirmed from KXLIGUE1 season-futures tickers 2026-08-10.
+  // 11 ESPN-side mismatches (highest mismatch count of the Big 5): ASM→MON, EST→TRY, FCL→LOR,
+  // LIL→LILL, MAN→MNS, NIC→NICE, OL→LYON, OM→OLM, RCS→STR, STB→BRE, TFC→TOU.
+  // TWO 2-CHAR ABBRS: OL (Lyon) and OM (Marseille). These make 5-char HOME+AWAY strings
+  // when either team plays (e.g. TFCOL, OMLIL). ligue1 MUST be in the parseGameTeams
+  // variable-length allowlist (parse-teams.js line ~33) — see the copadobrasil note there.
+  ligue1: [
+    { abbr: "ANG" },                    // Angers SCO
+    { abbr: "ASM", espnScore: "MON" },  // AS Monaco
+    { abbr: "AUX" },                    // Auxerre
+    { abbr: "EST", espnScore: "TRY" },  // ESTAC Troyes
+    { abbr: "FCL", espnScore: "LOR" },  // FC Lorient
+    { abbr: "HAC" },                    // Le Havre AC
+    { abbr: "LIL", espnScore: "LILL" }, // Lille OSC
+    { abbr: "MAN", espnScore: "MNS" },  // Le Mans FC
+    { abbr: "NIC", espnScore: "NICE" }, // OGC Nice
+    { abbr: "OL",  espnScore: "LYON" }, // Olympique Lyonnais — 2-char
+    { abbr: "OM",  espnScore: "OLM" },  // Olympique de Marseille — 2-char
+    { abbr: "PAR" },                    // Paris FC
+    { abbr: "PSG" },                    // Paris Saint-Germain
+    { abbr: "RCL" },                    // RC Lens
+    { abbr: "RCS", espnScore: "STR" },  // RC Strasbourg Alsace
+    { abbr: "REN" },                    // Stade Rennais
+    { abbr: "STB", espnScore: "BRE" },  // Stade Brest 29
+    { abbr: "TFC", espnScore: "TOU" },  // Toulouse FC
+  ],
 };
 
 // ── Derived maps (legacy shapes, re-exported from their historical modules) ──────
