@@ -223,9 +223,30 @@ export async function handleAuthRoutes(ctx) {
       ).catch((e) => [{ error: String(e?.message || e) }]);
     }
 
+    let tableSizes = null;
+    if (params.get("tablesizes") === "1") {
+      tableSizes = await neonQuery(
+        `SELECT relname AS table_name,
+                pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
+                pg_total_relation_size(relid) AS total_bytes,
+                pg_size_pretty(pg_relation_size(relid)) AS table_size,
+                pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid)) AS index_size,
+                n_live_tup AS row_count
+         FROM pg_stat_user_tables
+         ORDER BY total_bytes DESC`,
+        [], env
+      ).catch(e => [{ error: String(e.message) }]);
+      const [dbSize] = await neonQuery(
+        "SELECT pg_size_pretty(pg_database_size(current_database())) AS db_size",
+        [], env
+      ).catch(() => [{}]);
+      tableSizes = { tables: tableSizes, db_size: dbSize?.db_size };
+    }
+
     return jsonResponse({
       ...(triggerResult !== null ? { trigger: triggerResult } : {}),
       ...(resolveResult !== null ? { resolve: resolveResult } : {}),
+      ...(tableSizes !== null ? { tableSizes } : {}),
       tables: tables.map(r => r.tablename),
       shadow_plays: {
         total: Number(totals[0]?.total ?? 0),
