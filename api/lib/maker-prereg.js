@@ -53,6 +53,12 @@
 // sometimes, just less than priced. Shared bad day: 8/8 (sideWon 0.565/0.580). Same ML-anchor mechanism
 // as WNBA spread, now cross-sport. 25-29 CI-lo is thin (+4.92¢, close to the +5¢ meanFloor).
 // sideWonBelow 0.22/0.30. Both must pass GREEN; partial cluster pass does not authorize capital.
+//
+// `mlbf5t-2529` (docs/MAKER_MLB_F5T_PREREG.md) added 2026-08-10 — single cell from the 8/09 tripwire
+// (mlb|f5total|25-29); in-sample sideWon ~0.166 vs ~27¢ priced, +12.07¢/ct, CI [+3.65, +20.48],
+// 9/10 positive. Tail event: 7/31 sideWon=1.0 on 1 fill (3 contracts; named structural risk). ML-anchor
+// mechanism applied to F5 half-game slice. Companion f5spread|25-29 NOT registered (CI-lo +1.16¢, two
+// consecutive bad days 8/5-8/6). sideWonBelow 0.22.
 export const PREREG_CELLS = [
   {
     id: "hrr-7074", sport: "mlb", category: "hrr", band: "70-74",
@@ -119,6 +125,12 @@ export const PREREG_CELLS = [
     doc: "docs/MAKER_MLB_SP_PREREG.md", label: "MLB spread underdog 35-39¢",
     forwardStart: "2026-08-10", checkpoint: "2026-08-24",
     criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.30, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "mlbf5t-2529", sport: "mlb", category: "f5total", band: "25-29",
+    doc: "docs/MAKER_MLB_F5T_PREREG.md", label: "MLB F5 total longshot 25-29¢",
+    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.22, minDays: 8, minFills: 50 },
   },
 ];
 
