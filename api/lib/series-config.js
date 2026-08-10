@@ -810,7 +810,14 @@ export const DISMISSED_SERIES = [
   // even for shortlist). No college football model. DISMISS.
   "KXNWSL", // NWSL Champion season-long futures — bare-prefix (futures), confirmed as champion
   // outright; KXNWSLGAME (per-game) is already adopted. DISMISS.
-  // 8/10 vet — KXHUNDREDMATCH:
+  // 8/10 vet — KXNBASTARTERS + KXHUNDREDMATCH:
+  "KXNBASTARTERS", // NBA Season-Opener Starting Lineup — per-PLAYER binary "will start the first
+  // game of the 2026-27 regular season" futures. 100 markets across 9 of 30 teams (BOS/DAL/DEN/
+  // GSW/LAL/MIA/MIN/NYK/PHI), 10-13 players per team. All settle once (season opener ~late Oct
+  // 2026; close_time Nov 7). 9¢ median spread, mostly 0 OI (only Shannon Jr. at ~700 ct had real
+  // volume). NOT a recurring per-game surface — one event per team ever (first game only), so
+  // there is no calibration data set to accrue. Market class: pre-season lineup speculation
+  // outrights, same class as KXNBAFIRSTOPPONENT/KXNBAXMASOPPONENT. DISMISS.
   "KXHUNDREDMATCH", // The Hundred cricket (men's) match winner — binary ML, BOTH sides quoted,
   // 1¢ spread, real books with genuine day-of liquidity (~36K contracts/33K OI on TRE vs SOU;
   // pre-game D-1 is thin: ~50-150 contracts, fills up day-of). 8 teams: BIR/LON/MLO/MSG/SOU/
