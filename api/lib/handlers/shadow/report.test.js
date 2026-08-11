@@ -1,12 +1,17 @@
 // node --test api/lib/handlers/shadow/report.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { computeRobustCandidates, ROBUST_BAR, computeVenueVig, venueCategoryFromKalshiTicker, computePolymarketTracking } from "./report.js";
+import { computeRobustCandidates, ROBUST_BAR, ROBUST_ONE_SIDED_RATE, computeVenueVig, venueCategoryFromKalshiTicker, computePolymarketTracking } from "./report.js";
 
 // computeRobustCandidates is the heatmap-robustness TRIPWIRE, not a shortlist. A cell must clear a
 // strict STRUCTURAL bar — day-clustered CI already excludes zero (`reliable`), >= 8 days, >= 50 fills,
 // top-day share <= 0.35 — before it is even a pre-registration candidate. These tests pin the bar so
 // it can't silently loosen into the in-sample target-picker the doctrine forbids.
+//
+// They ALSO pin the three properties added 2026-08-11, each of which exists to stop the payload from
+// reading as a shortlist: the denominator + noise floor (so `count` is never read bare), the NEGATIVE
+// arm (so a price-monotone book can't light one side and look like 23 discoveries), and cell-name
+// ordering (so the array itself ranks nothing). See docs/MAKER_LADDER_ARTIFACT.md.
 
 // A cell that clears every part of the bar. Reused as the base for the negative cases.
 const ROBUST = { sport: "mlb", category: "f5total", band: "50-54", reliable: true,
@@ -55,12 +60,55 @@ test("a bright-but-thin cell (the selection-noise case) is refused", () => {
   assert.equal(wrap([bright]).count, 0);
 });
 
-test("candidates are sorted by perContract desc; robust negatives never appear (excluded by reliable)", () => {
+test("candidates are ordered by cell NAME, never by perContract (ordering must rank nothing)", () => {
+  // The brightest cell must not float to the top: a perContract-sorted array is a ranked shortlist
+  // however the note is worded, which is the same objection that killed the "best-green" heatmap shade.
   const a = { ...ROBUST, category: "a", perContract: 3.1 };
-  const b = { ...ROBUST, category: "b", perContract: 9.4 };
-  const negRobust = { ...ROBUST, category: "c", perContract: -8.0, reliable: false }; // ciHi<0 side → reliable=false
-  const r = wrap([a, b, negRobust]);
-  assert.deepEqual(r.candidates.map((c) => c.category), ["b", "a"]);
+  const z = { ...ROBUST, category: "z", perContract: 99.0 };
+  const r = wrap([z, a]);
+  assert.deepEqual(r.candidates.map((c) => c.category), ["a", "z"]);
+});
+
+test("the NEGATIVE arm is reported alongside, not dropped", () => {
+  // A robustly-negative cell is the mirror of a robustly-positive one. Reporting only the positive
+  // arm is what let a near-symmetric board (23 up / 26 down on 2026-08-11) read as 23 discoveries.
+  const up = { ...ROBUST, category: "up", perContract: 9.4 };
+  const down = { ...ROBUST, category: "down", perContract: -8.0, reliable: false, ciLo: -14.2, ciHi: -1.9 };
+  const r = wrap([up, down]);
+  assert.equal(r.count, 1, "positive arm unchanged — negatives still never become candidates");
+  assert.deepEqual(r.candidates.map((c) => c.category), ["up"]);
+  assert.equal(r.negativeCount, 1);
+  assert.deepEqual(r.negatives.map((c) => c.category), ["down"]);
+});
+
+test("a straddling cell counts toward eligible but toward neither arm", () => {
+  const straddle = { ...ROBUST, category: "s", perContract: 0.4, reliable: false, ciLo: -3.0, ciHi: 4.1 };
+  const r = wrap([straddle]);
+  assert.equal(r.eligible, 1);
+  assert.equal(r.count, 0);
+  assert.equal(r.negativeCount, 0);
+});
+
+test("eligible is the sample bar ALONE — the denominator count must be read against", () => {
+  // Cells failing the sample bar are not eligible at all, so they must not inflate the noise floor.
+  const r = wrap([ROBUST, { ...ROBUST, category: "thin", days: 3, fills: 17, reliable: false, ciLo: null, ciHi: null }]);
+  assert.equal(r.eligible, 1, "the thin cell is not part of the denominator");
+  assert.equal(r.noiseFloor, parseFloat((1 * ROBUST_ONE_SIDED_RATE).toFixed(1)));
+});
+
+test("the note states the null and never reads as a shortlist", () => {
+  assert.equal(ROBUST_ONE_SIDED_RATE, 0.05);
+  // Populated board: the null and the asymmetry travel with the payload.
+  const r = wrap([ROBUST]);
+  assert.match(r.note, /idle state is NOT zero/);
+  assert.match(r.note, /1 positive vs 0 negative of 1 eligible/);
+  assert.match(r.note, /ASYMMETRY/);
+  assert.doesNotMatch(r.note, /top pick|best|ranked/i);
+  // Eligible cells but nothing lit — still "nothing to pre-register", now with the denominator.
+  const quiet = wrap([{ ...ROBUST, reliable: false, ciLo: -3.0, ciHi: 4.1 }]);
+  assert.equal(quiet.count, 0);
+  assert.match(quiet.note, /nothing to pre-register/);
+  assert.match(quiet.note, /of 1 eligible/);
 });
 
 // ── Cross-venue vig ───────────────────────────────────────────────────────────────────────────

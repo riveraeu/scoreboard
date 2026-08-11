@@ -249,29 +249,62 @@ function computeUiHealth(makerBoard, preregistrations) {
 // NONE (which is the honest state of the board), and a hit is a prompt to sit down and design a
 // mechanism-first pre-registration (a new docs/MAKER_*_PREREG.md), NEVER a cell to bet or rank.
 // Robustness is necessary, not sufficient — f5total was clean in-sample and still inverted forward.
+//
+// The idle state is NOT zero (corrected 2026-08-11). "Expected output NONE" was true at ship because
+// n was small, not because a hit means edge: the day-clustered CI narrows as days accumulate, so ANY
+// cell with a nonzero *structural* offset eventually crosses ciLo > 0. On a price-monotone book that
+// is most of the board — 2026-08-11 read 23 lit positive and 26 lit NEGATIVE out of 210 eligible,
+// against a ~10.5-per-arm noise floor, with 22/23 of the positives below 50c and 26/26 of the
+// negatives at 50c+ (docs/MAKER_LADDER_ARTIFACT.md). So the payload carries the DENOMINATOR
+// (`eligible`), the noise floor, and BOTH arms: the signal worth waking up for is an ASYMMETRY
+// between the arms, never `count` on its own.
 const ROBUST_BAR = { minDays: 8, minFills: 50, maxTopDayShare: 0.35 };
+// The one-sided rate `reliable` is built at — i.e. the share of pure-noise cells expected to clear
+// the interval on EACH arm. Multiplied by `eligible` this is the tripwire's own null.
+const ROBUST_ONE_SIDED_RATE = 0.05;
+
+const _robustCell = (c) => ({ cell: `${c.sport}|${c.category}|${c.band}`, sport: c.sport,
+  category: c.category, band: c.band, fills: c.fills, days: c.days, perContract: c.perContract,
+  ciLo: c.ciLo, ciHi: c.ciHi, topDayShare: c.topDayShare });
+// Sorted by cell NAME, never by perContract: a perContract-descending array is a ranked shortlist
+// whatever the note says, and the doctrine that rejected a "best-green" heatmap shade rejects this
+// for the same reason. Ordering must carry no information about which cell looks best.
+const _byCell = (a, b) => a.cell.localeCompare(b.cell);
+
 function computeRobustCandidates(makerBoard) {
   const cells = Array.isArray(makerBoard?.categoryBands) ? makerBoard.categoryBands : [];
-  // `reliable` already encodes day-clustered ciLo > 0 && days >= 3 — the positive-edge side only; a
-  // robustly NEGATIVE cell is an integrity/anomaly concern, not a prereg candidate, so it's excluded
-  // here by construction (it surfaces via the anomaly ring instead).
-  const candidates = cells
-    .filter(c => c?.reliable === true
-      && (c.days || 0) >= ROBUST_BAR.minDays
-      && (c.fills || 0) >= ROBUST_BAR.minFills
-      && c.topDayShare != null && c.topDayShare <= ROBUST_BAR.maxTopDayShare)
-    .map(c => ({ cell: `${c.sport}|${c.category}|${c.band}`, sport: c.sport, category: c.category,
-      band: c.band, fills: c.fills, days: c.days, perContract: c.perContract,
-      ciLo: c.ciLo, ciHi: c.ciHi, topDayShare: c.topDayShare }))
-    .sort((a, b) => (b.perContract ?? -Infinity) - (a.perContract ?? -Infinity));
+  // Eligible = the SAMPLE bar alone (no sign test), which is the denominator `count` has to be read
+  // against. Applying the CI rate to every cell on the board overstates the floor, because most
+  // cells can't clear days/fills/top-day-share in the first place.
+  const eligible = cells.filter(c => c
+    && (c.days || 0) >= ROBUST_BAR.minDays
+    && (c.fills || 0) >= ROBUST_BAR.minFills
+    && c.topDayShare != null && c.topDayShare <= ROBUST_BAR.maxTopDayShare
+    && c.ciLo != null);
+  // `reliable` already encodes day-clustered ciLo > 0 && days >= 3 — the positive arm. The negative
+  // arm is its mirror (ciHi < 0) and is reported ALONGSIDE rather than dropped: it is the only way to
+  // tell "this book has an edge" from "this book has a slope", and dropping it is what let a
+  // one-armed count read as 23 surprises when the board was near-symmetric.
+  const candidates = eligible.filter(c => c.reliable === true).map(_robustCell).sort(_byCell);
+  const negatives = eligible.filter(c => c.ciHi != null && c.ciHi < 0).map(_robustCell).sort(_byCell);
+  const noiseFloor = parseFloat((eligible.length * ROBUST_ONE_SIDED_RATE).toFixed(1));
+  const asym = `${candidates.length} positive vs ${negatives.length} negative of ${eligible.length} eligible (noise floor ~${noiseFloor}/arm)`;
   return {
     bar: ROBUST_BAR,
+    eligible: eligible.length,
+    noiseFloor,
     count: candidates.length,
+    negativeCount: negatives.length,
     candidates,
+    negatives,
     // The note travels with the payload so the morning report can never restate it as "top picks".
-    note: candidates.length === 0
-      ? "no cell has crossed the robustness bar — the board is still selection noise; nothing to pre-register"
-      : "NOT a bet list — each is a candidate for a mechanism-first pre-registration only (new docs/MAKER_*_PREREG.md); robustness ≠ edge (f5total was clean in-sample and failed forward)",
+    note: eligible.length === 0
+      ? "no cell has cleared the sample bar yet — nothing to pre-register"
+      : candidates.length === 0
+        ? `no cell lit on the positive arm — ${asym}; nothing to pre-register`
+        : `NOT a bet list — a candidate is only ever a prompt for a mechanism-first pre-registration (new docs/MAKER_*_PREREG.md); robustness ≠ edge (f5total was clean in-sample and failed forward). `
+          + `The idle state is NOT zero: ${asym}. Read the ASYMMETRY between the arms, never count alone — `
+          + `a price-monotone book lights one arm by construction (docs/MAKER_LADDER_ARTIFACT.md).`,
   };
 }
 
@@ -1125,4 +1158,4 @@ async function handleShadowReport({ path, request, env, cache }) {
   return jsonResponse(report);
 }
 
-export { handleShadowReport, computeRobustCandidates, ROBUST_BAR };
+export { handleShadowReport, computeRobustCandidates, ROBUST_BAR, ROBUST_ONE_SIDED_RATE };
