@@ -920,4 +920,32 @@ export const DISMISSED_SERIES = [
   "KXLALIGA2",       // La Liga 2 season champion futures (empty shell 8/10, 0 live mkts). Per-game = KXLALIGA2GAME, adopted this commit.
   "KXUSL",           // USL Championship season champion futures (25 mkts, 1 per team). Per-game = KXUSLGAME, adopted this commit.
   "KXCONMEBOLLIB",   // Copa Libertadores tournament-winner futures (16 mkts, 1 per QF team). Per-game = KXCONMEBOLLIBGAME, adopted this commit.
+  // ── 8/10 discovery-queue vet, 9 items. All screened THIN (the deliberate not-enough-evidence
+  // bucket the auto-screen never actions), so each is a human structural call, not a liquidity
+  // one — none of these has a per-game resolution flow no matter how deep the book gets.
+  // KXFIFALEAVE is the reminder that volume proves nothing about buildability: $77.6k traded on
+  // ONE market that resolves once.
+  "KXNBARELOCATION",   // Which city Portland relocates to (Tampa Bay / St. Louis / Seattle / …),
+  // 11 mkts closing 2027-12-01. Insider/news-driven city outright — no game, no model surface.
+  // Same class as the manager/signing novelties dismissed 8/08.
+  "KXNBAMOSTWINS",     // Season win-total ladder ("72+ wins", "70+", "67+"), closes 2027-05-08.
+  // Season futures — resolves once a year, no repeatable daily flow. Same class as KXNFLTEAMPTS.
+  "KXNCAAFACCWINS",    // "N+ ACC teams to win in week 10" — an aggregated per-WEEK count across
+  // many games, not a per-game market. Combinatorial over a slate we don't model; 1 real book,
+  // 56¢ spread, zero volume.
+  "KXFIFALEAVE",       // Single YES/NO governance novelty closing 2027-01-01. One market, one
+  // resolution, insider-driven. High volume ($77.6k) but nothing repeatable to capture.
+  "KXMLBPITCH",        // "Shohei Ohtani to pitch in a game" — player usage/availability novelty.
+  // No lineup or usage model and no pre-game data source for it. Same class as KXWCSTART.
+  "KXMLBTRIPLECROWN",  // Season award futures ("Yordan Alvarez wins Triple Crown"), closes with
+  // the season. Same class as the MLB award finalists dismissed 8/08.
+  "KXNBACOMPETE",      // Player participation futures ("Ben Simmons", closes 2027-07-08) — exactly
+  // the KXMMACOMPETE class dismissed 8/08. No participation model.
+  "KXPOCHETTINOOUT",   // Manager-departure novelty closing 2030-06-15. Same class as the coaching
+  // -hire/manager-exit markets dismissed 8/08.
+  "KXUEFASC1HSPREAD",  // UEFA Super Cup 1st-half spread. The only one here that IS a real per-game
+  // threshold market (PSG v Aston Villa, 2026-08-12) — dismissed on FREQUENCY, not shape: the
+  // Super Cup is ONE match per year, so at 2 markets a year this can never reach a sample size
+  // that means anything, and it currently quotes a 53¢ spread on zero volume. Same reasoning as
+  // the Home Run Derby dismissal (a 72-hour event, not a season flow).
 ];
