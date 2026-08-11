@@ -490,20 +490,21 @@ test("a cell below the fills/days bar is never tested (and never used as a refer
 });
 
 test("maxSpanC: a reference too far away to interpolate between is refused", () => {
-  // The mlb|f5spread|55-59 shape: the rungs either side are 20¢ apart because the bands between them
-  // were correctly dropped for thinness. Reading a value off that straight line is invention.
+  // The mlb|f5spread|55-59 shape: the rungs either side are 20¢ apart because the bands between
+  // them were dropped for thinness. Reading a value off that straight line is invention.
   const wide = [
-    ladderCell("10-14", 12, 0.10), ladderCell("20-24", 22, 0.20), ladderCell("30-34", 32, 0.28),
-    ladderCell("40-44", 42, 0.10), ladderCell("60-64", 62, 0.55), ladderCell("70-74", 72, 0.76),
+    ladderCell("35-39", 37, 0.30), ladderCell("40-44", 42, 0.10), ladderCell("55-59", 57, 0.846),
+    ladderCell("60-64", 62, 0.55), ladderCell("65-69", 67, 0.72), ladderCell("70-74", 72, 0.76),
+    ladderCell("75-79", 77, 0.79),
   ];
-  assert.equal(ladderAnomalies(wide).get("55-59"), undefined, "no cell there to score");
-  // Insert the cell at 57: its neighbours are 42 and 62, a 20¢ span > maxSpanC 10.
-  const withCell = [...wide, ladderCell("55-59", 57, 0.846)].sort((a, b) => a.mid - b.mid);
-  assert.equal(ladderAnomalies(withCell).get("55-59").anomaly, false, "span too wide — not tested");
-  // Same cell, same numbers, but with the intervening rungs present: now it IS testable.
-  const dense = [...withCell, ladderCell("45-49", 47, 0.34), ladderCell("50-54", 52, 0.45)]
-    .sort((a, b) => a.mid - b.mid);
-  assert.equal(ladderAnomalies(dense).get("55-59").anomaly, true, "span now 5¢ — tested and flagged");
+  assert.equal(ladderAnomalies(wide).get("55-59").anomaly, false, "span too wide — not tested");
+  // Same cell, same sideWon, but with the intervening rungs present: now it IS testable.
+  const dense = [
+    ladderCell("45-49", 47, 0.34), ladderCell("50-54", 52, 0.45), ladderCell("55-59", 57, 0.846),
+    ladderCell("60-64", 62, 0.55), ladderCell("65-69", 67, 0.72), ladderCell("70-74", 72, 0.76),
+    ladderCell("75-79", 77, 0.79),
+  ];
+  assert.equal(ladderAnomalies(dense).get("55-59").anomaly, true, "contiguous rungs — tested and flagged");
 });
 
 test("minTickers: fills concentrated in few GAMES are not a sample", () => {
@@ -529,5 +530,33 @@ test("a null ticker count is not treated as zero (older rows stay testable)", ()
 
 test("bar values are pinned — a threshold diff here is a detector-behaviour change", () => {
   assert.deepEqual(LADDER_BAR,
-    { minFills: 20, minDays: 3, minTickers: 5, minBands: 4, minResidual: 0.15, maxSpanC: 10 });
+    { minFills: 20, minDays: 3, minTickers: 5, minBands: 4, minResidual: 0.15, maxSpanC: 11 });
+});
+
+test("a reference must itself be judgeable — an untestable rung cannot calibrate its neighbour", () => {
+  // The mlb|f5spread shape: a thin band sits alone across a gap, is itself refused by maxSpanC, and
+  // was still anchoring the cell next to it.
+  const ladder = [
+    ladderCell("10-14", 12, 0.10), ladderCell("15-19", 17, 0.15), ladderCell("20-24", 22, 0.20),
+    ladderCell("25-29", 27, 0.25),
+    ladderCell("40-44", 42, 0.85),          // stranded: nearest rungs are 27 and 62, a 35¢ bracket
+    ladderCell("60-64", 62, 0.55), ladderCell("65-69", 67, 0.72), ladderCell("70-74", 72, 0.76),
+  ];
+  const r = ladderAnomalies(ladder);
+  assert.equal(r.get("40-44").anomaly, false, "stranded rung is not testable itself");
+  assert.equal(r.get("60-64").anomaly, false,
+    "and must not anchor its neighbour — without it 60-64's bracket is 27→67 and it is untestable too");
+  assert.equal(r.get("40-44").fitted, null, "never scored, so never fitted");
+});
+
+test("maxSpanC 11 keeps the top of the ladder referencable (90-96 is a 7¢ band)", () => {
+  // 85-89's bracket is 82→93 = 11 because the top band is wider. At maxSpanC 10 it would be
+  // permanently unreferencable and the self-consistency rule would cascade down every ladder.
+  const top = [
+    ladderCell("70-74", 72, 0.76), ladderCell("75-79", 77, 0.79), ladderCell("80-84", 82, 0.81),
+    ladderCell("85-89", 87, 0.86), ladderCell("90-96", 93, 0.90),
+  ];
+  const r = ladderAnomalies(top);
+  assert.notEqual(r.get("85-89").fitted, null, "85-89 is testable, so it can also serve as a reference");
+  assert.equal(r.get("85-89").anomaly, false, "and a clean top ladder still flags nothing");
 });

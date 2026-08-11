@@ -335,7 +335,7 @@ export const LADDER_BAR = {
   minTickers: 5,       // ... and this many distinct GAMES (see below)
   minBands: 4,         // category needs this many reference-quality bands to have a ladder at all
   minResidual: 0.15,   // practical floor: a significant but trivial departure is not an integrity signal
-  maxSpanC: 10,        // widest price gap the reference may be interpolated across (see below)
+  maxSpanC: 11,        // widest price gap the reference may be interpolated across (see below)
 };
 
 // ── Two thinness guards added 2026-08-11, after the first version flagged mlb|f5spread 40-64 ──
@@ -345,6 +345,12 @@ export const LADDER_BAR = {
 // 40-44 and 60-64, a 20c gap straddling the steepest part of the ladder, because 45-49 (n=5) and
 // 50-54 (n=16) were correctly dropped. Interpolating across that is an extrapolation wearing an
 // interpolation's clothes, and it produced a fitted 0.49 that flagged a cell sitting at 0.846.
+//
+// `maxSpanC` is 11, not 10, because the band ladder is not uniform: bands are 5c wide except the top
+// one (90-96, 7c), so the widest bracket between two ADJACENT rungs is 82->93 = 11. Setting it to 10
+// would make 85-89 permanently unreferencable and, under the self-consistency rule below, cascade
+// down the top of every ladder. The number comes from `_makerBandCase`'s fixed layout, not from any
+// outcome — "no missing rungs" is the actual rule it encodes.
 //
 // `minTickers`. Fill count is a poor measure of a cell's real sample: f5spread|55-59 had 132 fills
 // over 17 days, but 14 of those days landed at sideWon EXACTLY 0 or 1 — each was a single game, one
@@ -407,13 +413,37 @@ export function ladderAnomalies(cells, bar = LADDER_BAR) {
     .slice().sort((a, b) => a.mid - b.mid);
   for (const c of all) out.set(c.band, { anomaly: false, anomalyReason: null, fitted: null, residual: null });
 
-  const refs = all.filter(c => (c.fills || 0) >= bar.minFills);
-  if (refs.length < bar.minBands) return out;   // no ladder to calibrate against
+  // ── A reference must itself be judgeable (2026-08-11, the third instance of one error) ────────
+  // `refs` used to filter on minFills alone, so a cell the detector REFUSES to test was still
+  // trusted to calibrate its neighbours. That is what produced the last surviving flag on the
+  // 2026-08-11 board: mlb|f5spread|60-64 was measured against a fitted 0.75 that came from pooling
+  // 55-59 (0.846) — a band with 5.3 fills per game against a clean band's 1.3-2.4, and 14 of its 17
+  // days at a single game, which maxSpanC already declined to test. Removing that one band from the
+  // ladder does not merely clear 60-64; it makes it untestable, which is the honest answer for a
+  // rung with nothing calibratable either side of it.
+  //
+  // ONE refinement pass, deliberately not iterated to a fixed point: every removal widens the spans
+  // around it, so iterating cascades and empties ladders that hold a perfectly good contiguous run
+  // (on f5spread it would walk the whole sub-50 half away, band by band).
+  const refs0 = all.filter(c => (c.fills || 0) >= bar.minFills
+    && (c.tickers == null || c.tickers >= bar.minTickers));
+  const _bracketOk = (c, list) => {
+    let iA = list.findIndex(r => r.mid > c.mid);
+    if (iA < 0) iA = list.length;
+    const below = iA > 0 ? list[iA - 1] : null, above = iA < list.length ? list[iA] : null;
+    if (!below && !above) return false;
+    if (below && above) return (above.mid - below.mid) <= bar.maxSpanC;
+    return true;  // ladder end: nothing outward to violate, so the end rule applies
+  };
+  if (refs0.length < bar.minBands) return out;  // no ladder to calibrate against
 
-  // Category-level check FIRST: a side-flip in one emit module inverts every band together, which
+  // Category-level check FIRST. A side-flip in one emit module inverts every band together, which
   // leaves each cell close to a (flattened) fit and so is invisible to the per-cell residual. A
   // ladder whose realized outcome rate FALLS as price rises is itself the integrity signal.
-  const lo = refs.slice(0, Math.ceil(refs.length / 2)), hi = refs.slice(Math.floor(refs.length / 2));
+  // Deliberately scored against refs0, NOT the self-consistent set below: a wholesale inversion
+  // makes the rungs stop bracketing each other, so gating this on bracket-consistency would disarm
+  // it on precisely the case it exists to catch.
+  const lo = refs0.slice(0, Math.ceil(refs0.length / 2)), hi = refs0.slice(Math.floor(refs0.length / 2));
   const wMean = (xs) => { let w = 0, s = 0; for (const c of xs) { const cw = Number(c.contracts) || 0; w += cw; s += cw * c.sideWon; } return w > 0 ? s / w : null; };
   const loM = wMean(lo), hiM = wMean(hi);
   if (loM != null && hiM != null && hiM < loM - bar.minResidual) {
@@ -421,6 +451,9 @@ export function ladderAnomalies(cells, bar = LADDER_BAR) {
       anomalyReason: `ladder inverted: sideWon falls ${r2(loM)}→${r2(hiM)} as price rises` });
     return out;
   }
+
+  const refs = refs0.filter(r => _bracketOk(r, refs0.filter(x => x.band !== r.band)));
+  if (refs.length < bar.minBands) return out;   // nothing left that can calibrate anything
 
   for (const c of all) {
     if ((c.fills || 0) < bar.minFills) continue;
