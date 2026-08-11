@@ -285,3 +285,33 @@ be completed (Kalshi returned `HTTP 000` for the tennis tickers *and* for an MLB
 succeeded earlier the same session, i.e. rate-limiting, not missing data). Tennis is the one sport in
 this repo with a documented resolver-window bug, so that check is worth redoing through
 `fetchKalshiSettlements`, which batches and retries.
+
+### Tennis: grading verified independently, flags confirmed as noise (2026-08-11)
+
+The one integrity question left open by the vet is closed. The earlier failure was **not** rate
+limiting — it was the local Netskope proxy blocking `kalshi.com` at the TLS handshake (exit 35,
+`tls=0.000`, while GitHub and Vercel returned 200). Once that was lifted:
+
+**7 of 7 Kalshi settlements matched the real match winner** on the ESPN tennis scoreboard — Tjen/
+Kalinskaya, Ruud/Cerundolo, Li/Cross, Mertens/Bondar, Mejia/Landaluce, Andreeva/Pliskova, Jones/
+Tararudee. The paired markets are self-consistent too: for each match the `-PLAYER_A` and `-PLAYER_B`
+markets and both YES/NO sides agree on one winner.
+
+**This is the only genuinely independent grading check run today, and it matters why.** The f5spread
+"3/3 verified against settlement" reported earlier is *tautological*: since the 2026-07-24 rewrite,
+`gradeMakerFills` derives `side_won` from Kalshi settlement via `resolveTickerSideViaKalshi`
+(`maker.js:401`), so re-reading that settlement and re-applying the same mapping must agree. It rules
+out staleness and row corruption; it cannot detect a systematic side-mapping error. ESPN is a separate
+source, so the tennis check does.
+
+**Incidental finding — tennis ticker dates are SCHEDULED, not played.** Six of the seven matches
+played a day after their ticker date (`26JUL29`→`2026-07-30`, `26AUG02`→`08-03`, `26AUG04`→`08-05`);
+only Ruud/Cerundolo matched. Order of play slips, which is presumably the origin of the historical
+"tennis resolver wide window" bug. Grading is unaffected — maker fills settle by ticker — but
+`game_date` is ticker-derived, so every day-clustered statistic on the tennis row (`reliable`, the
+anomaly detector's interval, `robustCandidates` eligibility) clusters on the scheduled day and puts
+slipped matches in the wrong cluster. A second noise source on top of tournament clustering, and part
+of why `tennis|match` is the noisiest ladder on the board.
+
+With grading cleared, all three tennis flags are confirmed as ladder noise. **Final tally for the
+day: 6 anomaly flags, all vetted, zero pipeline defects.**
