@@ -33,6 +33,7 @@ const SCHEDULE_BY_SPORT = {
   mls: getMlsSchedule, ligamx: getLigaMxSchedule, argprem: getArgPremSchedule,
   copadobrasil: leagueSource("copadobrasil").getSchedule,
   eredivisie: leagueSource("eredivisie").getSchedule,
+  laliga: leagueSource("laliga").getSchedule,
 };
 
 export async function emitClubSoccerThresholdPlays(ctx) {

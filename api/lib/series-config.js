@@ -179,6 +179,13 @@ export const SERIES_CONFIG = {
   // champion futures (same class as KXPREMIERLEAGUE above); KXLALIGAGAME is per-game: 51/51 real
   // books, 4¢ median spread. ESPN slug esp.1.
   KXLALIGAGAME: { sport: "laliga", league: "laliga", stat: "game", col: "ML", gameType: "modelFreeMl" },
+  // La Liga spread — 11th threshold market family (adopted 2026-08-10, from the discovery queue).
+  // 24/24 real books, 4¢ median spread. Volume is thin ($1.1K) because the season opens 8/22, but
+  // the books are two-sided NOW (tickers close 8/16-8/17), so this verifies immediately rather
+  // than on a pre-season empty shell. All 12 team codes seen live (ALA GET DEP ELC ESP LEV RCC OSA
+  // SAN VIL SEV RVC) are already in the 20-team laliga registry — no teams.js change, and laliga
+  // was already in MODEL_FREE_LEAGUES + SETTLEMENT_AUTHORITATIVE_SPORTS from the 8/10 GAME build.
+  KXLALIGASPREAD: { sport: "laliga", league: "laliga", stat: "spread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread" },
   // Serie A game winner — 3-way, model-free maker (built 2026-08-10). KXSERIEA bare prefix = season
   // champion futures; KXSERIEAGAME is per-game: 30/30 real books, 3.5¢ median spread. ESPN slug ita.1.
   KXSERIEAGAME: { sport: "seriea", league: "seriea", stat: "game", col: "ML", gameType: "modelFreeMl" },
