@@ -71,6 +71,25 @@ test("parseGameTeams: copadobrasil 2-char CR (Remo) split, no false 3+2 fallback
   assert.deepEqual(parseGameTeams(ticker("CORINT"), "copadobrasil"), ["COR", "INT"]);
 });
 
+test("parseGameTeams: NFL variable-length splits (eight 2-char abbrs)", () => {
+  // The bug this pins (found 2026-08-10, before KXNFLGAME capture went live): nfl was NOT in the
+  // variable-length allowlist and only "LA" carries a TEAM_NORM entry, so has2charPrefix was false
+  // for GB/KC/LV/NE/NO/SF/TB. 2+2 pairs fell past every branch to [null,null]; 2+3 pairs hit the
+  // unvalidated 3+2 fallback and silently invented teams.
+  assert.deepEqual(parseGameTeams(ticker("GBKC"), "nfl"), ["GB", "KC"]);   // was [null,null]
+  assert.deepEqual(parseGameTeams(ticker("NEKC"), "nfl"), ["NE", "KC"]);   // was [null,null]
+  assert.deepEqual(parseGameTeams(ticker("SFTB"), "nfl"), ["SF", "TB"]);   // was [null,null]
+  assert.deepEqual(parseGameTeams(ticker("NOLV"), "nfl"), ["NO", "LV"]);   // was [null,null]
+  assert.deepEqual(parseGameTeams(ticker("GBSEA"), "nfl"), ["GB", "SEA"]); // was ["GBS","EA"]
+  assert.deepEqual(parseGameTeams(ticker("SEAGB"), "nfl"), ["SEA", "GB"]); // 3+2
+  assert.deepEqual(parseGameTeams(ticker("DALSEA"), "nfl"), ["DAL", "SEA"]);
+  assert.deepEqual(parseGameTeams(ticker("NYGNYJ"), "nfl"), ["NYG", "NYJ"]);
+  // Longer-left preference is load-bearing here: LAC and LA (→LAR) share a prefix, so the
+  // 5-char and 6-char forms must land on different teams.
+  assert.deepEqual(parseGameTeams(ticker("LACHI"), "nfl"), ["LAR", "CHI"]);
+  assert.deepEqual(parseGameTeams(ticker("LACCHI"), "nfl"), ["LAC", "CHI"]);
+});
+
 test("parseGameTeams: MLB normalization inside split", () => {
   assert.deepEqual(parseGameTeams(ticker("CHWDET"), "mlb"), ["CWS", "DET"]);
   assert.deepEqual(parseGameTeams(ticker("OAKSEA"), "mlb"), ["ATH", "SEA"]);

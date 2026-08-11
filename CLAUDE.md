@@ -78,13 +78,13 @@ These bite during *any* change. Each links to detail in `docs/*.md` or memory.
 
 **TEAM_NORM (Kalshi → ESPN)** derived from `teams.js` `kalshi` aliases — edit the registry, not parse-teams.js. Identity entries (mlb `KC→KC`) mark 2-char prefixes for the 2+3 ticker split.
 
-**`parseGameTeams` validation via `_VALID_TEAMS`** — without it a 2-char prefix steals the parse (`NYKPHI`→`NY`+`KPH`). Tries 3+3 first (length≥6), falls back to validated 2+3. Symptom of breakage: duplicate matchup cards. Maintain `_VALID_TEAMS` on rebrands.
+**`parseGameTeams` validation via `_VALID_TEAMS`** — without it a 2-char prefix steals the parse (`NYKPHI`→`NY`+`KPH`). Tries 3+3 first (length≥6), falls back to validated 2+3. Symptom of breakage: duplicate matchup cards. Maintain `_VALID_TEAMS` on rebrands. **A registry with ANY 2-char abbr needs its sport in the variable-length allowlist** — the generic path keys `has2charPrefix` on `TEAM_NORM`, which only carries *aliases*, so a canonical 2-char code with no alias is invisible to it. NFL (eight 2-char abbrs) was broken this way until 2026-08-10: `GBKC`→`[null,null]`, `GBSEA`→`["GBS","EA"]` — a silent invention.
 
 **Kalshi ticker home/away order ≠ ESPN.** `parseGameTeams` returns ticker order; each play loop must look up the real home team and swap (game-total loop + team-total loop).
 
 **ESPN scoreboard abbr mismatch** — `/api/live` translates via `CANONICAL_TO_ESPN`/`ESPN_TO_CANONICAL` (sport-keyed). Unmapped → `state:"unknown"`, never resolves. Add new mismatches to the `espnScore` field in `teams.js`. (`WNBA_CANON_TO_ESPN` is a *different* endpoint — stats/injuries — don't use it for the scoreboard map.)
 
-**`gameTimes` horizon = yesterday…D+2.** D+2 events return as a SEPARATE `eventsDayAfter` array read ONLY by the gameTimes loop — every other `events` consumer keys by TEAM with last-event-wins, so folding D+2 in would overwrite nearer games.
+**`gameTimes` horizon = yesterday…D+2.** D+2 events return as a SEPARATE `eventsDayAfter` array read ONLY by the gameTimes loop — every other `events` consumer keys by TEAM with last-event-wins, so folding D+2 in would overwrite nearer games. **A sport missing from `SPORT_SB_PATH` gets no `gameTimes` at all** → every row logs `gameTime:null` → never maker-quotable, silently. Check it whenever a new sport's ticker is date-only (no `HHMM` for `kalshiTickerGameTime` to fall back on).
 
 **`gameScores` today+tomorrow merge** — key shape `${hA}|${gameDate}|${event.date}` prevents post-midnight wipe + DH game-2 overwrite. The inline duplicate in `mlb.js` must mirror it.
 

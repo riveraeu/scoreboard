@@ -16,7 +16,9 @@
 // Home/away is the load-bearing piece: MLB/NBA/WNBA/NHL are the calibrated families graded off
 // ESPN /api/live, where a wrong home/away silently mis-grades. The Kalshi ticker order
 // (gameTeam1/gameTeam2) does NOT reflect ESPN home/away, so we keep the exact swap logic from the
-// model era (nba/nhl/wnba via *GameScores; mlb via gameHomeTeams; team totals mlb+nba).
+// model era (nba/nhl/wnba/nfl via *GameScores; mlb via gameHomeTeams; team totals mlb+nba).
+// nfl joined 2026-08-10 with the KXNFLGAME build — KXNFLTOTAL had been parsing with NO context
+// map and no home/away source at all, so this repairs the total family as well as feeding ML.
 //
 // Returns the minimal `_*MlContext` maps consumed by emitAllMlAndSpread in ml-spread.js:
 // `{ [`${homeTeam}|${awayTeam}|${gameDate}`]: { homeTeam, awayTeam, gameDate, kalshiVolume,
@@ -35,7 +37,8 @@ export async function emitGameTotalPlays({
   const _nbaMlContext = {};
   const _wnbaMlContext = {};
   const _nhlMlContext = {};
-  const _ctxFor = (sport) => sport === "mlb" ? _mlbMlContext : sport === "nba" ? _nbaMlContext : sport === "wnba" ? _wnbaMlContext : sport === "nhl" ? _nhlMlContext : null;
+  const _nflMlContext = {};
+  const _ctxFor = (sport) => sport === "mlb" ? _mlbMlContext : sport === "nba" ? _nbaMlContext : sport === "wnba" ? _wnbaMlContext : sport === "nhl" ? _nhlMlContext : sport === "nfl" ? _nflMlContext : null;
 
   const _gameTimeFor = (sport, homeTeam, awayTeam, gameDate) =>
     gameTimes?.[`${sport}:${homeTeam}:${gameDate}`]
@@ -57,8 +60,8 @@ export async function emitGameTotalPlays({
       // Kalshi ticker order != ESPN home/away. Swap so downstream (card, resolver, ML/spread
       // context) all see the same home/away as gameScores/gameHomeTeams.
       let homeTeam = gameTeam1, awayTeam = gameTeam2;
-      if (sport === "nba" || sport === "nhl" || sport === "wnba") {
-        const _gsMap = sport === "nba" ? sportByteam.nbaGameScores : sport === "wnba" ? sportByteam.wnbaGameScores : sportByteam.nhlGameScores;
+      if (sport === "nba" || sport === "nhl" || sport === "wnba" || sport === "nfl") {
+        const _gsMap = sport === "nba" ? sportByteam.nbaGameScores : sport === "wnba" ? sportByteam.wnbaGameScores : sport === "nfl" ? sportByteam.nflGameScores : sportByteam.nhlGameScores;
         if (_gsMap) {
           for (const _gs of Object.values(_gsMap)) {
             if (_gs?.homeTeam === gameTeam2 && _gs?.awayTeam === gameTeam1) { homeTeam = gameTeam2; awayTeam = gameTeam1; break; }
@@ -133,5 +136,5 @@ export async function emitGameTotalPlays({
   }
 
   void isDebug; void dropped; // model-free capture routes every row to `plays`; kept for call-site shape.
-  return { _mlbMlContext, _nbaMlContext, _wnbaMlContext, _nhlMlContext };
+  return { _mlbMlContext, _nbaMlContext, _wnbaMlContext, _nhlMlContext, _nflMlContext };
 }

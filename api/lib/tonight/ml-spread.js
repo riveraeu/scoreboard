@@ -47,7 +47,7 @@ const _MF = { truePct: null, edge: null, dataConfidence: null, dcQualified: fals
 export async function emitAllMlAndSpread({
   plays, dropped, isDebug, cutoffStr, gameTimes, _todayPT,
   CACHE2, isBustCache,
-  _mlbMlContext, _nbaMlContext, _wnbaMlContext, _nhlMlContext,
+  _mlbMlContext, _nbaMlContext, _wnbaMlContext, _nhlMlContext, _nflMlContext,
   spreadMarkets, totalMarkets,
   mlbBothTeamsConfirmed: _mlbBothTeamsConfirmed,
   reattrMlbGameDate: _reattrMlbGameDate,
@@ -270,6 +270,14 @@ export async function emitAllMlAndSpread({
   const _nhlMlMarkets = await _build2WayMl("KXNHLGAME", "nhl");
   _emit2WayMl(_nhlMlContext, "nhl", "ml", _nhlMlMarkets);
   _emitSpreads(_nhlMlContext, "nhl", "spread", "full");
+
+  // ── NFL full-game ML (KXNFLGAME, adopted 2026-08-10) ───────────────────────────────────
+  // No _emitSpreads: Kalshi lists no KXNFLSPREAD series, so there is nothing to point it at.
+  // Home/away comes from _nflMlContext, which game-totals.js populates off KXNFLTOTAL — so ML
+  // coverage is bounded by the games carrying a full-game total, the same coupling every other
+  // sport here has.
+  const _nflMlMarkets = await _build2WayMl("KXNFLGAME", "nfl");
+  _emit2WayMl(_nflMlContext, "nfl", "ml", _nflMlMarkets);
 
   void dropped; void isDebug; // model-free capture routes every row to `plays`.
 

@@ -915,11 +915,11 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
             // NHL byteam (goalie/injury/special-teams/GAA) was model-only hydration — deleted with
             // the model teardown (2026-08-04, slice 4). NHL home/away + odds + top players come from
             // the scoreboard parse (parseGameScores fallbacks / nhlGameScores etc.), not from here.
-            sportsNeedingFetch.has("mlb") && buildMlbByteam(CACHE2).then((d) => { sportByteam.mlb = d || {}; }),
-            sportsNeedingFetch.has("nfl") && fetch("https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/statistics/byteam?region=us&lang=en&isqualified=true&page=1&limit=32&category=passing", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then(async (d) => {
-              sportByteam.nfl = d.teams || [];
-              if (CACHE2) await CACHE2.put("byteam:nfl", JSON.stringify(sportByteam.nfl), { expirationTtl: 1800 });
-            })
+            // NFL byteam was a passing-statistics fetch writing `sportByteam.nfl`, which nothing
+            // ever read — a model-era orphan the 2026-08-04 teardown missed. Deleted 2026-08-10
+            // with the KXNFLGAME build; NFL home/away now comes from nflGameScores, extracted
+            // below from the scoreboard the gameTimes loop already fetches (same as NHL).
+            sportsNeedingFetch.has("mlb") && buildMlbByteam(CACHE2).then((d) => { sportByteam.mlb = d || {}; })
           ].filter(Boolean));
         }
         await _fdMark("afterByteam");
@@ -1005,7 +1005,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         if (needGameTimes || needAnySummary) {
           gameTimes = gameTimes || {};
           nbaPlayerStatus = nbaPlayerStatus || {};
-          const SPORT_SB_PATH = { nba: "basketball/nba", wnba: "basketball/wnba", nhl: "hockey/nhl", mlb: "baseball/mlb" };
+          // nfl added 2026-08-10 (KXNFLGAME build). This map is what populates `gameTimes`, and the
+          // NFL event ticker is date-only — so without an entry here every NFL row logs with
+          // gameTime:null and is silently never maker-quotable, the CANPL/Phase-1 defect.
+          const SPORT_SB_PATH = { nba: "basketball/nba", wnba: "basketball/wnba", nhl: "hockey/nhl", mlb: "baseball/mlb", nfl: "football/nfl" };
           // When game times are already cached we still need scoreboards for any sport that
           // needs summary data (NBA + WNBA both fetch starters via per-event summary endpoints).
           const sportsToFetch = needGameTimes
@@ -1063,6 +1066,13 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
             const _nhlSbResult = sbResults.find(r => r.sport === "nhl");
             if (_nhlSbResult?.events.length > 0) {
               sportByteam.nhlGameScores = parseGameScores(_nhlSbResult.events, a => normTeam("nhl", a));
+            }
+            // Extract NFL game scores from already-fetched ESPN events (no extra request).
+            // Feeds the KXNFLGAME/KXNFLTOTAL home/away swap in game-totals.js — Kalshi ticker
+            // order is not ESPN home/away.
+            const _nflSbResult = sbResults.find(r => r.sport === "nfl");
+            if (_nflSbResult?.events.length > 0) {
+              sportByteam.nflGameScores = parseGameScores(_nflSbResult.events, a => normTeam("nfl", a));
             }
             // Extract NBA game scores from already-fetched ESPN events
             const _nbaSbResult = sbResults.find(r => r.sport === "nba");
@@ -1199,7 +1209,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         const cutoffStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
         // ── Game Total + Team Total plays — all sports ───────────────────────────────────
         // Extracted to api/lib/tonight/game-totals.js (Phase B5, 2026-05-29).
-        const { _mlbMlContext, _nbaMlContext, _wnbaMlContext, _nhlMlContext } =
+        const { _mlbMlContext, _nbaMlContext, _wnbaMlContext, _nhlMlContext, _nflMlContext } =
           await emitGameTotalPlays({
             plays, dropped, isDebug, cutoffStr, gameTimes,
             totalMarkets, teamTotalMarkets,
@@ -1211,7 +1221,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         await emitAllMlAndSpread({
           plays, dropped, isDebug, cutoffStr, gameTimes, _todayPT,
           CACHE2, isBustCache,
-          _mlbMlContext, _nbaMlContext, _wnbaMlContext, _nhlMlContext,
+          _mlbMlContext, _nbaMlContext, _wnbaMlContext, _nhlMlContext, _nflMlContext,
           spreadMarkets, totalMarkets,
           mlbBothTeamsConfirmed: _mlbBothTeamsConfirmed,
           reattrMlbGameDate: _reattrMlbGameDate,

@@ -15,25 +15,28 @@ const graded = (entries) => new Map(entries.map(([id, won, sport = "lmb"]) => [i
 const voided = (entries) => new Map(entries.map(([id, sport = "lmb", result = "scalar"]) => [id, { sport, result }]));
 const byId = (res) => new Map(res.updates.map(u => [u.id, u]));
 
-test("authoritative set covers the shadow-only sports + mlb/wnba; nba/nhl/nfl stay ESPN", () => {
+test("authoritative set covers the shadow-only sports + mlb/wnba/nfl; nba/nhl stay ESPN", () => {
   // 16 shadow-only/model-free + mlb + wnba (folded in 2026-08-04, post model teardown — no model
   // accuracy to protect, and settlement grading makes the Kalshi side apples-to-apples with Poly's
   // own UMA settlement for the cross-venue vig). +8 2026-08-10: epl/laliga/seriea/ligue1/jleague
   // (Big 5 + J-League) and laliga2/usl/copalib (La Liga 2 / USL Championship / Copa Lib).
   // +2 2026-08-10: ufc (KXUFCFIGHT) + boxing (KXBOXING) match-winner model-free.
-  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 31);
+  // +1 2026-08-10: nfl, with the KXNFLGAME build. Folded on the same reasoning as mlb/wnba, and
+  // cut over BETWEEN seasons on purpose — the five existing NFL prop series have no live rows, so
+  // no historical row changes meaning.
+  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 32);
   for (const s of ["tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb",
                    "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem", "dimayor",
                    "copadobrasil", "eredivisie",
                    "epl", "laliga", "seriea", "ligue1", "jleague",
                    "laliga2", "usl", "copalib",
                    "mlb", "wnba", "dota2", "kleague",
-                   "ufc", "boxing"]) {
+                   "ufc", "boxing", "nfl"]) {
     assert.ok(isSettlementAuthoritative(s), `${s} should be authoritative`);
   }
-  // nba/nhl/nfl stay ESPN-graded FOR NOW — off-season / not yet started, no Poly overlap. Fold the
-  // same way when they return in season.
-  for (const s of ["nba", "nhl", "nfl"]) {
+  // nba/nhl stay ESPN-graded FOR NOW — off-season, no Poly overlap. Fold the same way when they
+  // return in season, ideally between seasons as nfl was.
+  for (const s of ["nba", "nhl"]) {
     assert.ok(!isSettlementAuthoritative(s), `${s} must NOT be authoritative`);
   }
 });

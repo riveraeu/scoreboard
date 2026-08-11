@@ -46,6 +46,14 @@ export const SETTLEMENT_AUTHORITATIVE_SPORTS = new Set([
   "mlb", "wnba",
   "dota2", "kleague",
   "ufc", "boxing",
+  // nfl folded in 2026-08-10 with the KXNFLGAME build, same reasoning as the 8/04 mlb/wnba
+  // cutover: post-teardown there is no model-accuracy analysis left that needs physical reality,
+  // and settlement grading makes the Kalshi side apples-to-apples with Polymarket's UMA
+  // settlement for the cross-venue vig. Clean moment to cut over — NFL is between seasons, so the
+  // five existing prop series (KXNFLPAYDS/RUYDS/REYDS/TDS/TOTAL) have no live rows and no
+  // historical row changes meaning. Costs the ESPN-vs-settlement disagreement tripwire for NFL,
+  // accepted on the same terms as mlb/wnba. nba/nhl stay ESPN-graded.
+  "nfl",
 ]);
 
 export function isSettlementAuthoritative(sport) {

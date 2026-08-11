@@ -26,12 +26,18 @@ export function parseGameTeams(eventTicker, sport) {
   // "CR" + everything else 3-char; nwsl: KC's 2-char code + everything else 3-char; argprem:
   // Central Córdoba's 2-char "CC" + Instituto's 4-char "IACC" + everything else 3-char;
   // copadobrasil: Remo's 2-char "CR" like brasileirao; ligue1: OL (Lyon) and OM (Marseille)
-  // are 2-char, making TFCOL/OMLIL etc. 5-char pairs). Try every (i, len-i) split and accept
+  // are 2-char, making TFCOL/OMLIL etc. 5-char pairs; nfl: EIGHT 2-char abbrs — GB/KC/LA/LV/
+  // NE/NO/SF/TB — so both 2+2 (GBKC) and 2+3 (GBSEA) pairs occur. NFL was added 2026-08-10 with
+  // the KXNFLGAME build, and it was already broken for KXNFLTOTAL: only "LA" has a TEAM_NORM
+  // entry (LAR's kalshi alias), so has2charPrefix was false for the other seven and GBKC fell
+  // past every branch to [null,null] while GBSEA hit the unvalidated 3+2 fallback and returned
+  // ["GBS","EA"] — a SILENT wrong parse of the exact class _VALID_TEAMS exists to stop).
+  // Try every (i, len-i) split and accept
   // the first one where both halves validate. Prefer longer left-side first so e.g. CONNIN parses
   // as CONN+IND (not CO+NNIN), NYRBCLT as NYRB+CLT (not NY+RBCLT), CRUCHA as CRU+CHA (not CR+UCHA)
   // while CRSAN still parses as CR+SAN. Uses _VALID_TEAMS (not TEAM_NORM), so registries with no
   // kalshi aliases (copadobrasil) are covered where the generic has2charPrefix path is not.
-  if ((sport === "wnba" || sport === "mls" || sport === "brasileirao" || sport === "nwsl" || sport === "argprem" || sport === "copadobrasil" || sport === "ligue1" || sport === "usl" || sport === "copalib") && valid) {
+  if ((sport === "wnba" || sport === "mls" || sport === "brasileirao" || sport === "nwsl" || sport === "argprem" || sport === "copadobrasil" || sport === "ligue1" || sport === "usl" || sport === "copalib" || sport === "nfl") && valid) {
     for (let i = Math.min(4, rest.length - 2); i >= 2; i--) {
       const a = normTeam(sport, rest.slice(0, i));
       for (let j = Math.min(4, rest.length - i); j >= 2; j--) {
