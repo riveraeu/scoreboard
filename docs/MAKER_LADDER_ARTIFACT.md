@@ -230,6 +230,19 @@ Two guards added to `ladderAnomalies` as a result:
 The obvious version of the second guard — counting non-degenerate days — was **rejected on the data**.
 At the ladder ends degenerate days are legitimate and common (`mlb|f5spread|85-89` runs 10/21,
 `90-96` runs 10/13, both correctly calibrated), so that rule would silence precisely the extreme cells
-this detector was rewritten to watch. Distinct games is the same signal without the price dependence.
+this detector was rewritten to watch.
 
-The span guard alone takes the board from 13 flags to 10 and clears both 55-59 and 40-44.
+**Measured outcome, including where the reasoning above was wrong.** Live, the board went 13 flags →
+**9**. Every one of those four was cleared by `maxSpanC`; **`minTickers` cleared nothing and is so far
+inert.** More importantly it does NOT measure the thinness it was introduced for: `mlb|f5spread|55-59`
+touches **25 distinct games**, comfortably past the floor, while still having 14 of 17 days sit at a
+single game. Fills concentrate into few games *per day* without the cell's total game count being
+small, so a total-distinct-games floor cannot see it. `minTickers` is retained as a sane sample floor
+— a cell drawn from under 5 games should not be tested against anything — but it is **not** the answer
+to the degenerate-day problem, and that problem currently has no guard. The span guard is what caught
+these cells, for a different reason than the one that motivated the search.
+
+**One flag survived every guard and is not thinness.** `mlb|f5spread|60-64`: 189 fills, **63 distinct
+games**, 19 days, `sideWon` 0.55 against a fitted 0.75. That is a well-sampled cell sitting well off
+its own ladder, and it remains unexplained. Its book is clean (per the audit above) and its grading
+class was verified. It is the one genuine open item from this investigation.
