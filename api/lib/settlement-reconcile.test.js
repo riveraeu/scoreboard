@@ -25,12 +25,13 @@ test("authoritative set covers the shadow-only sports + mlb/wnba/nfl; nba/nhl st
   // cut over BETWEEN seasons on purpose — the five existing NFL prop series have no live rows, so
   // no historical row changes meaning.
   // +1 2026-08-10: kbo (KXKBOGAME), same no-ESPN ticker-parsed shape as kleague.
-  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 33);
+  // +1 2026-08-10: ligaportugal (KXLIGAPORTUGALGAME), 18th model-free soccer league.
+  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 34);
   for (const s of ["tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb",
                    "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem", "dimayor",
                    "copadobrasil", "eredivisie",
                    "epl", "laliga", "seriea", "ligue1", "jleague",
-                   "laliga2", "usl", "copalib",
+                   "laliga2", "usl", "copalib", "ligaportugal",
                    "mlb", "wnba", "dota2", "kleague", "kbo",
                    "ufc", "boxing", "nfl"]) {
     assert.ok(isSettlementAuthoritative(s), `${s} should be authoritative`);

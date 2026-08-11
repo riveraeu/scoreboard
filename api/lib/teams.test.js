@@ -50,6 +50,8 @@ const LEGACY_TEAM_NORM = {
   laliga2: {},    // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
   usl: {},        // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
   copalib: {},    // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
+  ligaportugal: {}, // canonical = Kalshi abbrs, no aliases; the 14 espnScore remaps (incl. the
+  // EST=Estoril / ESA=Estrela collision) live in CANONICAL_TO_ESPN, not TEAM_NORM.
 };
 
 const LEGACY_VALID_TEAMS = {
@@ -77,6 +79,7 @@ const LEGACY_VALID_TEAMS = {
   laliga2: ["ALB","ALM","AND","BUR","CAD","CAS","CDE","CEL","CEU","COR","EIB","GIJ","GIR","GRA","LEG","LPA","MAL","OVI","RS2","SAB","TEN","VLL"],
   usl: ["BIR","BRO","CHS","CSS","DET","HFD","IND","JAX","LAS","LEX","LFC","LOU","MIA","MON","NEW","OAK","OC","PAS","PIT","RHI","SAN","SRP","TBR","TUL"],
   copalib: ["CARC","COQ","COR","CPO","CRU","ELP","FLA","FLU","IND","LDU","MIR","PAL","PLA","RIV","TOL","UC"],
+  ligaportugal: ["ACV","ALV","ARO","BEN","BRA","CAS","CDN","CSM","ESA","EST","FAM","FCP","GIL","MOR","RAV","SCL","SPO","VIT"],
 };
 
 const LEGACY_CANONICAL_TO_ESPN = {
@@ -100,6 +103,7 @@ const LEGACY_CANONICAL_TO_ESPN = {
   laliga2: { CDE: "ELD", GIJ: "RSG", MAL: "MLL", RS2: "RSO2", SAB: "CDS" },
   usl:     { BIR: "BRM", BRO: "BFKC", CSS: "COS", IND: "INDY", LAS: "LVL", LFC: "LOU", MON: "MTB", NEW: "NMU", OC: "OCSC", PAS: "ELP", SAN: "SAFC", SRP: "SAC" },
   copalib: { CARC: "ROS", CPO: "CPT", ELP: "EST", IND: "IDV", UC: "CDUC" },
+  ligaportugal: { ARO: "FCA", BEN: "SLB", BRA: "SCB", CAS: "CPAC", CSM: "MAR", ESA: "EST", EST: "EPF", FAM: "FCF", GIL: "GVFC", MOR: "MFC", RAV: "RAFC", SCL: "CDSC", SPO: "SCP", VIT: "VSC" },
 };
 
 const LEGACY_WNBA_TEAM_IDS = {

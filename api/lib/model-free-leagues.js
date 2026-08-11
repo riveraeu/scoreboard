@@ -115,6 +115,13 @@ export const MODEL_FREE_LEAGUES = {
   // Default canonTeam suffices (no ESPN-internal abbr collision). UC (2-char) and CARC (4-char)
   // → copalib in parse-teams.js variable-length allowlist (this commit).
   copalib: { espnSlug: "conmebol.libertadores" },
+  // 18th league, adopted 2026-08-10 — Liga Portugal (KXLIGAPORTUGALGAME). ESPN slug por.1 verified
+  // live: 33 fixtures Aug 8–Sep 1, 27/27 real books, 3¢ median spread, overround 1.04. Default
+  // canonTeam suffices (the 18 ESPN abbrs are mutually distinct). The registry carries 14 espnScore
+  // remaps — the worst divergence of any league here — including a true EST collision (Kalshi EST =
+  // Estoril vs ESPN EST = Estrela) and CSM = Marítimo, both resolved by same-date fixture matching
+  // rather than name similarity. See the teams.js block for the evidence.
+  ligaportugal: { espnSlug: "por.1" },
 };
 
 export const MODEL_FREE_LEAGUE_KEYS = Object.keys(MODEL_FREE_LEAGUES);

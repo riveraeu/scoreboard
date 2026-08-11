@@ -171,6 +171,11 @@ export const SERIES_CONFIG = {
   // Unlike kleague, the ticker DOES carry HHMM (KXKBOGAME-26AUG130600LGKIW) so gameTime is real
   // and these rows are maker-quotable. No ESPN slug — settlement-authoritative only.
   KXKBOGAME: { sport: "kbo", league: "kbo", stat: "ml", col: "ML", gameType: "tickerMl" },
+  // Liga Portugal / Primeira Liga (adopted 2026-08-10) — 18th model-free maker league, pure config.
+  // 27/27 real books, 3¢ median spread, overround 1.04, $19.8k volume; ESPN slug por.1. The whole
+  // cost of this build was the team registry: 14 of 18 codes need an espnScore remap, including a
+  // real EST collision (Kalshi Estoril vs ESPN Estrela). See teams.js `ligaportugal`.
+  KXLIGAPORTUGALGAME: { sport: "ligaportugal", league: "ligaportugal", stat: "game", col: "ML", gameType: "modelFreeMl" },
   // UFC match-winner (KXUFCFIGHT) + Boxing match-winner (KXBOXING) — model-free maker (built
   // 2026-08-10). Kalshi lists one YES market per fighter per bout (e.g. KXUFCFIGHT-26AUG15JOHOCH-JOH
   // and -OCH). YES-side only (same pattern as Dota2): each fighter's YES market covers one direction,

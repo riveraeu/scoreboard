@@ -480,6 +480,40 @@ export const TEAMS = {
     { abbr: "SEO" }, // FC Seoul
     { abbr: "DAJ" }, // Daejeon Citizen
   ],
+  // Liga Portugal / Primeira Liga (KXLIGAPORTUGALGAME — adopted 2026-08-10). ESPN slug por.1.
+  // WORST Kalshi-vs-ESPN abbr divergence of any league here: only 4 of 18 codes are identity
+  // (ACV/ALV/CDN/FCP); the other 14 need an espnScore remap. Every mapping below was verified by
+  // matching each Kalshi event ticker to the SAME-DATE por.1 fixture — not by name similarity,
+  // which is exactly what would have gotten the two hard ones wrong:
+  //   • EST/ESA is a genuine COLLISION. Kalshi EST = Estoril, but ESPN's OWN "EST" = Estrela.
+  //     Kalshi ESA = Estrela Amadora. So an identity map on EST silently points Estoril at
+  //     Estrela — the CHNSL "SHE" / LigaMX "ATL" / DIMAYOR "CAL" class, fourth instance.
+  //   • CSM is subtitled only "Madeira", and BOTH Marítimo and Nacional are Madeira clubs
+  //     (Kalshi lists Nacional separately as CDN). Resolved on evidence: Kalshi's 26AUG16FAMCSM
+  //     is ESPN's "MAR (Maritimo) @ FCF (Famalicao)" on 2026-08-16 → CSM = Marítimo.
+  // All 18 codes are uniformly 3-char, so no parseGameTeams allowlist entry is needed, and the
+  // 18 ESPN abbrs are mutually distinct, so the default canonTeam inversion suffices (no
+  // wrapCanonTeam — there is no ESPN-internal duplicate like argprem's RIV).
+  ligaportugal: [
+    { abbr: "ACV" },                     // Académico de Viseu
+    { abbr: "ALV" },                     // Alverca
+    { abbr: "ARO", espnScore: "FCA"  },  // Arouca
+    { abbr: "BEN", espnScore: "SLB"  },  // SL Benfica
+    { abbr: "BRA", espnScore: "SCB"  },  // SC Braga
+    { abbr: "CAS", espnScore: "CPAC" },  // Casa Pia
+    { abbr: "CDN" },                     // CD Nacional (Madeira)
+    { abbr: "CSM", espnScore: "MAR"  },  // CS Marítimo — the other Madeira club; see note above
+    { abbr: "ESA", espnScore: "EST"  },  // Estrela Amadora → ESPN's EST
+    { abbr: "EST", espnScore: "EPF"  },  // Estoril → ESPN's EPF; NOT ESPN's EST
+    { abbr: "FAM", espnScore: "FCF"  },  // FC Famalicão
+    { abbr: "FCP" },                     // FC Porto
+    { abbr: "GIL", espnScore: "GVFC" },  // Gil Vicente
+    { abbr: "MOR", espnScore: "MFC"  },  // Moreirense
+    { abbr: "RAV", espnScore: "RAFC" },  // Rio Ave
+    { abbr: "SCL", espnScore: "CDSC" },  // Santa Clara (Azores)
+    { abbr: "SPO", espnScore: "SCP"  },  // Sporting CP
+    { abbr: "VIT", espnScore: "VSC"  },  // Vitória de Guimarães
+  ],
   // KBO (Korean baseball, KXKBOGAME — adopted 2026-08-10). Canonical = Kalshi's own codes; no ESPN
   // slug exists for the KBO, so there is nothing to alias to and resolution is settlement-only.
   // All 10 clubs confirmed against live Kalshi subtitles 2026-08-10. NOTE the 2-char "LG": that
