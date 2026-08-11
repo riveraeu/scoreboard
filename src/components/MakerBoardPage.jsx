@@ -10,7 +10,7 @@ import React from 'react';
 // focused view. The integrity checks those surfaced are NOT lost — they still run server-side and
 // are reachable on demand: /api/shadow-report?makerQueueCheck=1 (V1 vs V2), ?makerSideAudit=,
 // /api/kalshi-dryrun-check (grading), and the resolver's own tripwires. The table itself also keeps
-// its integrity signals: the anomaly ring (outcome pinned against price) and reliability muting.
+// its integrity signals: the anomaly ring (out of LADDER order — see below) and reliability muting.
 // If a bug-catcher or a due-checkpoint surface is wanted back on the page later, restore from git
 // history (the components lived in this file through commit c04dda0).
 
@@ -122,7 +122,7 @@ function CategoryBandHeatmap({ cells, maxRows = 40, preregs = [] }) {
                 const cellTxt = c.perContract != null ? `${c.perContract > 0 ? "+" : ""}${Math.round(c.perContract)}` : "";
                 const preInfo = pre ? ` · ★ pre-reg: ${pre.label} · ${pre.verdict} · checkpoint ${pre.checkpoint}` : "";
                 return (
-                  <span key={b} title={`${r.label} ${b}¢: ${c.perContract > 0 ? "+" : ""}${c.perContract}¢/ct · ${c.fills} fills · sideWon ${c.sideWon} · ${c.days}d · day-clustered CI ${ciTxt} (${c.reliable ? "clears 0" : "straddles 0 — not distinguishable from noise"}) · top day ${Math.round((c.topDayShare ?? 0) * 100)}% of |PnL|${c.anomaly ? " · ANOMALY: outcome pinned against price" : ""}${preInfo}`}
+                  <span key={b} title={`${r.label} ${b}¢: ${c.perContract > 0 ? "+" : ""}${c.perContract}¢/ct · ${c.fills} fills · sideWon ${c.sideWon} · ${c.days}d · day-clustered CI ${ciTxt} (${c.reliable ? "clears 0" : "straddles 0 — not distinguishable from noise"}) · top day ${Math.round((c.topDayShare ?? 0) * 100)}% of |PnL|${c.anomaly && c.anomalyReason ? ` · ANOMALY: ${c.anomalyReason}` : ""}${preInfo}`}
                     style={{ position:"relative", width:colW, height:22, marginRight:1, boxSizing:"border-box",
                       display:"flex", alignItems:"center", justifyContent:"center",
                       fontVariantNumeric:"tabular-nums", color: c.reliable ? C.text : C.gray,
@@ -141,7 +141,7 @@ function CategoryBandHeatmap({ cells, maxRows = 40, preregs = [] }) {
           );
         })}
         <div style={{ color:C.dim, fontSize:9, marginTop:5, lineHeight:1.5 }}>
-          ¢/contract (rounded), graded fills · <b>brightness = reliability</b> (day-clustered CI clear of zero), NOT size — a big number in a pale cell is noise · <span style={{ color:C.red }}>▢</span> anomaly: outcome pinned against price · <span style={{ color:C.blue }}>▬</span> underline = pre-registered forward test (blue=collecting, green=on-track, amber=failing, red=kill) · hover any cell for detail
+          ¢/contract (rounded), graded fills · <b>brightness = reliability</b> (day-clustered CI clear of zero), NOT size — a big number in a pale cell is noise · <span style={{ color:C.red }}>▢</span> anomaly: out of ladder order (realized outcome departs from this category’s own price→outcome curve — the wrong-side-fill signature; being extreme is NOT anomalous) · <span style={{ color:C.blue }}>▬</span> underline = pre-registered forward test (blue=collecting, green=on-track, amber=failing, red=kill) · hover any cell for detail
           {rows.length > shown.length ? ` · +${rows.length - shown.length} lower-volume categories hidden` : ""}
         </div>
       </div>

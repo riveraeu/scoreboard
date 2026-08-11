@@ -162,3 +162,35 @@ Every number above is contracts-weighted from `makerBoard.categoryBands` in
 `/api/shadow-report?bust=1` (report window `since` 2026-07-12, generated 2026-08-11T14:10Z, 710 cells,
 283,265 quote segments over 41 days, avgAsk 51.8). Regenerate rather than hand-editing; the halves are
 `band` split at 50 and pooled as `Σ(perContract × contracts) / Σ(contracts)`.
+
+## Addendum — the anomaly detector was the same mistake (2026-08-11)
+
+The heatmap's anomaly flag ran the identical error and was fixed the same day. Its test was
+`tail = (1−p)^fills < 0.001` with `p` = the band midpoint — i.e. its null was **price equals realized
+frequency**, exactly what this document falsifies. Consequences:
+
+- **6 of 6 flagged cells were false positives.** Each sat within 0.07 of its own ladder while sitting
+  0.12–0.28 from its price. They were the tops and bottoms of steep ladders, nothing more.
+- **It could not see the bug it was named for.** It only evaluated cells whose `sideWon` was *exactly*
+  0 or 1. A wrong-side fill does not pin an outcome, it INVERTS one — a 15-19¢ cell grading ~0.85
+  where ~0.07 belongs. That is a colossal departure from the ladder and the old test never looked.
+- Two unit bugs alongside: `sideWon` is contract-weighted but the tail used `fills` as its binomial n,
+  and there was no day-clustering at all.
+
+Replaced by `ladderAnomalies` (`api/lib/maker-stats.js`): the null is now the category's own monotone
+price→outcome curve (weighted isotonic fit, leave-one-out), and a cell flags when its residual is
+significant against the **combined** day-clustered uncertainty of cell *and* reference, and exceeds a
+0.15 practical floor. A category-level check catches the wholesale side-flip that per-cell testing
+structurally cannot see. Validated by replaying 13 days of real per-day data: **43 flags** with the
+reference treated as exact and no day-variance → **27** with real day-variance → **14** once the
+reference's own uncertainty was propagated. Every reduction came from fixing a real statistical error;
+none came from moving a threshold.
+
+**The redefinition and the pre-registrations.** `anomaly` appears as documentary criterion 6 in 11
+`docs/MAKER_*_PREREG.md` files ("No anomaly flag on the cell"). It is **not** machine-enforced —
+`evaluatePrereg` runs five checks and `maker-prereg.js` never reads the field — so no running forward
+test changes behaviour, and no threshold in any pre-registration moved. But the *meaning* of criterion
+6 did change mid-flight, and that is recorded here rather than by editing 11 immutable documents. One
+consequence worth stating: `wnba|totalPoints|15-19`, the flagged cell behind live prereg
+`wnbatp-1519`, is **not** anomalous under the corrected test — its `sideWon` of 0 is the smooth
+continuation of its neighbours (0 at 10-14, 0.041 at 20-24), never a grading fault.

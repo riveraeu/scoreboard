@@ -1,7 +1,7 @@
 // node --test api/lib/maker-stats.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { contractWeightedPnl, weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl, quotedOutcomesByBand, adverseSelectionWithinBand } from "./maker-stats.js";
+import { contractWeightedPnl, weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl, quotedOutcomesByBand, adverseSelectionWithinBand, isotonicFit, ladderAnomalies, LADDER_BAR } from "./maker-stats.js";
 
 // Build the six sums from explicit [contracts, pnl] fills, so each test states its data plainly
 // instead of hand-computing sums.
@@ -380,4 +380,111 @@ test("the two compose to reproduce the live 2026-07-26 production numbers", () =
   assert.equal(got.gapCents, 0.51);
   assert.equal(got.byBand.filter(b => b.gapCents < 0).length, 4, "4 of 8 bands: fills BETTER than quotes");
   assert.equal(got.byBand.find(b => b.band === "75-79").gapCents, 8.61, "the one band carrying the aggregate");
+});
+
+// ── Ladder-calibrated anomaly detection (2026-08-11) ──────────────────────────────────────────
+// The flag this replaces asked whether a cell's outcome was pinned against its own PRICE. That is
+// the null the band-ladder artifact falsifies, so it fired on the ends of steep ladders and could
+// not see an INVERTED cell at all — the actual wrong-side-fill signature. These tests pin both
+// halves of the fix: real ladder ends must go quiet, and a real inversion must fire.
+// See docs/MAKER_LADDER_ARTIFACT.md.
+
+// Build a cell whose per-day rows reproduce a target sideWon with no day-to-day variance unless asked.
+const ladderCell = (band, mid, sideWon, { fills = 60, days = 6, spread = 0 } = {}) => ({
+  band, mid, fills, contracts: fills * 7,
+  sideWon,
+  byDay: Array.from({ length: days }, (_, i) => {
+    const c = (fills * 7) / days;
+    const rate = Math.min(1, Math.max(0, sideWon + (i % 2 ? spread : -spread)));
+    return { contracts: c, won: c * rate };
+  }),
+});
+
+test("isotonicFit: pools adjacent violators into a weighted mean, leaves monotone input alone", () => {
+  assert.deepEqual(isotonicFit([{ y: 1, w: 1 }, { y: 2, w: 1 }, { y: 3, w: 1 }]), [1, 2, 3]);
+  // 3 then 1 violates; both pool to their weighted mean 2.
+  assert.deepEqual(isotonicFit([{ y: 3, w: 1 }, { y: 1, w: 1 }]), [2, 2]);
+  // Weights matter: a heavy low point drags the pooled level toward itself.
+  const [a] = isotonicFit([{ y: 10, w: 1 }, { y: 0, w: 9 }]);
+  assert.equal(a, 1, "(1*10 + 9*0) / 10");
+  assert.deepEqual(isotonicFit([]), []);
+});
+
+test("a real steep ladder END is NOT anomalous (the 6/6 false positives this replaces)", () => {
+  // wnba|totalPoints as it actually stood on 2026-08-11: sideWon 0 at 15-19 is the smooth
+  // continuation of 0 at 10-14 and 0.041 at 20-24, and sideWon 1 at 80-84 continues 0.935/0.928.
+  const cells = [
+    ladderCell("10-14", 12, 0), ladderCell("15-19", 17, 0), ladderCell("20-24", 22, 0.041),
+    ladderCell("25-29", 27, 0.038), ladderCell("30-34", 32, 0.105), ladderCell("35-39", 37, 0.229),
+    ladderCell("55-59", 57, 0.697), ladderCell("70-74", 72, 0.935), ladderCell("75-79", 77, 0.928),
+    ladderCell("80-84", 82, 1),
+  ];
+  const r = ladderAnomalies(cells);
+  assert.equal(r.get("15-19").anomaly, false, "bottom rung at sideWon 0 — extreme, but in ladder order");
+  assert.equal(r.get("80-84").anomaly, false, "top rung at sideWon 1 — same");
+  assert.equal([...r.values()].filter(v => v.anomaly).length, 0, "a clean ladder flags nothing");
+});
+
+test("an INVERTED cell fires — the wrong-side-fill signature the old test could not see", () => {
+  // Identical ladder, except 15-19 grades at 0.85 instead of ~0. sideWon is neither 0 nor 1, so the
+  // old `sideWon === 0 || sideWon === 1` gate would never even evaluate it.
+  const cells = [
+    ladderCell("10-14", 12, 0), ladderCell("15-19", 17, 0.85), ladderCell("20-24", 22, 0.041),
+    ladderCell("25-29", 27, 0.038), ladderCell("30-34", 32, 0.105), ladderCell("35-39", 37, 0.229),
+    ladderCell("55-59", 57, 0.697), ladderCell("80-84", 82, 1),
+  ];
+  const r = ladderAnomalies(cells);
+  assert.equal(r.get("15-19").anomaly, true);
+  assert.match(r.get("15-19").anomalyReason, /out of ladder order/);
+  assert.ok(r.get("15-19").residual > 0.5, "residual carries the size of the departure");
+});
+
+test("a wholesale category side-flip is caught at the LADDER level, not per cell", () => {
+  // Every band inverted together: each cell still sits close to the (flattened) fit, so per-cell
+  // residuals stay small. This is the likeliest real bug shape — one emit module keying the wrong side.
+  const cells = [
+    ladderCell("15-19", 17, 0.95), ladderCell("30-34", 32, 0.80),
+    ladderCell("60-64", 62, 0.20), ladderCell("80-84", 82, 0.05),
+  ];
+  const r = ladderAnomalies(cells);
+  assert.ok([...r.values()].every(v => v.anomaly === true), "the whole category is flagged");
+  assert.match(r.get("15-19").anomalyReason, /ladder inverted/);
+});
+
+test("failure-closed: too sparse to calibrate flags nothing (never falls back to the price null)", () => {
+  assert.equal([...ladderAnomalies([ladderCell("15-19", 17, 0), ladderCell("80-84", 82, 1)]).values()]
+    .filter(v => v.anomaly).length, 0, "2 bands is not a ladder");
+  // Thin cells cannot serve as references, so a ladder of them is still not calibratable.
+  const thin = [ladderCell("10-14", 12, 0, { fills: 3 }), ladderCell("20-24", 22, 0.1, { fills: 4 }),
+    ladderCell("30-34", 32, 0.3, { fills: 2 }), ladderCell("40-44", 42, 0.5, { fills: 3 }),
+    ladderCell("50-54", 52, 0.9, { fills: 1 })];
+  assert.equal([...ladderAnomalies(thin).values()].filter(v => v.anomaly).length, 0);
+  for (const bad of [null, undefined, [], "x"]) assert.equal(ladderAnomalies(bad).size, 0);
+});
+
+test("a departure must be BOTH significant and materially large", () => {
+  const cells = [
+    ladderCell("10-14", 12, 0.10), ladderCell("20-24", 22, 0.20), ladderCell("30-34", 32, 0.30),
+    ladderCell("40-44", 42, 0.40), ladderCell("50-54", 52, 0.50),
+  ];
+  // 0.34 where ~0.30 is fitted: zero day-variance makes it "significant", but it is below the
+  // 0.15 practical floor, so it must not flag.
+  const near = cells.map(c => c.band === "30-34" ? ladderCell("30-34", 32, 0.34) : c);
+  assert.equal(ladderAnomalies(near).get("30-34").anomaly, false);
+  // Same cell moved well clear of the floor does flag.
+  const far = cells.map(c => c.band === "30-34" ? ladderCell("30-34", 32, 0.75) : c);
+  assert.equal(ladderAnomalies(far).get("30-34").anomaly, true);
+});
+
+test("a cell below the fills/days bar is never tested (and never used as a reference)", () => {
+  const cells = [
+    ladderCell("10-14", 12, 0.10), ladderCell("20-24", 22, 0.20), ladderCell("30-34", 32, 0.30),
+    ladderCell("40-44", 42, 0.40), ladderCell("50-54", 52, 0.50),
+    ladderCell("60-64", 62, 0.02, { fills: 8 }),   // wildly out of order, but only 8 fills
+    ladderCell("70-74", 72, 0.02, { days: 2 }),    // enough fills, too few days for an interval
+  ];
+  const r = ladderAnomalies(cells);
+  assert.equal(r.get("60-64").anomaly, false, "under minFills — not tested");
+  assert.equal(r.get("70-74").anomaly, false, "under minDays — no clustered interval");
+  assert.equal(r.get("30-34").anomaly, false, "and neither one polluted the reference ladder");
 });

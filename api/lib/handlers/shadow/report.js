@@ -31,7 +31,7 @@ import { isArmed as isMakerV2Armed } from "../../maker-live.js";
 import { fetchKalshiSettlements, resolveTickerSideViaKalshi } from "../../kalshi-settlement.js";
 import { PREREG_CELLS, evaluatePrereg } from "../../maker-prereg.js";
 import { weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl, quotedOutcomesByBand,
-  adverseSelectionWithinBand, exitCounterfactual } from "../../maker-stats.js";
+  adverseSelectionWithinBand, exitCounterfactual, ladderAnomalies } from "../../maker-stats.js";
 
 // Maker ask-price band buckets, as a SQL CASE over any ask column. ONE definition (2026-07-26) —
 // previously copy-pasted per query, and the quoted-vs-filled comparison is only meaningful if both
@@ -825,10 +825,12 @@ async function handleShadowReport({ path, request, env, cache }) {
       const c = Number(r.contracts || 0), p = Number(r.pnl_total || 0), w = Number(r.won_contracts || 0);
       cell.fills += Number(r.fills || 0); cell.contracts += c; cell.pnl += p; cell.won += w;
       const _d = String(r.day).slice(0, 10);
-      const dcur = cell.byDay.get(_d) || { pnl: 0, contracts: 0 };
-      dcur.pnl += p; dcur.contracts += c; cell.byDay.set(_d, dcur);
+      const dcur = cell.byDay.get(_d) || { pnl: 0, contracts: 0, won: 0 };
+      dcur.pnl += p; dcur.contracts += c; dcur.won += w; cell.byDay.set(_d, dcur);
     }
-    const _categoryBands = [..._cbCells.values()].map(cell => {
+    const _bandMid = (band) => { const [lo, hi] = String(band).split("-").map(Number);
+      return Number.isFinite(lo) && Number.isFinite(hi) ? (lo + hi) / 2 : NaN; };
+    const _cbBase = [..._cbCells.values()].map(cell => {
       const perContract = cell.contracts ? cell.pnl / cell.contracts : null;
       const sideWon = cell.contracts ? cell.won / cell.contracts : null;
       const dayVals = [...cell.byDay.values()];
@@ -838,22 +840,36 @@ async function handleShadowReport({ path, request, env, cache }) {
       const _dc = dayClusteredPnl({ days: dayVals });
       const ciLo = _dc?.loCI ?? null, ciHi = _dc?.hiCI ?? null;
       const reliable = ciLo != null && ciLo > 0 && cell.byDay.size >= 3;
-      // Anomaly flag: outcome pinned against price at P < 0.1%. The wrong-side-fill signature is
-      // sideWon === 0 at a price implying it usually should win (or sideWon === 1 at a low price).
-      let anomaly = false;
-      if (cell.fills >= 20 && (sideWon === 0 || sideWon === 1)) {
-        const [_lo, _hi] = cell.band.split("-").map(Number);
-        const p = (_lo + _hi) / 2 / 100;
-        const tail = sideWon === 1 ? Math.pow(p, cell.fills) : Math.pow(1 - p, cell.fills);
-        anomaly = tail < 0.001;
-      }
       return { sport: cell.sport, category: cell.category, band: cell.band,
         fills: cell.fills, contracts: parseFloat(cell.contracts.toFixed(1)),
         perContract: perContract != null ? parseFloat(perContract.toFixed(2)) : null,
         sideWon: sideWon != null ? parseFloat(sideWon.toFixed(4)) : null,
         days: cell.byDay.size, ciLo, ciHi, reliable,
         topDayShare: topDayShare != null ? parseFloat(topDayShare.toFixed(2)) : null,
-        anomaly };
+        _mid: _bandMid(cell.band), _byDay: dayVals };
+    });
+    // Anomaly needs the whole LADDER, not one cell, so it runs as a second pass grouped by
+    // sport|category (api/lib/maker-stats.js `ladderAnomalies`). The old inline test asked whether a
+    // cell's outcome was pinned against its PRICE — the exact null the band-ladder artifact falsifies,
+    // which made it fire on the ends of steep ladders (6/6 false positives on 2026-08-11) while being
+    // structurally unable to see an INVERTED cell, the actual wrong-side-fill signature.
+    const _byCat = new Map();
+    for (const c of _cbBase) {
+      const k = `${c.sport}|${c.category}`;
+      if (!_byCat.has(k)) _byCat.set(k, []);
+      _byCat.get(k).push({ band: c.band, mid: c._mid, fills: c.fills, contracts: c.contracts,
+        sideWon: c.sideWon, byDay: c._byDay });
+    }
+    const _anom = new Map();
+    for (const [k, cells] of _byCat) {
+      try { for (const [band, v] of ladderAnomalies(cells)) _anom.set(`${k}|${band}`, v); }
+      catch { /* failure-closed: an unscored ladder leaves its cells unflagged, never throws */ }
+    }
+    const _categoryBands = _cbBase.map(c => {
+      const a = _anom.get(`${c.sport}|${c.category}|${c.band}`);
+      const { _mid, _byDay, ...rest } = c;
+      return { ...rest, anomaly: a?.anomaly === true, anomalyReason: a?.anomalyReason ?? null,
+        ladderFitted: a?.fitted ?? null, ladderResidual: a?.residual ?? null };
     }).sort((a, b) => b.contracts - a.contracts);
 
     makerBoard = {

@@ -312,3 +312,139 @@ export function exitCounterfactual({ fills, thresholds = [1, 2, 3, 5, 8, 12] } =
 
 const r2 = (v) => (v == null || !Number.isFinite(v) ? null : Math.round(v * 100) / 100);
 
+
+// ── Ladder-calibrated anomaly detection (2026-08-11) ──────────────────────────────────────────
+// Replaces the heatmap's original anomaly flag, whose null hypothesis was "the band's PRICE equals
+// its realized outcome frequency" (`tail = (1-p)^fills < 0.001` at the band midpoint). That null is
+// exactly what the band-ladder artifact falsifies — every book's realized sideWon is a monotone
+// function of price that sits well away from the diagonal — so the old test fired on the ENDS of
+// steep ladders and nowhere else. On 2026-08-11 all six flagged cells sat within 0.07 of their own
+// ladder while sitting 0.12-0.28 from their price: six for six false positives.
+//
+// Worse, it could not see the bug it was named for. It only evaluated cells whose sideWon was
+// EXACTLY 0 or 1, but a wrong-side fill does not pin an outcome — it INVERTS one, grading a 15-19c
+// cell at ~0.85 where ~0.07 belongs. That is a gross departure from the ladder and the old test
+// never looked at it. Detecting inversions, not extremes, is the point of this rewrite.
+//
+// The null here is the category's OWN monotone price->outcome curve, so "extreme because the ladder
+// is extreme" is no longer anomalous while "out of ladder order" is. See docs/MAKER_LADDER_ARTIFACT.md.
+
+export const LADDER_BAR = {
+  minFills: 20,        // cell must have this many fills to be TESTED, and to be trusted as a REFERENCE
+  minDays: 3,          // ... and enough days for a clustered interval (mirrors dayClusteredPnl)
+  minBands: 4,         // category needs this many reference-quality bands to have a ladder at all
+  minResidual: 0.15,   // practical floor: a significant but trivial departure is not an integrity signal
+};
+
+// Weighted isotonic regression (pool-adjacent-violators). Returns the monotone non-decreasing fit of
+// `y` on `x`-order that minimises weighted squared error — the maximum-likelihood ladder given only
+// the assumption we actually believe (outcome frequency rises with price). Points must be pre-sorted
+// by x. Pure, no allocation beyond the block list.
+export function isotonicFit(points) {
+  const pts = Array.isArray(points) ? points : [];
+  if (!pts.length) return [];
+  // Each block holds a pooled level; violations are merged backwards until the sequence is monotone.
+  const blocks = [];
+  for (const p of pts) {
+    const w = Number(p.w) > 0 ? Number(p.w) : 0;
+    if (!(w > 0)) continue;
+    let blk = { sumW: w, sumWY: w * Number(p.y), n: 1 };
+    while (blocks.length && (blocks[blocks.length - 1].sumWY / blocks[blocks.length - 1].sumW) > (blk.sumWY / blk.sumW)) {
+      const prev = blocks.pop();
+      blk = { sumW: prev.sumW + blk.sumW, sumWY: prev.sumWY + blk.sumWY, n: prev.n + blk.n };
+    }
+    blocks.push(blk);
+  }
+  const out = [];
+  for (const b of blocks) { const lvl = b.sumWY / b.sumW; for (let i = 0; i < b.n; i++) out.push(lvl); }
+  return out;
+}
+
+// Day-clustered interval for a cell's contract-weighted sideWon. Same unit and same clustering as
+// dayClusteredPnl: contracts inside a fill share one outcome, and fills inside a day resolve off a
+// few correlated games, so the DAY is the independent observation.
+function dayClusteredRate({ days, z = Z_95 } = {}) {
+  const rows = (Array.isArray(days) ? days : []).filter(d => Number(d?.contracts) > 0);
+  const m = rows.length;
+  const C = rows.reduce((s, d) => s + Number(d.contracts), 0);
+  if (m < 1 || !(C > 0)) return { days: m, mean: null, loCI: null, hiCI: null };
+  const mean = rows.reduce((s, d) => s + Number(d.won || 0), 0) / C;
+  if (m < 2) return { days: m, mean, loCI: null, hiCI: null };
+  let ss = 0;
+  for (const d of rows) {
+    const resid = Number(d.won || 0) - mean * Number(d.contracts);
+    ss += resid * resid;
+  }
+  const se = ss > 0 ? Math.sqrt((m / (m - 1)) * ss / (C * C)) : 0;
+  return { days: m, mean, se, loCI: mean - z * se, hiCI: mean + z * se };
+}
+
+// Score one category's ladder. `cells` = every band in ONE sport|category, each
+// `{band, mid, fills, contracts, sideWon, byDay:[{contracts, won}]}`. Returns a Map band -> {anomaly,
+// anomalyReason, fitted, residual}. Failure-closed: a ladder too sparse to calibrate against yields
+// no flags at all rather than falling back to the price null this replaces.
+export function ladderAnomalies(cells, bar = LADDER_BAR) {
+  const out = new Map();
+  const all = (Array.isArray(cells) ? cells : []).filter(c => c && Number.isFinite(c.mid) && c.sideWon != null)
+    .slice().sort((a, b) => a.mid - b.mid);
+  for (const c of all) out.set(c.band, { anomaly: false, anomalyReason: null, fitted: null, residual: null });
+
+  const refs = all.filter(c => (c.fills || 0) >= bar.minFills);
+  if (refs.length < bar.minBands) return out;   // no ladder to calibrate against
+
+  // Category-level check FIRST: a side-flip in one emit module inverts every band together, which
+  // leaves each cell close to a (flattened) fit and so is invisible to the per-cell residual. A
+  // ladder whose realized outcome rate FALLS as price rises is itself the integrity signal.
+  const lo = refs.slice(0, Math.ceil(refs.length / 2)), hi = refs.slice(Math.floor(refs.length / 2));
+  const wMean = (xs) => { let w = 0, s = 0; for (const c of xs) { const cw = Number(c.contracts) || 0; w += cw; s += cw * c.sideWon; } return w > 0 ? s / w : null; };
+  const loM = wMean(lo), hiM = wMean(hi);
+  if (loM != null && hiM != null && hiM < loM - bar.minResidual) {
+    for (const c of all) out.set(c.band, { anomaly: true, fitted: null, residual: null,
+      anomalyReason: `ladder inverted: sideWon falls ${r2(loM)}→${r2(hiM)} as price rises` });
+    return out;
+  }
+
+  for (const c of all) {
+    if ((c.fills || 0) < bar.minFills) continue;
+    const dc = dayClusteredRate({ days: c.byDay });
+    if ((dc.days || 0) < bar.minDays || dc.mean == null) continue;
+    // Leave-one-out: the cell under test must not contribute to the reference it is judged against,
+    // or it drags the fit toward itself and a real inversion partly hides its own evidence.
+    const loo = refs.filter(r => r.band !== c.band);
+    if (loo.length < bar.minBands - 1) continue;
+    const fitAll = isotonicFit(loo.map(r => ({ y: r.sideWon, w: Number(r.contracts) || 1 })));
+    // The fit is defined on the LOO ladder; read it at the neighbouring rung on each side and
+    // interpolate BY PRICE DISTANCE. Averaging the two levels instead would misread an uneven ladder
+    // — bands are not equally spaced (90-96 is 7c wide) and a category can skip rungs entirely, so a
+    // cell sitting just above a gap would be compared against a midpoint it is nowhere near.
+    // At an END there is no outward rung, so the nearest fitted level is used — which is why an end
+    // can only flag by inverting INWARD, never by being extreme.
+    let iAbove = loo.findIndex(r => r.mid > c.mid);
+    if (iAbove < 0) iAbove = loo.length;
+    const seOf = (r) => { const d = dayClusteredRate({ days: r.byDay }); return Number.isFinite(d.se) ? d.se : null; };
+    const below = iAbove > 0 ? { y: fitAll[iAbove - 1], x: loo[iAbove - 1].mid, se: seOf(loo[iAbove - 1]) } : null;
+    const above = iAbove < loo.length ? { y: fitAll[iAbove], x: loo[iAbove].mid, se: seOf(loo[iAbove]) } : null;
+    let fitted = null, seFit = null;
+    if (below && above) {
+      const span = above.x - below.x;
+      const t = span > 0 ? (c.mid - below.x) / span : 0.5;
+      fitted = below.y + t * (above.y - below.y);
+      // The REFERENCE is an estimate too. Testing against it as though it were known exactly was the
+      // first version's error: it treated a noisy neighbouring rung as ground truth and so flagged
+      // ordinary mid-ladder roughness (27 cells on the 2026-08-11 board, where the ring should be
+      // near-empty). Interpolation weights carry through to the variance.
+      seFit = Math.sqrt(((1 - t) * (below.se ?? 0)) ** 2 + (t * (above.se ?? 0)) ** 2);
+    } else { const e = below || above; fitted = e?.y ?? null; seFit = e?.se ?? 0; }
+    if (fitted == null) continue;
+    const residual = dc.mean - fitted;
+    // Significant against the COMBINED uncertainty of cell and reference, AND materially large.
+    const seTot = Math.sqrt((Number.isFinite(dc.se) ? dc.se : 0) ** 2 + (seFit || 0) ** 2);
+    const sig = seTot > 0 ? Math.abs(residual) > Z_95 * seTot : Math.abs(residual) >= bar.minResidual;
+    const anomaly = sig && Math.abs(residual) >= bar.minResidual;
+    out.set(c.band, { anomaly, fitted: r2(fitted), residual: r2(residual),
+      anomalyReason: anomaly
+        ? `sideWon ${r2(dc.mean)} vs ladder-fitted ${r2(fitted)} (${residual > 0 ? "+" : ""}${r2(residual)}) — out of ladder order`
+        : null });
+  }
+  return out;
+}
