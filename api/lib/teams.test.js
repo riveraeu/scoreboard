@@ -21,7 +21,10 @@ const LEGACY_TEAM_NORM = {
   wnba: { CONNECTICU: "CONN", CON: "CONN", DALLAS: "DAL", WAS: "WSH", GSV: "GS", LAS: "LA", PDX: "POR" },
   nhl: { NJ: "NJD", TB: "TBL", LA: "LAK", SJ: "SJS", VGK: "VGK" },
   mlb: { KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", CHW: "CWS", AZ: "ARI", KC: "KC", SD: "SD", SF: "SF", TB: "TB", OAK: "ATH", WSN: "WSH", WAS: "WSH" },
-  nfl: { LA: "LAR" },
+  // JAC/WAS added 2026-08-10 with the KXNFLGAME build — Kalshi's spellings for Jacksonville and
+  // Washington, whose canonical/ESPN forms are JAX/WSH. Four live 2026 events failed to parse
+  // without them.
+  nfl: { LA: "LAR", JAC: "JAX", WAS: "WSH" },
   lmb: {}, // canonical = Kalshi abbrs, no aliases
   mls: {}, // canonical = Kalshi abbrs, no aliases (like lmb)
   brasileirao: {}, // canonical = Kalshi abbrs, no aliases (like mls/lmb)

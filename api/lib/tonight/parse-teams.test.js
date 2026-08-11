@@ -88,6 +88,12 @@ test("parseGameTeams: NFL variable-length splits (eight 2-char abbrs)", () => {
   // 5-char and 6-char forms must land on different teams.
   assert.deepEqual(parseGameTeams(ticker("LACHI"), "nfl"), ["LAR", "CHI"]);
   assert.deepEqual(parseGameTeams(ticker("LACCHI"), "nfl"), ["LAC", "CHI"]);
+  // Kalshi spells Jacksonville JAC and Washington WAS; canonical is JAX/WSH. Missing these two
+  // aliases dropped four real 2026 events (JACNO / MIAWAS / CLEJAC / WASPHI) with no drop row.
+  assert.deepEqual(parseGameTeams(ticker("JACNO"), "nfl"), ["JAX", "NO"]);
+  assert.deepEqual(parseGameTeams(ticker("MIAWAS"), "nfl"), ["MIA", "WSH"]);
+  assert.deepEqual(parseGameTeams(ticker("CLEJAC"), "nfl"), ["CLE", "JAX"]);
+  assert.deepEqual(parseGameTeams(ticker("WASPHI"), "nfl"), ["WSH", "PHI"]);
 });
 
 test("parseGameTeams: MLB normalization inside split", () => {

@@ -60,8 +60,19 @@ export async function emitGameTotalPlays({
       // Kalshi ticker order != ESPN home/away. Swap so downstream (card, resolver, ML/spread
       // context) all see the same home/away as gameScores/gameHomeTeams.
       let homeTeam = gameTeam1, awayTeam = gameTeam2;
-      if (sport === "nba" || sport === "nhl" || sport === "wnba" || sport === "nfl") {
-        const _gsMap = sport === "nba" ? sportByteam.nbaGameScores : sport === "wnba" ? sportByteam.wnbaGameScores : sport === "nfl" ? sportByteam.nflGameScores : sportByteam.nhlGameScores;
+      if (sport === "nfl") {
+        // NFL resolves home/away from the TICKER, not ESPN — deliberately unlike every other sport
+        // here. Kalshi lists NFL up to five weeks out, far beyond the yesterday…D+2 scoreboard
+        // window, so an ESPN-based swap would return ticker order on the early captures and the
+        // real order once the game came into range. `shadowId` keys on homeTeam/awayTeam, so that
+        // flip would mint a SECOND row for a market already logged — duplicates, not a correction.
+        // The NFL ticker is AWAY+HOME (26AUG15DALSEA = DAL @ SEA), verified 2026-08-10 against
+        // every live KXNFLGAME event on the ESPN slate: 29/29, zero violations. Deterministic at
+        // any lead time. Safe for grading either way — NFL is settlement-authoritative, so
+        // home/away never feeds the grade.
+        homeTeam = gameTeam2; awayTeam = gameTeam1;
+      } else if (sport === "nba" || sport === "nhl" || sport === "wnba") {
+        const _gsMap = sport === "nba" ? sportByteam.nbaGameScores : sport === "wnba" ? sportByteam.wnbaGameScores : sportByteam.nhlGameScores;
         if (_gsMap) {
           for (const _gs of Object.values(_gsMap)) {
             if (_gs?.homeTeam === gameTeam2 && _gs?.awayTeam === gameTeam1) { homeTeam = gameTeam2; awayTeam = gameTeam1; break; }

@@ -1067,13 +1067,9 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
             if (_nhlSbResult?.events.length > 0) {
               sportByteam.nhlGameScores = parseGameScores(_nhlSbResult.events, a => normTeam("nhl", a));
             }
-            // Extract NFL game scores from already-fetched ESPN events (no extra request).
-            // Feeds the KXNFLGAME/KXNFLTOTAL home/away swap in game-totals.js — Kalshi ticker
-            // order is not ESPN home/away.
-            const _nflSbResult = sbResults.find(r => r.sport === "nfl");
-            if (_nflSbResult?.events.length > 0) {
-              sportByteam.nflGameScores = parseGameScores(_nflSbResult.events, a => normTeam("nfl", a));
-            }
+            // No nflGameScores: NFL home/away comes from the ticker (AWAY+HOME), not the
+            // scoreboard — see game-totals.js. NFL is still in SPORT_SB_PATH above because
+            // `gameTimes` needs it: the NFL event ticker carries no HHMM.
             // Extract NBA game scores from already-fetched ESPN events
             const _nbaSbResult = sbResults.find(r => r.sport === "nba");
             if (_nbaSbResult?.events.length > 0 && !sportByteam.nbaGameScores) {

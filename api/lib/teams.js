@@ -138,13 +138,18 @@ export const TEAMS = {
     { abbr: "ARI" }, { abbr: "ATL" }, { abbr: "BAL" }, { abbr: "BUF" },
     { abbr: "CAR" }, { abbr: "CHI" }, { abbr: "CIN" }, { abbr: "CLE" },
     { abbr: "DAL" }, { abbr: "DEN" }, { abbr: "DET" }, { abbr: "GB" },
-    { abbr: "HOU" }, { abbr: "IND" }, { abbr: "JAX" }, { abbr: "KC" },
+    { abbr: "HOU" }, { abbr: "IND" },
+    // Kalshi spells Jacksonville "JAC" and Washington "WAS"; ESPN/canonical are JAX/WSH. Found
+    // 2026-08-10 by diffing every live KXNFLGAME event ticker against the ESPN slate — without
+    // these, 26AUG15JACNO / 26AUG14MIAWAS / 26SEP13CLEJAC / 26SEP13WASPHI all failed validation
+    // and their markets vanished with no drop row. The once-per-league abbr collision, on schedule.
+    { abbr: "JAX", kalshi: ["JAC"] }, { abbr: "KC" },
     { abbr: "LAC" },
     { abbr: "LAR", kalshi: ["LA"] },
     { abbr: "LV" }, { abbr: "MIA" }, { abbr: "MIN" }, { abbr: "NE" },
     { abbr: "NO" }, { abbr: "NYG" }, { abbr: "NYJ" }, { abbr: "PHI" },
     { abbr: "PIT" }, { abbr: "SEA" }, { abbr: "SF" }, { abbr: "TB" },
-    { abbr: "TEN" }, { abbr: "WSH" },
+    { abbr: "TEN" }, { abbr: "WSH", kalshi: ["WAS"] },
   ],
   // Liga Mexicana de Béisbol (KXLMBGAME, adopted 2026-07-15). Canonical = Kalshi's 3-char
   // ticker abbrs (all exactly 3 chars → parseGameTeams' validated 3+3 split works untouched).
