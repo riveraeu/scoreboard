@@ -84,6 +84,8 @@ These bite during *any* change. Each links to detail in `docs/*.md` or memory.
 
 **ESPN scoreboard abbr mismatch** — `/api/live` translates via `CANONICAL_TO_ESPN`/`ESPN_TO_CANONICAL` (sport-keyed). Unmapped → `state:"unknown"`, never resolves. Add new mismatches to the `espnScore` field in `teams.js`. (`WNBA_CANON_TO_ESPN` is a *different* endpoint — stats/injuries — don't use it for the scoreboard map.)
 
+**`gameTime: null` is the silent-killer field** — the row logs and grades fine but is never maker-quotable. It has caused this bug four times (9 Phase-1 modules, Argentina's `datesBySport` omission, CANPL, and scocup right now, where ESPN hasn't published the League Cup's Round-2 fixtures). `gameTimeNullBySport` in `/api/tonight?debug=1` is the tripwire — read it as a **delta**, since a date-only-ticker league like `kleague` sits at 100% by design.
+
 **`gameTimes` horizon = yesterday…D+2.** D+2 events return as a SEPARATE `eventsDayAfter` array read ONLY by the gameTimes loop — every other `events` consumer keys by TEAM with last-event-wins, so folding D+2 in would overwrite nearer games. **A sport missing from `SPORT_SB_PATH` gets no `gameTimes` at all** → every row logs `gameTime:null` → never maker-quotable, silently. Check it whenever a new sport's ticker is date-only (no `HHMM` for `kalshiTickerGameTime` to fall back on).
 
 **`gameScores` today+tomorrow merge** — key shape `${hA}|${gameDate}|${event.date}` prevents post-midnight wipe + DH game-2 overwrite. The inline duplicate in `mlb.js` must mirror it.

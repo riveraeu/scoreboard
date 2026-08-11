@@ -1456,12 +1456,35 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           const sf = reportSportFilter;
           const debugPlays = sf ? plays.filter(m => m.sport === sf) : plays;
           const debugDropped = sf ? dropped.filter(m => m.sport === sf) : dropped;
+          // gameTime tripwire (2026-08-10). A row with gameTime:null still logs and still grades,
+          // but is silently never maker-quotable — the defect that left nine Phase-1 modules
+          // useless, that makes CANPL unbuildable, and that scocup is sitting in right now because
+          // ESPN has not published the League Cup's Round-2 fixtures (see api/lib/scocup.js).
+          // Every one of those was found by accident. This counts it per sport across EVERY emitted
+          // array, so "an upstream schedule went quiet" is a number you can look at instead of a
+          // discovery. Counts only — nothing is gated on it, and a league whose ticker is date-only
+          // by design (kleague) is expected to sit at 100%, so read it as a DELTA over time.
+          const _gtNull = {};
+          for (const _arr of [plays, tennisPlays, fightPlays, nascarPlays, lmbPlays, golfPlays,
+                              dota2Plays, kleaguePlays, kboPlays, fightMlPlays, modelFreeAllPlays,
+                              clubSoccerThresholdPlays, scocupPlays, outsPlays]) {
+            for (const p of _arr || []) {
+              const s = p?.sport; if (!s) continue;
+              const e = (_gtNull[s] ??= { rows: 0, nullGameTime: 0 });
+              e.rows++; if (p.gameTime == null) e.nullGameTime++;
+            }
+          }
+          const gameTimeNullBySport = Object.fromEntries(
+            Object.entries(_gtNull).filter(([, v]) => v.nullGameTime > 0)
+              .map(([s, v]) => [s, { ...v, pct: Math.round(v.nullGameTime / v.rows * 100) }])
+              .sort((a, b) => b[1].nullGameTime - a[1].nullGameTime)
+          );
           const _kalshiSnapDebug = {
             usedSnaps: kalshiUsedSnaps,
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, golfPlays, golfMarketCount: golfH2hMarkets.length, dota2Plays, dota2MarketCount: dota2Markets.length, kleaguePlays, kleagueMarketCount: kleagueMarkets.length, kboPlays, kboMarketCount: kboMarkets.length, fightMlPlays, fightMlMarketCount: fightMlMarkets.length, clubSoccerPlays: modelFreePlays.mls, clubSoccerMarketCount: (modelFreeMarkets.mls || []).length, brasileiraoPlays: modelFreePlays.brasileirao, brasileiraoMarketCount: (modelFreeMarkets.brasileirao || []).length, nwslPlays: modelFreePlays.nwsl, nwslMarketCount: (modelFreeMarkets.nwsl || []).length, chnslPlays: modelFreePlays.chnsl, chnslMarketCount: (modelFreeMarkets.chnsl || []).length, ligamxPlays: modelFreePlays.ligamx, ligamxMarketCount: (modelFreeMarkets.ligamx || []).length, argPremPlays: modelFreePlays.argprem, argPremMarketCount: (modelFreeMarkets.argprem || []).length, modelFreePlays, modelFreeMarketCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreeMarkets[k] || []).length])), modelFreePlayCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreePlays[k] || []).length])), clubSoccerThresholdPlays, clubSoccerThresholdMarketCount: clubSoccerThresholdMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length }, true);
+          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, golfPlays, golfMarketCount: golfH2hMarkets.length, dota2Plays, dota2MarketCount: dota2Markets.length, kleaguePlays, kleagueMarketCount: kleagueMarkets.length, kboPlays, kboMarketCount: kboMarkets.length, fightMlPlays, fightMlMarketCount: fightMlMarkets.length, clubSoccerPlays: modelFreePlays.mls, clubSoccerMarketCount: (modelFreeMarkets.mls || []).length, brasileiraoPlays: modelFreePlays.brasileirao, brasileiraoMarketCount: (modelFreeMarkets.brasileirao || []).length, nwslPlays: modelFreePlays.nwsl, nwslMarketCount: (modelFreeMarkets.nwsl || []).length, chnslPlays: modelFreePlays.chnsl, chnslMarketCount: (modelFreeMarkets.chnsl || []).length, ligamxPlays: modelFreePlays.ligamx, ligamxMarketCount: (modelFreeMarkets.ligamx || []).length, argPremPlays: modelFreePlays.argprem, argPremMarketCount: (modelFreeMarkets.argprem || []).length, modelFreePlays, modelFreeMarketCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreeMarkets[k] || []).length])), modelFreePlayCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreePlays[k] || []).length])), clubSoccerThresholdPlays, clubSoccerThresholdMarketCount: clubSoccerThresholdMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gameTimeNullBySport, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length }, true);
         }
         // mlbMeta/nbaMeta/wnbaMeta/nhlMeta were deleted 2026-08-04 (Tier 3b) — the frontend no
         // longer fetches this response (shadow reads KV staging / the ?debug path, both of which
