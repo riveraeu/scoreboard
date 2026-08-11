@@ -56,6 +56,7 @@ Two gates at collection, both quote-sanity (not price-preference): (1) **band** 
 | Design system: palette, typography, spacing, component patterns | `docs/STYLEGUIDE.md` (MakerBoardPage inlines its own styles) |
 | Common debugging recipes | `docs/DEBUGGING.md` |
 | What would justify betting again (re-entry conditions + required method) | `docs/REENTRY.md` — read before any work premised on a new edge |
+| Why a lit sub-50¢ maker cell is usually not an edge (band-ladder artifact, netting screen, prereg audit) | `docs/MAKER_LADDER_ARTIFACT.md` — read before promoting any `robustCandidates` hit |
 
 ## Architecture
 
