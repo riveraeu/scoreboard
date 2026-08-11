@@ -530,7 +530,7 @@ test("a null ticker count is not treated as zero (older rows stay testable)", ()
 
 test("bar values are pinned — a threshold diff here is a detector-behaviour change", () => {
   assert.deepEqual(LADDER_BAR,
-    { minFills: 20, minDays: 3, minTickers: 5, minBands: 4, minResidual: 0.15, maxSpanC: 11 });
+    { minFills: 20, minDays: 3, minTickers: 5, minBands: 4, minResidual: 0.15, maxSpanC: 11, maxEndGapC: 6 });
 });
 
 test("a reference must itself be judgeable — an untestable rung cannot calibrate its neighbour", () => {
@@ -559,4 +559,31 @@ test("maxSpanC 11 keeps the top of the ladder referencable (90-96 is a 7¢ band)
   const r = ladderAnomalies(top);
   assert.notEqual(r.get("85-89").fitted, null, "85-89 is testable, so it can also serve as a reference");
   assert.equal(r.get("85-89").anomaly, false, "and a clean top ladder still flags nothing");
+});
+
+test("maxEndGapC: a ladder END whose only rung is far away is not tested", () => {
+  // argprem|spread|5-9 as it stood: a 7¢ band whose nearest qualifying rung was 75-79, 70¢ up. The
+  // bracket check never applied — there is no bracket at an end — so its level was taken verbatim
+  // and produced a −0.91 "residual" out of nothing.
+  const stranded = [
+    ladderCell("5-9", 7, 0), ladderCell("75-79", 77, 0.98), ladderCell("80-84", 82, 0.95),
+    ladderCell("85-89", 87, 0.85), ladderCell("90-96", 93, 0.93),
+  ];
+  const r = ladderAnomalies(stranded);
+  assert.equal(r.get("5-9").anomaly, false, "70¢ from its only reference — untestable");
+  assert.equal(r.get("5-9").fitted, null, "and never given a fitted value");
+
+  // An end WITH its adjacent rung present stays testable, in both directions.
+  const contiguous = [
+    ladderCell("5-9", 7, 0.90), ladderCell("10-14", 12, 0.10), ladderCell("15-19", 17, 0.15),
+    ladderCell("20-24", 22, 0.20), ladderCell("25-29", 27, 0.25),
+  ];
+  assert.equal(ladderAnomalies(contiguous).get("5-9").anomaly, true,
+    "adjacent rung 5¢ away — tested, and 0.90 against ~0.10 is a real inversion");
+  // 87→93 is 6¢ because the top band is 7¢ wide; the top end must stay referencable.
+  const top = [
+    ladderCell("70-74", 72, 0.76), ladderCell("75-79", 77, 0.79), ladderCell("80-84", 82, 0.81),
+    ladderCell("85-89", 87, 0.86), ladderCell("90-96", 93, 0.90),
+  ];
+  assert.notEqual(ladderAnomalies(top).get("90-96").fitted, null, "6¢ end gap is within tolerance");
 });

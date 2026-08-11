@@ -336,6 +336,7 @@ export const LADDER_BAR = {
   minBands: 4,         // category needs this many reference-quality bands to have a ladder at all
   minResidual: 0.15,   // practical floor: a significant but trivial departure is not an integrity signal
   maxSpanC: 11,        // widest price gap the reference may be interpolated across (see below)
+  maxEndGapC: 6,       // ... and at a ladder END, the widest gap to its single inward rung
 };
 
 // ── Two thinness guards added 2026-08-11, after the first version flagged mlb|f5spread 40-64 ──
@@ -345,6 +346,13 @@ export const LADDER_BAR = {
 // 40-44 and 60-64, a 20c gap straddling the steepest part of the ladder, because 45-49 (n=5) and
 // 50-54 (n=16) were correctly dropped. Interpolating across that is an extrapolation wearing an
 // interpolation's clothes, and it produced a fitted 0.49 that flagged a cell sitting at 0.846.
+//
+// `maxEndGapC` closes the hole `maxSpanC` did not cover. At a ladder end there is only one rung, so
+// no bracket exists and the span check was skipped entirely — the fitted value became that rung's
+// level AT ANY DISTANCE. On the 2026-08-11 board that put `argprem|spread|5-9` (a 7c band) against
+// the 75-79 rung 70c away for a −0.91 "residual", and `mlb|f7ml|10-14` against 40-44, 30c away.
+// Both were pure artifacts of the missing guard. 6 is the widest gap between ADJACENT rung mids
+// (5 everywhere, 6 for 87->93), so this is the same "no missing rungs" rule applied to one side.
 //
 // `maxSpanC` is 11, not 10, because the band ladder is not uniform: bands are 5c wide except the top
 // one (90-96, 7c), so the widest bracket between two ADJACENT rungs is 82->93 = 11. Setting it to 10
@@ -433,7 +441,9 @@ export function ladderAnomalies(cells, bar = LADDER_BAR) {
     const below = iA > 0 ? list[iA - 1] : null, above = iA < list.length ? list[iA] : null;
     if (!below && !above) return false;
     if (below && above) return (above.mid - below.mid) <= bar.maxSpanC;
-    return true;  // ladder end: nothing outward to violate, so the end rule applies
+    // Ladder end: nothing outward to violate, but the ONE inward rung still has to be near enough
+    // to say anything about this cell.
+    return Math.abs((below || above).mid - c.mid) <= bar.maxEndGapC;
   };
   if (refs0.length < bar.minBands) return out;  // no ladder to calibrate against
 
@@ -489,7 +499,11 @@ export function ladderAnomalies(cells, bar = LADDER_BAR) {
       // ordinary mid-ladder roughness (27 cells on the 2026-08-11 board, where the ring should be
       // near-empty). Interpolation weights carry through to the variance.
       seFit = Math.sqrt(((1 - t) * (below.se ?? 0)) ** 2 + (t * (above.se ?? 0)) ** 2);
-    } else { const e = below || above; fitted = e?.y ?? null; seFit = e?.se ?? 0; }
+    } else {
+      const e = below || above;
+      if (!e || Math.abs(e.x - c.mid) > bar.maxEndGapC) continue;  // nearest rung too far to inform
+      fitted = e.y; seFit = e.se ?? 0;
+    }
     if (fitted == null) continue;
     const residual = dc.mean - fitted;
     // Significant against the COMBINED uncertainty of cell and reference, AND materially large.

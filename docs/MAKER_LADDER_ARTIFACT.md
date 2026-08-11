@@ -246,3 +246,42 @@ these cells, for a different reason than the one that motivated the search.
 games**, 19 days, `sideWon` 0.55 against a fitted 0.75. That is a well-sampled cell sitting well off
 its own ladder, and it remains unexplained. Its book is clean (per the audit above) and its grading
 class was verified. It is the one genuine open item from this investigation.
+
+### Vetting all 9 flags: zero integrity findings, two more reference defects (2026-08-11)
+
+Every flag on the corrected board was vetted by measuring where its reference came from.
+
+**Two were the reference defect again, in the one site no guard covered.** At a ladder END there is
+no bracket, so the span check was skipped entirely and `fitted` became the single inward rung's level
+*at any distance*: `argprem|spread|5-9` (a 7¢ band) was scored against the 75-79 rung **70¢ away** for
+a −0.91 residual, and `mlb|f7ml|10-14` against 40-44, **30¢ away**. `maxEndGapC: 6` closes it — 6 is
+the widest gap between ADJACENT rung mids (5 everywhere, 6 for 87→93), i.e. the same "no missing
+rungs" rule applied to one side. `mlb|hits|5-9` went quiet with them: its nearest rung was 10¢ off,
+one rung missing.
+
+**Five are noisy ladders, not anomalies.** `tennis|match` ×3, `wnba|threePointers|60-64`,
+`wnba|rebounds|75-79` — all correctly bracketed at 10¢, so their references are sound. Tennis reads
+`0.679@42 → 0.558@47 → 0.480@52 → 0.306@57 → 0.670@62 → 0.463@67 → 0.956@72`: non-monotone in about
+eight places, on `d`=4–7 per band, and tennis days are tournament-clustered. The flags are the largest
+wiggles in a ladder that wiggles everywhere, which is the definition of not a finding.
+`wnba|threePointers|60-64` is live prereg `wnba3p-6064`; a second instrument flagging it initially
+looked meaningful and does not survive this — its whole ladder is noisy.
+
+**Two are legitimately referenced but thin:** `mlb|outs|65-69` (n=29, 14 games, 7 days) and
+`wnba|rebounds|75-79` (n=26, 16 games, 6 days).
+
+Board: 13 → 9 → **6**.
+
+**The standing caution.** Four reference-quality defects were found in a single day — reference treated
+as exact, interpolated across a gap, itself untestable, and unguarded at the ends. Each was invisible
+to reasoning and visible only to measurement, and each fix exposed the next. Across two generations of
+this detector the per-cell residual test has produced nine flags and **zero confirmed defects in the
+maker pipeline**. Treat its output as "worth a look", never as a finding. The instrument that targets
+the actual bug class is the **category-level inversion check**, which has never fired — the correct
+output for a pipeline with no side-flip in it.
+
+One integrity question remains genuinely open: a settlement spot-check of the tennis cells could not
+be completed (Kalshi returned `HTTP 000` for the tennis tickers *and* for an MLB control that had
+succeeded earlier the same session, i.e. rate-limiting, not missing data). Tennis is the one sport in
+this repo with a documented resolver-window bug, so that check is worth redoing through
+`fetchKalshiSettlements`, which batches and retries.
