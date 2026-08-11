@@ -896,6 +896,16 @@ export const DISMISSED_SERIES = [
   // (no ESPN slug), both sides captured (unlike Dota2 which is YES-only), 8-team teams.js
   // block, one SERIES_CONFIG row with gameType:"hundredMatch" or reuse a dota2Game-like emitter.
   // REVISIT June 2027 before the season opens.
+  "KXWHUNDREDMATCH", // The Hundred cricket (WOMEN'S) — surfaced 2026-08-10 by the re-screen, which
+  // revived it on a 1¢ spread. Same competition family, same verdict, same blocker as the men's
+  // entry above: REAL_BOOK (6/6 two-sided, $32.6k volume) but the season ends ~Aug 14 2026, so a
+  // build lands with a handful of games. Same build path — settlement-authoritative, gameTime
+  // straight off the ticker (KXWHUNDREDMATCH-26AUG121000MIBIR → Aug 12 10:00 UTC), both sides
+  // quoted, same 8 franchises. ONE EXTRA TRAP for 2027: the women's side uses a 2-char code
+  // ("MI" for MI London, e.g. 26AUG121000MIBIR), so unlike the men's it ALSO needs `whundred` in
+  // parseGameTeams' variable-length allowlist — a canonical 2-char abbr is invisible to the
+  // generic has2charPrefix path (see the NFL GBSEA→["GBS","EA"] failure, same day).
+  // REVISIT June 2027 alongside the men's.
   // 8/10 triage — KXUCL, KXLEAGUESCUPSCORE, KXLEAGUESCUPFTTS:
   "KXUCL", // UCL season champion futures — bare-prefix outright ("which club wins the 2026-27
   // Champions League"), 29 markets all closing 2027-06-19, same class as KXNWSL dismissed.
@@ -948,4 +958,12 @@ export const DISMISSED_SERIES = [
   // Super Cup is ONE match per year, so at 2 markets a year this can never reach a sample size
   // that means anything, and it currently quotes a 53¢ spread on zero volume. Same reasoning as
   // the Home Run Derby dismissal (a 72-hour event, not a season flow).
+  // ── 8/10, second pass: two items the post-dismissal scan surfaced.
+  "KXNCAAFSECWINS",    // "N+ SEC teams to win in week 10" — the exact twin of KXNCAAFACCWINS
+  // above (same 26W10 event shape, closes 2027-01-07). Aggregated per-WEEK count across a slate,
+  // not a per-game market. Screens REAL_BOOK (6/8, 5¢) — real book, wrong shape, which is the
+  // whole reason the screen never auto-promotes.
+  "KXYTDAILYTOPVIDEOG", // "top music video global" — YouTube daily chart, NOT A SPORT. Sits in the
+  // Sports catalog by Kalshi's own miscategorization, which is why the scan keeps reviving it on
+  // its 1¢ spread and $113k volume. No sports resolution path exists because there is no sport.
 ];
