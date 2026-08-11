@@ -20,12 +20,14 @@
 //   ?makerTapeProbe=YYYY-MM-DD  is V1's tape page actually covering the day?
 //   ?makerFillForensic=YYYY-MM-DD  why did V1 miss a real V2 fill?
 //   ?makerSideAudit=YYYY-MM-DD  establish taker_side ↔ quote_side from ground truth
+//   ?makerBookAudit=sport|cat  per-SIDE book width behind the fills (YES-only gate blind spot)
 //   ?makerExitCheck=1        early-exit counterfactual (pre-game only)
 //   ?makerLeadTime=1         pre-registered lead-time test
 //   ?makerDay=YYYY-MM-DD     single-day V1 attribution (bySport/byBand/byCategoryBand)
 
 import { neonQuery } from "../../neon.js";
 import { errorResponse, jsonResponse } from "../../utils.js";
+import { CAPTURE_MAX_SPREAD } from "../../config.js";
 import { verifyJWT } from "../../auth-utils.js";
 import { isArmed as isMakerV2Armed } from "../../maker-live.js";
 import { fetchKalshiSettlements, resolveTickerSideViaKalshi } from "../../kalshi-settlement.js";
@@ -505,6 +507,68 @@ async function handleShadowReport({ path, request, env, cache }) {
         },
       });
     } catch (e) { return errorResponse(`makerSideAudit failed: ${e?.message}`, 500); }
+  }
+
+  // ── ?makerBookAudit=sport|category — per-SIDE book width behind the fills ────────────────────
+  // Built 2026-08-11 to settle whether the mlb|f5spread 40-64 anomaly is an artifact price.
+  // `computeMakerQuote` gates eligibility on `yesAsk - yesBid` alone ("Unified book: both sides
+  // share one spread") and then quotes the NO side off the independently-read `no_ask_dollars`. That
+  // identity holds for maker-backfill.js's reconstructed candlestick books (no_ask = 100 - yes_bid by
+  // construction) but NOT for the live API, where the two books are independent and 3-7c apart —
+  // CLAUDE.md's standing gotcha. So a market with a tight YES book and a wide NO book passes the gate
+  // and gets quoted on the NO side at a price nothing is resting behind.
+  //
+  // `maker_quotes` already persists the whole book (book_yes_ask/bid, book_no_ask/bid, maker.js:239),
+  // so this needs no new capture — just the read nobody had written. Read-only, ADMIN.
+  if (new URL(request.url).searchParams.get("makerBookAudit")) {
+    const spec = new URL(request.url).searchParams.get("makerBookAudit");
+    const [sport, category] = String(spec).split("|");
+    if (!sport || !category) return errorResponse("makerBookAudit must be sport|category", 400);
+    try {
+      const rows = await neonQuery(
+        `SELECT ${_makerBandCase("f.fill_ask")} AS band, q.quote_side,
+                COUNT(*)::int AS fills,
+                COALESCE(SUM(f.contracts),0)::numeric AS contracts,
+                ROUND(AVG(f.fill_ask),1) AS avg_fill_ask,
+                ROUND(AVG(q.book_yes_ask - q.book_yes_bid),2) AS avg_yes_spread,
+                ROUND(AVG(q.book_no_ask  - q.book_no_bid ),2) AS avg_no_spread,
+                -- The gate's blind spot, counted directly: NO book wider than the cap while the YES
+                -- book (the only one actually tested) is inside it.
+                COUNT(*) FILTER (WHERE (q.book_no_ask - q.book_no_bid) > $3
+                                   AND (q.book_yes_ask - q.book_yes_bid) <= $3)::int AS no_wide_yes_tight,
+                -- Complementarity: if the two books really were one unified book, yes_ask + no_ask
+                -- would sit at ~100 + spread. A large excess means they are quoting different things.
+                ROUND(AVG(q.book_yes_ask + q.book_no_ask), 1) AS avg_ask_sum,
+                COALESCE(SUM((f.side_won)::int::numeric*f.contracts),0)::numeric AS won_contracts,
+                COALESCE(SUM(f.pnl_cents*f.contracts),0)::numeric AS pnl_total
+           FROM maker_fills f JOIN maker_quotes q ON q.id=f.quote_id
+          WHERE q.source='live' AND f.graded_at IS NOT NULL
+            AND q.sport=$1 AND COALESCE(q.category,q.sport)=$2
+            AND q.book_no_ask IS NOT NULL AND q.book_no_bid IS NOT NULL
+          GROUP BY 1,2 ORDER BY 1,2`,
+        [sport, category, CAPTURE_MAX_SPREAD], env, { write: true });
+      const cells = rows.map(r => {
+        const ct = Number(r.contracts) || 0;
+        return { band: r.band, side: r.quote_side, fills: r.fills, contracts: Number(ct.toFixed(1)),
+          avgFillAsk: Number(r.avg_fill_ask), avgYesSpread: Number(r.avg_yes_spread),
+          avgNoSpread: Number(r.avg_no_spread), avgAskSum: Number(r.avg_ask_sum),
+          noWideYesTight: r.no_wide_yes_tight,
+          sideWon: ct ? parseFloat((Number(r.won_contracts) / ct).toFixed(4)) : null,
+          perContract: ct ? parseFloat((Number(r.pnl_total) / ct).toFixed(2)) : null };
+      });
+      const tot = cells.reduce((a, c) => a + c.fills, 0);
+      const gapped = cells.reduce((a, c) => a + c.noWideYesTight, 0);
+      return jsonResponse({
+        ok: true, cell: spec, maxSpreadC: CAPTURE_MAX_SPREAD, fills: tot,
+        // The headline: fills the CURRENT gate admitted that a per-side gate would have refused.
+        fillsThroughGateBlindSpot: gapped,
+        pctThroughBlindSpot: tot ? parseFloat(((gapped / tot) * 100).toFixed(1)) : null,
+        cells,
+        note: "avgNoSpread >> avgYesSpread on the anomalous bands means the NO ask quoted there had "
+          + "nothing resting behind it — an artifact price, not a mispricing. `noWideYesTight` counts "
+          + "fills the YES-only gate admitted. Read-only; changes nothing.",
+      });
+    } catch (e) { return errorResponse(`makerBookAudit failed: ${e?.message}`, 500); }
   }
 
   // ── ?makerExitCheck=1 — early-exit counterfactual (pre-game only) ────────────────────────────
