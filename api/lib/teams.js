@@ -381,6 +381,13 @@ export const TEAMS = {
     { abbr: "SLA", espnScore: "SAN" },  // Santos Laguna
     { abbr: "TIG", espnScore: "UANL" }, // Tigres UANL
     { abbr: "TIJ" },                    // Tijuana
+    // +4 completed 2026-08-10 (registry was 14 of 18 — the "add when first seen" note above).
+    // All verified against ESPN mex.1 by same-date fixture partner; Mazatlán still has not
+    // appeared in a live Kalshi ticker, so it stays unregistered.
+    { abbr: "CRA", espnScore: "CAZ" },  // Cruz Azul
+    { abbr: "PUE" },                    // Puebla
+    { abbr: "PUM", espnScore: "UNAM" }, // Pumas UNAM
+    { abbr: "TOL" },                    // Toluca
   ],
   // Scottish League Cup spread/total (KXSCOCUPSPREAD/KXSCOCUPTOTAL, adopted 2026-07-23 —
   // maker-viable per the two-track doctrine, model-free like the 5 GAME-winner leagues above,
@@ -476,6 +483,16 @@ export const TEAMS = {
     { abbr: "TUC", espnScore: "CAT" },  // Atlético Tucumán — see collision note above
     { abbr: "UNI", espnScore: "USF" },  // Unión (Santa Fe)
     { abbr: "VEL" },                    // Vélez Sarsfield
+    // +4 completed 2026-08-10. These were the WORST of the sweep: argprem is in
+    // parseGameTeams' variable-length allowlist, which validates BOTH halves — so an
+    // unregistered club did not merely lose gameTime, it made the whole event parse to
+    // [null,null] and DROP every row for that fixture. 17 of 75 event tickers were being
+    // lost outright, invisible to gameTimeNullBySport because dropped rows never appear.
+    // All four verified against ESPN arg.1 by same-date fixture partner.
+    { abbr: "ARG",  espnScore: "ARGJ" }, // Argentinos Juniors
+    { abbr: "CAB",  espnScore: "BEL"  }, // Belgrano (Córdoba)
+    { abbr: "CARC", espnScore: "ROS"  }, // Rosario Central — 4-char Kalshi code
+    { abbr: "CAS",  espnScore: "SARM" }, // Sarmiento (Junín)
   ],
   // Dutch Eredivisie game winner (KXEREDIVISIEGAME, adopted 2026-08-07) + spread
   // (KXEREDIVISIESPREAD, adopted 2026-08-08). ESPN slug ned.1. Canonical = Kalshi's own 3-char
@@ -714,6 +731,17 @@ export const TEAMS = {
   //   CDE→ELD (CD Eldense), GIJ→RSG (Sporting Gijón), MAL→MLL (Mallorca), SAB→CDS (CD Sabadell).
   // RS2: Kalshi code for Real Sociedad II (ESPN: RSO2 4-char) — inferred; verify on first RS2×××
   // ticker (today's game is live but outside the 20-ticker kalshi-check sample). Wrong = 3 mkts drop.
+  // CORRECTED 2026-08-10 (same day it shipped): three codes had been taken from ESPN's roster
+  // instead of verified against live Kalshi tickers, the exact "cross-check BOTH sides" landmine.
+  // Kalshi uses RCC / GCF / RSO where this registry had CEL / GRA / RS2 (the last was even
+  // commented "Kalshi code inferred"). Those three clubs' markets therefore never matched an ESPN
+  // fixture, so they logged with gameTime:null — surfaced by gameTimeNullBySport at 27%.
+  // The stale codes are REPLACED, not kept alongside: two of them would otherwise collide on the
+  // inverse map (both RS2→RSO2 and RSO→RSO2 exist, and Object.fromEntries takes last-wins, so the
+  // ESPN→canonical direction becomes ambiguous). Safe to drop because only OPEN markets are ever
+  // captured — settled history is already graded and never re-parsed.
+  // Note the seven codes seen ONLY in settled markets (DEP/HUE/LEO/MCF/MIR/SAN/ZAR) are last
+  // season's Segunda clubs, promoted or relegated out; deliberately NOT registered.
   laliga2: [
     { abbr: "ALB" },                    // Albacete Balompié
     { abbr: "ALM" },                    // UD Almería
@@ -722,18 +750,18 @@ export const TEAMS = {
     { abbr: "CAD" },                    // Cádiz CF
     { abbr: "CAS" },                    // CD Castellón
     { abbr: "CDE", espnScore: "ELD" },  // CD Eldense
-    { abbr: "CEL" },                    // RC Celta Fortuna
+    { abbr: "RCC", espnScore: "CEL" },  // RC Celta Fortuna — Kalshi says RCC, not CEL (see note)
     { abbr: "CEU" },                    // Ceuta FC
     { abbr: "COR" },                    // Córdoba CF
     { abbr: "EIB" },                    // SD Eibar
     { abbr: "GIJ", espnScore: "RSG" },  // Sporting Gijón
     { abbr: "GIR" },                    // Girona FC
-    { abbr: "GRA" },                    // Granada CF
+    { abbr: "GCF", espnScore: "GRA" },  // Granada CF — Kalshi says GCF, not GRA (see note)
     { abbr: "LEG" },                    // CD Leganés
     { abbr: "LPA" },                    // UD Las Palmas
     { abbr: "MAL", espnScore: "MLL" },  // RCD Mallorca
     { abbr: "OVI" },                    // Real Oviedo
-    { abbr: "RS2", espnScore: "RSO2" }, // Real Sociedad II — Kalshi code inferred as RS2
+    { abbr: "RSO", espnScore: "RSO2" }, // Real Sociedad II — Kalshi says RSO (the guess was RS2)
     { abbr: "SAB", espnScore: "CDS" },  // CD Sabadell
     { abbr: "TEN" },                    // CD Tenerife
     { abbr: "VLL" },                    // Real Valladolid

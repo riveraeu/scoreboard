@@ -125,6 +125,26 @@ test("parseGameTeams: DIMAYOR 2-char OC (Once Caldas) and the two-sided CAL coll
   assert.deepEqual(parseGameTeams(ticker("MILCAL"), "dimayor"), ["MIL", "CAL"]);
 });
 
+test("parseGameTeams: 2026-08-10 registry sweep — argprem/ligamx/laliga2 recoveries", () => {
+  // argprem is in the variable-length allowlist, which validates BOTH halves — so an unregistered
+  // club made the whole event parse to [null,null] and DROP every row for that fixture. 17 of 75
+  // event tickers were being lost outright (invisible to gameTimeNullBySport: dropped rows never
+  // appear at all). CARC is 4-char, which is why the split must stay length-flexible.
+  assert.deepEqual(parseGameTeams(ticker("BARCARC"), "argprem"), ["BAR", "CARC"]);
+  assert.deepEqual(parseGameTeams(ticker("RIVARG"), "argprem"), ["RIV", "ARG"]);
+  assert.deepEqual(parseGameTeams(ticker("CASHUR"), "argprem"), ["CAS", "HUR"]);
+  assert.deepEqual(parseGameTeams(ticker("BANCAB"), "argprem"), ["BAN", "CAB"]);
+  // ligamx completed 14 → 18.
+  assert.deepEqual(parseGameTeams(ticker("TIJCRA"), "ligamx"), ["TIJ", "CRA"]);
+  assert.deepEqual(parseGameTeams(ticker("QUETOL"), "ligamx"), ["QUE", "TOL"]);
+  assert.deepEqual(parseGameTeams(ticker("PUMNCX"), "ligamx"), ["PUM", "NCX"]);
+  // laliga2 had three codes taken from ESPN's roster rather than Kalshi's tickers. Kalshi says
+  // GCF/RCC/RSO where the registry had GRA/CEL/RS2 — those clubs never matched a fixture.
+  assert.deepEqual(parseGameTeams(ticker("OVIGCF"), "laliga2"), ["OVI", "GCF"]);
+  assert.deepEqual(parseGameTeams(ticker("CADRCC"), "laliga2"), ["CAD", "RCC"]);
+  assert.deepEqual(parseGameTeams(ticker("RSOCAS"), "laliga2"), ["RSO", "CAS"]);
+});
+
 test("parseGameTeams: MLB normalization inside split", () => {
   assert.deepEqual(parseGameTeams(ticker("CHWDET"), "mlb"), ["CWS", "DET"]);
   assert.deepEqual(parseGameTeams(ticker("OAKSEA"), "mlb"), ["ATH", "SEA"]);
