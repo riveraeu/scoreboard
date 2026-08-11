@@ -46,6 +46,22 @@ function parseEvents(events, canonTeam) {
   return out;
 }
 
+// Sorted-pair map over a DATE WINDOW, keeping the fixture nearest `target` (YYYY-MM-DD) for each
+// pair. Pure + exported so the tie-break is pinned by a test — it is the only non-obvious part of
+// the widened gameTime lookup, and getting it wrong would attach a row to the wrong fixture's
+// kickoff rather than merely leaving it null.
+export function nearestByPair(games, target) {
+  const out = {};
+  const t = new Date(target).getTime();
+  const dist = (g) => Math.abs(new Date(g.date).getTime() - t);
+  for (const g of games || []) {
+    if (!g?.date || !g.home || !g.away) continue;
+    const k = [g.home, g.away].sort().join("|");
+    if (!out[k] || dist(g) < dist(out[k])) out[k] = g;
+  }
+  return out;
+}
+
 const _ptDate = (iso) => {
   try { return new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }); }
   catch { return null; }
@@ -86,16 +102,49 @@ export function makeSoccerModelFreeSource({ espnSlug, canonTeam, cacheKeyPrefix 
     return out;
   }
 
+  // Same sorted-pair map, but tolerant of a ticker date that disagrees with the real kickoff
+  // date (2026-08-10). Kalshi's event ticker encodes a date that can sit -1 to +2 days off the
+  // fixture ESPN actually lists — a rescheduled kickoff, or just a ticker minted before the slate
+  // firmed up. `fetchSchedule` filters on an EXACT PT-date match, so those fixtures found no
+  // schedule entry and the rows logged `gameTime: null`, i.e. silently un-maker-quotable. Live
+  // examples: dimayor PER@JUN ticker 08-10 / ESPN 08-12, argprem BAN@RAC ticker 08-15 / ESPN
+  // 08-14 (note the NEGATIVE offset — the window has to look backwards too).
+  //
+  // Deliberately scoped to the gameTime path only. `fetchSchedule`/`fetchResults` keep their
+  // strict exact-date semantics because a RESULT matched to a neighbouring day's fixture would
+  // grade a row against the wrong game — a far worse failure than a missing kickoff time.
+  //
+  // One ranged request covers the whole window, so this costs no extra ESPN round-trips. When a
+  // pair somehow appears more than once in the window, the fixture NEAREST the ticker date wins;
+  // league soccer never repeats a pairing inside five days, and nearest-wins keeps it
+  // deterministic if a cup ever does.
+  const _WINDOW_DAYS = 2;
+  async function fetchScheduleNearest(dateStr) {
+    if (!dateStr || dateStr.length !== 8) return {};
+    const target = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+    const shift = (n) => {
+      const d = new Date(Date.UTC(+dateStr.slice(0, 4), +dateStr.slice(4, 6) - 1, +dateStr.slice(6, 8) + n));
+      return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
+    };
+    // +1 on the upper bound for the same reason fetchSchedule used a 2-day window: an evening
+    // kickoff can roll past midnight UTC and still belong to the earlier PT date.
+    const games = boundParseEvents(await _scoreboard(`${shift(-_WINDOW_DAYS)}-${shift(_WINDOW_DAYS + 1)}`));
+    return nearestByPair(games, target);
+  }
+
   // Fetch + KV-cache one date's schedule (30min TTL). Used by the emit path for a real
   // gameTime; fetchResults below re-fetches directly (uncached — resolution runs a few times a
   // night, not worth the KV round-trip).
+  // Cache key bumped to :schedule2: with the widened window — the old key holds exact-date-only
+  // maps, and silently serving those for 30 minutes after deploy is exactly the stale-cache
+  // confusion that made the registry sweep look like it had not worked.
   async function getSchedule({ dateStr, cache, isBustCache } = {}) {
     if (!dateStr) return {};
-    const key = `${cacheKeyPrefix}:schedule:${dateStr}`;
+    const key = `${cacheKeyPrefix}:schedule2:${dateStr}`;
     if (cache && !isBustCache) {
       try { const hit = await cache.get(key); if (hit) return typeof hit === "string" ? JSON.parse(hit) : hit; } catch {}
     }
-    const schedule = await fetchSchedule(dateStr);
+    const schedule = await fetchScheduleNearest(dateStr);
     if (cache && schedule) {
       try { await cache.put(key, JSON.stringify(schedule), { expirationTtl: 1800 }); } catch {}
     }
