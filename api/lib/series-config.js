@@ -966,4 +966,8 @@ export const DISMISSED_SERIES = [
   "KXYTDAILYTOPVIDEOG", // "top music video global" — YouTube daily chart, NOT A SPORT. Sits in the
   // Sports catalog by Kalshi's own miscategorization, which is why the scan keeps reviving it on
   // its 1¢ spread and $113k volume. No sports resolution path exists because there is no sport.
+  "KXLEADERNFLRUSHTDS", // NFL season rushing-TD leader — one market per player, closes 2027-02-08.
+  // Season-leader outright: resolves once a year off a full-season aggregate, no per-game flow.
+  // FIRST explicit dismissal of the KXLEADER* family (KXLEADERMLBHR and siblings are still sitting
+  // in `baseline`, silently ack'd rather than judged) — same class, dismiss them as they surface.
 ];
