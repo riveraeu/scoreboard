@@ -319,18 +319,41 @@ export const TEAMS = {
   // Deportivo Cali game silently grades against Once Caldas. Note there are THREE Cali-area clubs
   // in this league (Deportivo Cali, América de Cali, and the unrelated Once Caldas abbr), which is
   // why a bare "Cali" subtitle cannot be trusted on its own.
+  // COMPLETED 2026-08-10 from 12 → all 20 clubs. The 8 additions were forced by a live defect the
+  // `gameTimeNullBySport` tripwire surfaced: the registry held only the teams seen by ship date, so
+  // `parseGameTeams` fell through to its UNVALIDATED 3+3 fallback for everything else. That happened
+  // to return the right answer for 3+3 pairs (DIMMIL → DIM+MIL) but silently invented teams on the
+  // one 2-char code: `OCALI` → ["OCA","LI"] instead of ["OC","ALI"]. `dimayor` is now in
+  // parseGameTeams' variable-length allowlist, which is only SAFE because the registry is complete —
+  // that path validates BOTH halves against _VALID_TEAMS, so an incomplete registry would turn
+  // parses that previously worked by luck into nulls and drop the rows outright.
+  // Every mapping below verified against ESPN col.1 by deducing each unknown from its fixture
+  // partner (the 20 Kalshi codes and the 20 ESPN abbrs form an exact bijection).
+  // TWO-SIDED "CAL" COLLISION — the reason this registry is dangerous to eyeball:
+  //   Kalshi CAL = Deportivo Cali  → ESPN DCI
+  //   Kalshi OC  = Once Caldas     → ESPN CAL   (ESPN's own "CAL" is Once Caldas, NOT Cali)
+  // So ESPN's CAL and Kalshi's CAL are different clubs. Without OC→CAL, identity passthrough sends
+  // ESPN's Once Caldas fixtures to Kalshi's Deportivo Cali — a silent wrong-team match.
   dimayor: [
     { abbr: "ADR", espnScore: "AGD" }, // Águilas Doradas Rionegro
     { abbr: "ALI", espnScore: "AFC" }, // Alianza FC Valledupar
+    { abbr: "AME" },                   // América de Cali
     { abbr: "BUC" },                   // Atlético Bucaramanga
     { abbr: "CAL", espnScore: "DCI" }, // Deportivo Cali — see collision note above
     { abbr: "CAN", espnScore: "NAL" }, // Atlético Nacional
     { abbr: "CHI" },                   // Boyacá Chicó FC
+    { abbr: "CUC" },                   // Cúcuta Deportivo
     { abbr: "DIM" },                   // Independiente Medellín
     { abbr: "FOR" },                   // Fortaleza CEIF
+    { abbr: "INT", espnScore: "BOG" }, // Internacional de Bogotá
+    { abbr: "JAG", espnScore: "COR" }, // Jaguares de Córdoba
+    { abbr: "JUN" },                   // Atlético Junior
     { abbr: "LLA" },                   // Llaneros FC
+    { abbr: "MIL" },                   // Millonarios
+    { abbr: "OC",  espnScore: "CAL" }, // Once Caldas — the 2-char code; see collision note above
     { abbr: "PAS" },                   // Deportivo Pasto
     { abbr: "PER" },                   // Deportivo Pereira
+    { abbr: "SFE" },                   // Independiente Santa Fe
     { abbr: "TOL" },                   // Deportes Tolima
   ],
   // Liga MX (KXLIGAMXGAME, adopted 2026-07-23 — 5th model-free maker league, same playbook,

@@ -109,6 +109,22 @@ test("parseGameTeams: KBO 2+3 / 3+2 splits (LG Twins' 2-char code)", () => {
   assert.deepEqual(parseGameTeams("KXKBOGAME-26AUG130600LGKIW-LG", "kbo"), ["LG", "KIW"]);
 });
 
+test("parseGameTeams: DIMAYOR 2-char OC (Once Caldas) and the two-sided CAL collision", () => {
+  // Found live 2026-08-10 via gameTimeNullBySport: dimayor was NOT in the variable-length
+  // allowlist (its comment claimed uniform-3-char), and the registry held 12 of 20 clubs, so
+  // OCALI fell to the unvalidated 3+3 fallback → ["OCA","LI"], neither a real team.
+  assert.deepEqual(parseGameTeams(ticker("OCALI"), "dimayor"), ["OC", "ALI"]);
+  assert.deepEqual(parseGameTeams(ticker("PEROC"), "dimayor"), ["PER", "OC"]);  // 3+2
+  // The 8 clubs the registry was missing must now parse AND validate.
+  assert.deepEqual(parseGameTeams(ticker("DIMMIL"), "dimayor"), ["DIM", "MIL"]);
+  assert.deepEqual(parseGameTeams(ticker("CANSFE"), "dimayor"), ["CAN", "SFE"]);
+  assert.deepEqual(parseGameTeams(ticker("INTDIM"), "dimayor"), ["INT", "DIM"]);
+  assert.deepEqual(parseGameTeams(ticker("PERJAG"), "dimayor"), ["PER", "JAG"]);
+  // CAL is a real Kalshi club (Deportivo Cali) and must NOT be confused with ESPN's CAL
+  // (Once Caldas) — the mapping side of that is pinned in teams.test.js.
+  assert.deepEqual(parseGameTeams(ticker("MILCAL"), "dimayor"), ["MIL", "CAL"]);
+});
+
 test("parseGameTeams: MLB normalization inside split", () => {
   assert.deepEqual(parseGameTeams(ticker("CHWDET"), "mlb"), ["CWS", "DET"]);
   assert.deepEqual(parseGameTeams(ticker("OAKSEA"), "mlb"), ["ATH", "SEA"]);

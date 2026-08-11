@@ -33,12 +33,18 @@ export function parseGameTeams(eventTicker, sport) {
   // past every branch to [null,null] while GBSEA hit the unvalidated 3+2 fallback and returned
   // ["GBS","EA"] — a SILENT wrong parse of the exact class _VALID_TEAMS exists to stop; kbo joins
   // for the same reason on LG Twins' 2-char "LG", which has no TEAM_NORM alias to be seen by).
+  // dimayor joined 2026-08-10 on Once Caldas' 2-char "OC" (`OCALI` was parsing to ["OCA","LI"]) —
+  // note its comment above once claimed dimayor was uniform-3-char and needed no entry. **Adding a
+  // league here is only safe once its registry is COMPLETE**: this path validates both halves, so a
+  // partial registry converts parses that previously survived on the unvalidated fallback into
+  // nulls, dropping rows that used to work.
   // Try every (i, len-i) split and accept
   // the first one where both halves validate. Prefer longer left-side first so e.g. CONNIN parses
   // as CONN+IND (not CO+NNIN), NYRBCLT as NYRB+CLT (not NY+RBCLT), CRUCHA as CRU+CHA (not CR+UCHA)
   // while CRSAN still parses as CR+SAN. Uses _VALID_TEAMS (not TEAM_NORM), so registries with no
   // kalshi aliases (copadobrasil) are covered where the generic has2charPrefix path is not.
-  if ((sport === "wnba" || sport === "mls" || sport === "brasileirao" || sport === "nwsl" || sport === "argprem" || sport === "copadobrasil" || sport === "ligue1" || sport === "usl" || sport === "copalib" || sport === "nfl" || sport === "kbo") && valid) {
+  if ((sport === "wnba" || sport === "mls" || sport === "brasileirao" || sport === "nwsl" || sport === "argprem" || sport === "copadobrasil" || sport === "ligue1" || sport === "usl" || sport === "copalib" || sport === "nfl" || sport === "kbo"
+       || sport === "dimayor") && valid) {
     for (let i = Math.min(4, rest.length - 2); i >= 2; i--) {
       const a = normTeam(sport, rest.slice(0, i));
       for (let j = Math.min(4, rest.length - i); j >= 2; j--) {

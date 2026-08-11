@@ -229,12 +229,22 @@ test("eredivisie: ESPN-side abbr mismatches verified live 2026-08-07/08", () => 
 test("dimayor: Kalshi CAL is Deportivo Cali (ESPN DCI), never ESPN's own CAL (Once Caldas)", () => {
   assert.strictEqual(CANONICAL_TO_ESPN.dimayor.CAL, "DCI");
   assert.notStrictEqual(CANONICAL_TO_ESPN.dimayor.CAL, "CAL");
-  // The other three verified remaps, same fixture-matching method.
+  // The OTHER side of that collision, added 2026-08-10 when the registry was completed: ESPN's own
+  // "CAL" IS Once Caldas, which Kalshi calls "OC". Without this the identity passthrough sends
+  // ESPN's Once Caldas fixtures to Kalshi's Deportivo Cali — a silent wrong-team match. The two
+  // assertions together pin the collision from both directions.
+  assert.strictEqual(CANONICAL_TO_ESPN.dimayor.OC, "CAL");
+  // The other verified remaps, same fixture-matching method.
   assert.strictEqual(CANONICAL_TO_ESPN.dimayor.ADR, "AGD");
   assert.strictEqual(CANONICAL_TO_ESPN.dimayor.ALI, "AFC");
   assert.strictEqual(CANONICAL_TO_ESPN.dimayor.CAN, "NAL");
+  assert.strictEqual(CANONICAL_TO_ESPN.dimayor.INT, "BOG");
+  assert.strictEqual(CANONICAL_TO_ESPN.dimayor.JAG, "COR");
   // Identity teams must NOT carry an espnScore entry (an accidental one would be a silent remap).
-  for (const a of ["BUC", "CHI", "DIM", "FOR", "LLA", "PAS", "PER", "TOL"]) {
+  for (const a of ["AME", "BUC", "CHI", "CUC", "DIM", "FOR", "JUN", "LLA", "MIL", "PAS", "PER", "SFE", "TOL"]) {
     assert.ok(!(a in CANONICAL_TO_ESPN.dimayor), `${a} should map to itself, not be remapped`);
   }
+  // All 20 clubs registered — an incomplete registry is what let OCALI mis-parse, and it is the
+  // precondition for dimayor being in parseGameTeams' validated variable-length allowlist.
+  assert.strictEqual(_VALID_TEAMS.dimayor.size, 20);
 });
