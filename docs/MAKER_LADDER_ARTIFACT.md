@@ -194,3 +194,42 @@ test changes behaviour, and no threshold in any pre-registration moved. But the 
 consequence worth stating: `wnba|totalPoints|15-19`, the flagged cell behind live prereg
 `wnbatp-1519`, is **not** anomalous under the corrected test — its `sideWon` of 0 is the smooth
 continuation of its neighbours (0 at 10-14, 0.041 at 20-24), never a grading fault.
+
+### The first three flags were the detector's own thinness, not a pipeline fault (2026-08-11)
+
+The corrected detector's loudest cluster was `mlb|f5spread` 40-44 / 55-59 / 60-64. Investigated in
+full; **nothing is wrong with the maker pipeline there.** Three independent checks:
+
+1. **Grading is correct.** Three flagged tickers checked against Kalshi's own settlement, 3/3 right
+   (`result:"no"` → `sideWon:1` on the sold NO side, and the converse).
+2. **The book is clean.** A new read-only diagnostic, `?makerBookAudit=sport|category`, reports per
+   band × side the YES and NO book widths behind every fill. For `mlb|f5spread`: `avgNoSpread` equals
+   `avgYesSpread` in every row to two decimals, `avg(yes_ask + no_ask)` sits at 101.1–101.7 against
+   spreads of 1.1–1.7, and **0 of 2489 fills** had a wide NO book behind a tight YES one. The books
+   are exactly complementary and tight, *including in the anomalous bands*.
+   - Worth recording: this **qualifies a standing CLAUDE.md gotcha.** "YES/NO books are independent
+     (3–7¢ spread)" does not hold for `KXMLBF5SPREAD` — there `no_ask = 100 − yes_bid` exactly, so
+     `computeMakerQuote`'s single shared `spread` is correct for this series. The hypothesis that a
+     per-side spread gate was needed was **tested and falsified**; it would have changed 0 fills.
+3. **The cells are thin in a way fill count hides.** `mlb|f5spread|55-59` has 132 fills over 17 days,
+   but **14 of those days sit at `sideWon` exactly 0 or 1** — each is a single game, one Bernoulli
+   draw, not 50 independent contracts. 40-44 runs 7 of 8. A cleanly-calibrated control band (70-74)
+   runs 1 of 20. `topDayShare` sees none of this: it reads 20–28% on all of them, inside the 0.35 bar.
+
+Two guards added to `ladderAnomalies` as a result:
+
+- **`maxSpanC: 10`** — the reference is refused when the nearest qualifying rungs bracketing a cell
+  are more than 10¢ apart. For 55-59 they were 40-44 and 60-64, a 20¢ span across the steepest part
+  of the ladder, because 45-49 (n=5) and 50-54 (n=16) were correctly dropped for thinness. The
+  resulting fitted 0.49 is an extrapolation wearing an interpolation's clothes. In practice this
+  requires both immediate 5¢ neighbours to qualify.
+- **`minTickers: 5`** — distinct GAMES behind the cell, sourced from a `COUNT(DISTINCT ticker)` roll-up
+  (it cannot be derived from the per-day grain, where summing per-day distinct counts double-counts a
+  ticker quoted on two days).
+
+The obvious version of the second guard — counting non-degenerate days — was **rejected on the data**.
+At the ladder ends degenerate days are legitimate and common (`mlb|f5spread|85-89` runs 10/21,
+`90-96` runs 10/13, both correctly calibrated), so that rule would silence precisely the extreme cells
+this detector was rewritten to watch. Distinct games is the same signal without the price dependence.
+
+The span guard alone takes the board from 13 flags to 10 and clears both 55-59 and 40-44.

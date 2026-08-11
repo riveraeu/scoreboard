@@ -332,9 +332,27 @@ const r2 = (v) => (v == null || !Number.isFinite(v) ? null : Math.round(v * 100)
 export const LADDER_BAR = {
   minFills: 20,        // cell must have this many fills to be TESTED, and to be trusted as a REFERENCE
   minDays: 3,          // ... and enough days for a clustered interval (mirrors dayClusteredPnl)
+  minTickers: 5,       // ... and this many distinct GAMES (see below)
   minBands: 4,         // category needs this many reference-quality bands to have a ladder at all
   minResidual: 0.15,   // practical floor: a significant but trivial departure is not an integrity signal
+  maxSpanC: 10,        // widest price gap the reference may be interpolated across (see below)
 };
+
+// ── Two thinness guards added 2026-08-11, after the first version flagged mlb|f5spread 40-64 ──
+//
+// `maxSpanC`. The reference is read between the nearest qualifying rung on each side. When the bands
+// in between are excluded for thinness that span can be long — for f5spread|55-59 the neighbours were
+// 40-44 and 60-64, a 20c gap straddling the steepest part of the ladder, because 45-49 (n=5) and
+// 50-54 (n=16) were correctly dropped. Interpolating across that is an extrapolation wearing an
+// interpolation's clothes, and it produced a fitted 0.49 that flagged a cell sitting at 0.846.
+//
+// `minTickers`. Fill count is a poor measure of a cell's real sample: f5spread|55-59 had 132 fills
+// over 17 days, but 14 of those days landed at sideWon EXACTLY 0 or 1 — each was a single game, one
+// Bernoulli draw, not 50 independent contracts. A clean band (70-74) had 1 such day in 20. The
+// obvious guard — count non-degenerate days — is WRONG, and the data says so: at the ladder ends
+// degenerate days are legitimate and common (85-89 runs 10/21, 90-96 runs 10/13, both correctly
+// calibrated), so that rule would silence exactly the extreme cells this detector exists to watch.
+// Distinct GAMES is the same signal without the price dependence, so that is what is gated on.
 
 // Weighted isotonic regression (pool-adjacent-violators). Returns the monotone non-decreasing fit of
 // `y` on `x`-order that minimises weighted squared error — the maximum-likelihood ladder given only
@@ -406,6 +424,7 @@ export function ladderAnomalies(cells, bar = LADDER_BAR) {
 
   for (const c of all) {
     if ((c.fills || 0) < bar.minFills) continue;
+    if (c.tickers != null && c.tickers < bar.minTickers) continue;
     const dc = dayClusteredRate({ days: c.byDay });
     if ((dc.days || 0) < bar.minDays || dc.mean == null) continue;
     // Leave-one-out: the cell under test must not contribute to the reference it is judged against,
@@ -425,6 +444,9 @@ export function ladderAnomalies(cells, bar = LADDER_BAR) {
     const below = iAbove > 0 ? { y: fitAll[iAbove - 1], x: loo[iAbove - 1].mid, se: seOf(loo[iAbove - 1]) } : null;
     const above = iAbove < loo.length ? { y: fitAll[iAbove], x: loo[iAbove].mid, se: seOf(loo[iAbove]) } : null;
     let fitted = null, seFit = null;
+    // Too far apart to interpolate between: the curve between them is unobserved, so any value read
+    // off the straight line is invented. Skip rather than test against a fabricated reference.
+    if (below && above && (above.x - below.x) > bar.maxSpanC) continue;
     if (below && above) {
       const span = above.x - below.x;
       const t = span > 0 ? (c.mid - below.x) / span : 0.5;

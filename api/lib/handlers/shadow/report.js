@@ -777,7 +777,7 @@ async function handleShadowReport({ path, request, env, cache }) {
   // frontend; the rest (fills/daily/bands/quotedOutcomes) remains for admin diagnostic use.
   let makerBoard = null;
   try {
-    const [[mq], [mf], _qoRows, _mDaily, _mBands, _mCatBandDay] = await Promise.all([
+    const [[mq], [mf], _qoRows, _mDaily, _mBands, _mCatBandDay, _mCellTickers] = await Promise.all([
       neonQuery(`
         SELECT COUNT(*)::int AS segments, COUNT(DISTINCT ticker)::int AS tickers,
           COUNT(DISTINCT game_date)::int AS days, ROUND(AVG(quote_ask), 1) AS avg_ask
@@ -841,6 +841,15 @@ async function handleShadowReport({ path, request, env, cache }) {
         FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
         WHERE q.game_date >= $1 AND q.source = 'live' AND f.graded_at IS NOT NULL
         GROUP BY 1, 2, 3, 4`, [since], env, { write: true }),
+      // Distinct GAMES per cell — the effective sample the anomaly detector gates on. Cannot be
+      // derived from the per-day rollup above: COUNT(DISTINCT ticker) there is per DAY, and summing
+      // it double-counts any ticker quoted across two days.
+      neonQuery(`
+        SELECT COALESCE(q.sport,'?') AS sport, COALESCE(q.category, q.sport, '?') AS category,
+          ${_makerBandCase("f.fill_ask")} AS band, COUNT(DISTINCT q.ticker)::int AS tickers
+        FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
+        WHERE q.game_date >= $1 AND q.source = 'live' AND f.graded_at IS NOT NULL
+        GROUP BY 1, 2, 3`, [since], env, { write: true }),
     ]);
 
     const graded = Number(mf?.graded || 0);
@@ -892,6 +901,8 @@ async function handleShadowReport({ path, request, env, cache }) {
       const dcur = cell.byDay.get(_d) || { pnl: 0, contracts: 0, won: 0 };
       dcur.pnl += p; dcur.contracts += c; dcur.won += w; cell.byDay.set(_d, dcur);
     }
+    const _tickerCount = new Map((_mCellTickers || [])
+      .map(r => [`${r.sport}|${r.category}|${r.band}`, Number(r.tickers) || 0]));
     const _bandMid = (band) => { const [lo, hi] = String(band).split("-").map(Number);
       return Number.isFinite(lo) && Number.isFinite(hi) ? (lo + hi) / 2 : NaN; };
     const _cbBase = [..._cbCells.values()].map(cell => {
@@ -909,6 +920,7 @@ async function handleShadowReport({ path, request, env, cache }) {
         perContract: perContract != null ? parseFloat(perContract.toFixed(2)) : null,
         sideWon: sideWon != null ? parseFloat(sideWon.toFixed(4)) : null,
         days: cell.byDay.size, ciLo, ciHi, reliable,
+        tickers: _tickerCount.get(`${cell.sport}|${cell.category}|${cell.band}`) ?? null,
         topDayShare: topDayShare != null ? parseFloat(topDayShare.toFixed(2)) : null,
         _mid: _bandMid(cell.band), _byDay: dayVals };
     });
@@ -922,7 +934,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       const k = `${c.sport}|${c.category}`;
       if (!_byCat.has(k)) _byCat.set(k, []);
       _byCat.get(k).push({ band: c.band, mid: c._mid, fills: c.fills, contracts: c.contracts,
-        sideWon: c.sideWon, byDay: c._byDay });
+        tickers: c.tickers, sideWon: c.sideWon, byDay: c._byDay });
     }
     const _anom = new Map();
     for (const [k, cells] of _byCat) {

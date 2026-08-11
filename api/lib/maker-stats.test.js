@@ -390,8 +390,8 @@ test("the two compose to reproduce the live 2026-07-26 production numbers", () =
 // See docs/MAKER_LADDER_ARTIFACT.md.
 
 // Build a cell whose per-day rows reproduce a target sideWon with no day-to-day variance unless asked.
-const ladderCell = (band, mid, sideWon, { fills = 60, days = 6, spread = 0 } = {}) => ({
-  band, mid, fills, contracts: fills * 7,
+const ladderCell = (band, mid, sideWon, { fills = 60, days = 6, spread = 0, tickers = 12 } = {}) => ({
+  band, mid, fills, tickers, contracts: fills * 7,
   sideWon,
   byDay: Array.from({ length: days }, (_, i) => {
     const c = (fills * 7) / days;
@@ -464,27 +464,70 @@ test("failure-closed: too sparse to calibrate flags nothing (never falls back to
 
 test("a departure must be BOTH significant and materially large", () => {
   const cells = [
-    ladderCell("10-14", 12, 0.10), ladderCell("20-24", 22, 0.20), ladderCell("30-34", 32, 0.30),
-    ladderCell("40-44", 42, 0.40), ladderCell("50-54", 52, 0.50),
+    ladderCell("10-14", 12, 0.10), ladderCell("15-19", 17, 0.20), ladderCell("20-24", 22, 0.30),
+    ladderCell("25-29", 27, 0.40), ladderCell("30-34", 32, 0.50),
   ];
-  // 0.34 where ~0.30 is fitted: zero day-variance makes it "significant", but it is below the
+  // 0.34 where 0.30 is fitted: zero day-variance makes it "significant", but it is below the
   // 0.15 practical floor, so it must not flag.
-  const near = cells.map(c => c.band === "30-34" ? ladderCell("30-34", 32, 0.34) : c);
-  assert.equal(ladderAnomalies(near).get("30-34").anomaly, false);
+  const near = cells.map(c => c.band === "20-24" ? ladderCell("20-24", 22, 0.34) : c);
+  assert.equal(ladderAnomalies(near).get("20-24").anomaly, false);
   // Same cell moved well clear of the floor does flag.
-  const far = cells.map(c => c.band === "30-34" ? ladderCell("30-34", 32, 0.75) : c);
-  assert.equal(ladderAnomalies(far).get("30-34").anomaly, true);
+  const far = cells.map(c => c.band === "20-24" ? ladderCell("20-24", 22, 0.75) : c);
+  assert.equal(ladderAnomalies(far).get("20-24").anomaly, true);
 });
 
 test("a cell below the fills/days bar is never tested (and never used as a reference)", () => {
   const cells = [
-    ladderCell("10-14", 12, 0.10), ladderCell("20-24", 22, 0.20), ladderCell("30-34", 32, 0.30),
-    ladderCell("40-44", 42, 0.40), ladderCell("50-54", 52, 0.50),
-    ladderCell("60-64", 62, 0.02, { fills: 8 }),   // wildly out of order, but only 8 fills
-    ladderCell("70-74", 72, 0.02, { days: 2 }),    // enough fills, too few days for an interval
+    ladderCell("10-14", 12, 0.10), ladderCell("15-19", 17, 0.20), ladderCell("20-24", 22, 0.30),
+    ladderCell("25-29", 27, 0.40), ladderCell("30-34", 32, 0.50),
+    ladderCell("35-39", 37, 0.02, { fills: 8 }),   // wildly out of order, but only 8 fills
+    ladderCell("40-44", 42, 0.02, { days: 2 }),    // enough fills, too few days for an interval
   ];
   const r = ladderAnomalies(cells);
-  assert.equal(r.get("60-64").anomaly, false, "under minFills — not tested");
-  assert.equal(r.get("70-74").anomaly, false, "under minDays — no clustered interval");
-  assert.equal(r.get("30-34").anomaly, false, "and neither one polluted the reference ladder");
+  assert.equal(r.get("35-39").anomaly, false, "under minFills — not tested");
+  assert.equal(r.get("40-44").anomaly, false, "under minDays — no clustered interval");
+  assert.equal(r.get("25-29").anomaly, false, "and neither one polluted the reference ladder");
+});
+
+test("maxSpanC: a reference too far away to interpolate between is refused", () => {
+  // The mlb|f5spread|55-59 shape: the rungs either side are 20¢ apart because the bands between them
+  // were correctly dropped for thinness. Reading a value off that straight line is invention.
+  const wide = [
+    ladderCell("10-14", 12, 0.10), ladderCell("20-24", 22, 0.20), ladderCell("30-34", 32, 0.28),
+    ladderCell("40-44", 42, 0.10), ladderCell("60-64", 62, 0.55), ladderCell("70-74", 72, 0.76),
+  ];
+  assert.equal(ladderAnomalies(wide).get("55-59"), undefined, "no cell there to score");
+  // Insert the cell at 57: its neighbours are 42 and 62, a 20¢ span > maxSpanC 10.
+  const withCell = [...wide, ladderCell("55-59", 57, 0.846)].sort((a, b) => a.mid - b.mid);
+  assert.equal(ladderAnomalies(withCell).get("55-59").anomaly, false, "span too wide — not tested");
+  // Same cell, same numbers, but with the intervening rungs present: now it IS testable.
+  const dense = [...withCell, ladderCell("45-49", 47, 0.34), ladderCell("50-54", 52, 0.45)]
+    .sort((a, b) => a.mid - b.mid);
+  assert.equal(ladderAnomalies(dense).get("55-59").anomaly, true, "span now 5¢ — tested and flagged");
+});
+
+test("minTickers: fills concentrated in few GAMES are not a sample", () => {
+  const cells = [
+    ladderCell("10-14", 12, 0.10), ladderCell("15-19", 17, 0.15), ladderCell("20-24", 22, 0.20),
+    ladderCell("25-29", 27, 0.25), ladderCell("30-34", 32, 0.30),
+    // Wildly out of order and fill-rich, but drawn from 3 games — one Bernoulli draw each.
+    ladderCell("35-39", 37, 0.95, { fills: 200, tickers: 3 }),
+  ];
+  assert.equal(ladderAnomalies(cells).get("35-39").anomaly, false);
+  // Identical numbers spread across 12 games is a real sample, and does flag.
+  const spread = cells.map(c => c.band === "35-39" ? ladderCell("35-39", 37, 0.95, { fills: 200, tickers: 12 }) : c);
+  assert.equal(ladderAnomalies(spread).get("35-39").anomaly, true);
+});
+
+test("a null ticker count is not treated as zero (older rows stay testable)", () => {
+  const cells = [
+    ladderCell("10-14", 12, 0.10), ladderCell("15-19", 17, 0.15), ladderCell("20-24", 22, 0.20),
+    ladderCell("25-29", 27, 0.25), ladderCell("30-34", 32, 0.90, { tickers: null }),
+  ];
+  assert.equal(ladderAnomalies(cells).get("30-34").anomaly, true, "unknown ticker count must not silence");
+});
+
+test("bar values are pinned — a threshold diff here is a detector-behaviour change", () => {
+  assert.deepEqual(LADDER_BAR,
+    { minFills: 20, minDays: 3, minTickers: 5, minBands: 4, minResidual: 0.15, maxSpanC: 10 });
 });
