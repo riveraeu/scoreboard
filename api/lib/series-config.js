@@ -161,7 +161,16 @@ export const SERIES_CONFIG = {
   // all three YES sides captured. gameDate from ticker (YYMONDD), gameTime=null —
   // occurrence_datetime is post-game settlement expiration, not kickoff; no ESPN slug.
   // Settlement-authoritative (kleague in SETTLEMENT_AUTHORITATIVE_SPORTS). 12 teams in teams.js.
-  KXKLEAGUEGAME: { sport: "kleague", league: "kleague", stat: "ml", col: "ML", gameType: "kleagueGame" },
+  // `tickerMl` (renamed from `kleagueGame` 2026-08-10 when KBO joined): the no-ESPN shape where
+  // identity/date/kickoff all come from the ticker. Routing tag only — emitted rows still carry
+  // gameType:"game", so no stored row contract changes.
+  KXKLEAGUEGAME: { sport: "kleague", league: "kleague", stat: "ml", col: "ML", gameType: "tickerMl" },
+  // KBO Korean baseball (adopted 2026-08-10). 2-way (no TIE market). 30/30 real books but a 10¢
+  // median spread — only ~63% of markets clear capturableSpread's 15¢ cap, materially wider than
+  // the soccer leagues; the gate rejects the rest at parse, which is the intended behaviour.
+  // Unlike kleague, the ticker DOES carry HHMM (KXKBOGAME-26AUG130600LGKIW) so gameTime is real
+  // and these rows are maker-quotable. No ESPN slug — settlement-authoritative only.
+  KXKBOGAME: { sport: "kbo", league: "kbo", stat: "ml", col: "ML", gameType: "tickerMl" },
   // UFC match-winner (KXUFCFIGHT) + Boxing match-winner (KXBOXING) — model-free maker (built
   // 2026-08-10). Kalshi lists one YES market per fighter per bout (e.g. KXUFCFIGHT-26AUG15JOHOCH-JOH
   // and -OCH). YES-side only (same pattern as Dota2): each fighter's YES market covers one direction,
@@ -186,6 +195,14 @@ export const SERIES_CONFIG = {
   // SAN VIL SEV RVC) are already in the 20-team laliga registry — no teams.js change, and laliga
   // was already in MODEL_FREE_LEAGUES + SETTLEMENT_AUTHORITATIVE_SPORTS from the 8/10 GAME build.
   KXLALIGASPREAD: { sport: "laliga", league: "laliga", stat: "spread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread" },
+  // Total + BTTS siblings, adopted 2026-08-10 (both listed after the spread build the same day).
+  // Pure config — the spread build already put `laliga` in SCHEDULE_BY_SPORT, and the registry,
+  // MODEL_FREE_LEAGUES entry and settlement authority were all in place from the GAME build.
+  // KXLALIGATOTAL: 36/36 real books, 6¢ median. KXLALIGABTTS: 6/6 at 4¢ but zero volume so far —
+  // added anyway because it costs one line and rides identical wiring; it captures nothing until
+  // the book develops, which is the failure-closed outcome, not a silent one.
+  KXLALIGATOTAL:  { sport: "laliga", league: "laliga", stat: "total",  col: "G", gameType: "clubSoccerThreshold", subtype: "total" },
+  KXLALIGABTTS:   { sport: "laliga", league: "laliga", stat: "btts",   col: "G", gameType: "clubSoccerThreshold", subtype: "btts" },
   // Serie A game winner — 3-way, model-free maker (built 2026-08-10). KXSERIEA bare prefix = season
   // champion futures; KXSERIEAGAME is per-game: 30/30 real books, 3.5¢ median spread. ESPN slug ita.1.
   KXSERIEAGAME: { sport: "seriea", league: "seriea", stat: "game", col: "ML", gameType: "modelFreeMl" },

@@ -96,6 +96,19 @@ test("parseGameTeams: NFL variable-length splits (eight 2-char abbrs)", () => {
   assert.deepEqual(parseGameTeams(ticker("WASPHI"), "nfl"), ["WSH", "PHI"]);
 });
 
+test("parseGameTeams: KBO 2+3 / 3+2 splits (LG Twins' 2-char code)", () => {
+  // kbo has no kalshi aliases, so TEAM_NORM.kbo is EMPTY and has2charPrefix can never see "LG".
+  // Without kbo in the variable-length allowlist, LGKIW (5 chars) falls to the unvalidated 3+2
+  // fallback → ["LGK","IW"], the GBSEA failure in a second league.
+  assert.deepEqual(parseGameTeams(ticker("LGKIW"), "kbo"), ["LG", "KIW"]);
+  assert.deepEqual(parseGameTeams(ticker("KIWLG"), "kbo"), ["KIW", "LG"]);
+  assert.deepEqual(parseGameTeams(ticker("SAMKIA"), "kbo"), ["SAM", "KIA"]);
+  assert.deepEqual(parseGameTeams(ticker("LGSSG"), "kbo"), ["LG", "SSG"]);
+  assert.deepEqual(parseGameTeams(ticker("NCDKTW"), "kbo"), ["NCD", "KTW"]);
+  // Real ticker shape carries HHMM after YYMONDD — the 4-digit strip must run first.
+  assert.deepEqual(parseGameTeams("KXKBOGAME-26AUG130600LGKIW-LG", "kbo"), ["LG", "KIW"]);
+});
+
 test("parseGameTeams: MLB normalization inside split", () => {
   assert.deepEqual(parseGameTeams(ticker("CHWDET"), "mlb"), ["CWS", "DET"]);
   assert.deepEqual(parseGameTeams(ticker("OAKSEA"), "mlb"), ["ATH", "SEA"]);

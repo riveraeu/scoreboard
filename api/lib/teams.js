@@ -480,6 +480,24 @@ export const TEAMS = {
     { abbr: "SEO" }, // FC Seoul
     { abbr: "DAJ" }, // Daejeon Citizen
   ],
+  // KBO (Korean baseball, KXKBOGAME — adopted 2026-08-10). Canonical = Kalshi's own codes; no ESPN
+  // slug exists for the KBO, so there is nothing to alias to and resolution is settlement-only.
+  // All 10 clubs confirmed against live Kalshi subtitles 2026-08-10. NOTE the 2-char "LG": that
+  // makes `kbo` a mandatory member of parseGameTeams' variable-length allowlist — the generic path
+  // keys has2charPrefix on TEAM_NORM, which is EMPTY for a registry with no aliases, so LGKIW would
+  // otherwise fall to an unvalidated split (the NFL GBSEA→["GBS","EA"] failure, same day).
+  kbo: [
+    { abbr: "DOO" }, // Doosan Bears
+    { abbr: "HAN" }, // Hanwha Eagles
+    { abbr: "KIA" }, // Kia Tigers
+    { abbr: "KIW" }, // Kiwoom Heroes
+    { abbr: "KTW" }, // KT Wiz
+    { abbr: "LG"  }, // LG Twins — the 2-char code; see allowlist note above
+    { abbr: "LOT" }, // Lotte Giants
+    { abbr: "NCD" }, // NC Dinos
+    { abbr: "SAM" }, // Samsung Lions
+    { abbr: "SSG" }, // SSG Landers
+  ],
   eredivisie: [
     { abbr: "AJA" },                    // Ajax Amsterdam
     { abbr: "FEY" },                    // Feyenoord Rotterdam

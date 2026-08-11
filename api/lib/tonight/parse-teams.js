@@ -31,13 +31,14 @@ export function parseGameTeams(eventTicker, sport) {
   // the KXNFLGAME build, and it was already broken for KXNFLTOTAL: only "LA" has a TEAM_NORM
   // entry (LAR's kalshi alias), so has2charPrefix was false for the other seven and GBKC fell
   // past every branch to [null,null] while GBSEA hit the unvalidated 3+2 fallback and returned
-  // ["GBS","EA"] — a SILENT wrong parse of the exact class _VALID_TEAMS exists to stop).
+  // ["GBS","EA"] — a SILENT wrong parse of the exact class _VALID_TEAMS exists to stop; kbo joins
+  // for the same reason on LG Twins' 2-char "LG", which has no TEAM_NORM alias to be seen by).
   // Try every (i, len-i) split and accept
   // the first one where both halves validate. Prefer longer left-side first so e.g. CONNIN parses
   // as CONN+IND (not CO+NNIN), NYRBCLT as NYRB+CLT (not NY+RBCLT), CRUCHA as CRU+CHA (not CR+UCHA)
   // while CRSAN still parses as CR+SAN. Uses _VALID_TEAMS (not TEAM_NORM), so registries with no
   // kalshi aliases (copadobrasil) are covered where the generic has2charPrefix path is not.
-  if ((sport === "wnba" || sport === "mls" || sport === "brasileirao" || sport === "nwsl" || sport === "argprem" || sport === "copadobrasil" || sport === "ligue1" || sport === "usl" || sport === "copalib" || sport === "nfl") && valid) {
+  if ((sport === "wnba" || sport === "mls" || sport === "brasileirao" || sport === "nwsl" || sport === "argprem" || sport === "copadobrasil" || sport === "ligue1" || sport === "usl" || sport === "copalib" || sport === "nfl" || sport === "kbo") && valid) {
     for (let i = Math.min(4, rest.length - 2); i >= 2; i--) {
       const a = normTeam(sport, rest.slice(0, i));
       for (let j = Math.min(4, rest.length - i); j >= 2; j--) {

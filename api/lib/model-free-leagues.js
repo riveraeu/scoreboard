@@ -37,7 +37,8 @@
 // maker-quotable, the exact defect that left 9 Phase-1 modules silently useless.
 // K League (KXKLEAGUEGAME) had the same ESPN-slug blocker but IS BUILT (2026-08-10) via the
 // Dota2-style ticker-parse path — ticker encodes gameDate (YYMONDD + 3+3 teams), gameTime=null
-// (occurrence_datetime is settlement expiration, not kickoff). See tonight/kleague-modelfree.js.
+// (occurrence_datetime is settlement expiration, not kickoff). See tonight/ticker-ml-modelfree.js,
+// the shared emitter for this no-ESPN ticker-parsed shape (kleague + kbo).
 // And cross-check team abbrs on BOTH sides: collisions have hit ~1 per non-US league, in
 // Kalshi-vs-ESPN (chnsl "SHE", ligamx "ATL") and ESPN-internal (argprem "RIV") flavors.
 

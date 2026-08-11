@@ -44,7 +44,7 @@ export const SETTLEMENT_AUTHORITATIVE_SPORTS = new Set([
   "epl", "laliga", "seriea", "ligue1", "jleague",
   "laliga2", "usl", "copalib",
   "mlb", "wnba",
-  "dota2", "kleague",
+  "dota2", "kleague", "kbo",
   "ufc", "boxing",
   // nfl folded in 2026-08-10 with the KXNFLGAME build, same reasoning as the 8/04 mlb/wnba
   // cutover: post-teardown there is no model-accuracy analysis left that needs physical reality,

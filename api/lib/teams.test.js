@@ -40,6 +40,7 @@ const LEGACY_TEAM_NORM = {
   copadobrasil: {}, // canonical = Kalshi abbrs, no aliases (like brasileirao); the 4 espnScore
   // aliases live in CANONICAL_TO_ESPN, not TEAM_NORM.
   kleague: {},    // canonical = Kalshi abbrs, no aliases; settlement-authoritative, no ESPN slug.
+  kbo: {},        // canonical = Kalshi abbrs, no aliases; settlement-authoritative, no ESPN slug.
   eredivisie: {}, // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
   epl: {},        // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
   laliga: {},     // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
@@ -62,6 +63,7 @@ const LEGACY_VALID_TEAMS = {
   brasileirao: ["BAH","BOT","RBB","CAP","ATL","CFC","CHA","COR","CRU","FLA","FLU","GPA","INT","MIR","PAL","CR","SAN","SPA","VDG","VIT"],
   copadobrasil: ["CAP","ATL","CHA","COR","CRU","FLU","FOR","GPA","INT","JUV","MIR","PAL","CR","SAN","VDG","VIT"],
   kleague:    ["ANY","BUC","DAJ","GAW","GIS","GWA","INC","JEJ","JEO","POH","SEO","ULS"],
+  kbo:        ["DOO","HAN","KIA","KIW","KTW","LG","LOT","NCD","SAM","SSG"],
   eredivisie: ["AJA","FEY","PSV","AZA","TWE","SPA","GRO","HEE","FCU","ZWO","ADO","FOR","TEL","NIJ","GAE","WIL","EXC","CAM"],
   nwsl: ["WSP","DEN","SAN","REI","URO","NCC","KC","BOS","PTH","GOT","OPR","CHI","HDA","BAY"],
   chnsl: ["ZHP","DAL","CHR","BJG","SHT","HEN","YUN","SHE","WUH","CHO","LIT","QIN","QWC","SHP","SHS","TTT"],
