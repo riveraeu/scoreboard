@@ -43,8 +43,13 @@ export function parseGameTeams(eventTicker, sport) {
   // as CONN+IND (not CO+NNIN), NYRBCLT as NYRB+CLT (not NY+RBCLT), CRUCHA as CRU+CHA (not CR+UCHA)
   // while CRSAN still parses as CR+SAN. Uses _VALID_TEAMS (not TEAM_NORM), so registries with no
   // kalshi aliases (copadobrasil) are covered where the generic has2charPrefix path is not.
+  // leaguescup joined 2026-08-11: it INHERITS mls's mixed lengths (SD is 2-char, LAFC is 4-char)
+  // through its derived mls ∪ ligamx registry, so it needs this path for the same reason mls does.
+  // Live event segments confirm the split is unambiguous under longest-left-first: SDPUE → SD|PUE,
+  // LAFCQUE → LAFC|QUE, everything else 3+3. SD is the only 2-char and LAFC the only 4-char code in
+  // the tournament's 36, which is what keeps every split unique.
   if ((sport === "wnba" || sport === "mls" || sport === "brasileirao" || sport === "nwsl" || sport === "argprem" || sport === "copadobrasil" || sport === "ligue1" || sport === "usl" || sport === "copalib" || sport === "nfl" || sport === "kbo"
-       || sport === "dimayor") && valid) {
+       || sport === "dimayor" || sport === "leaguescup") && valid) {
     for (let i = Math.min(4, rest.length - 2); i >= 2; i--) {
       const a = normTeam(sport, rest.slice(0, i));
       for (let j = Math.min(4, rest.length - i); j >= 2; j--) {

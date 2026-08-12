@@ -832,6 +832,37 @@ export const TEAMS = {
   ],
 };
 
+// ── Leagues Cup: a DERIVED registry, not a hand-written one (2026-08-11) ─────────
+//
+// KXLEAGUESCUPGAME is the first CROSS-LEAGUE competition in this repo: every group-phase fixture
+// is an MLS club against a Liga MX club, so its team set is exactly `mls ∪ ligamx`. Writing 36
+// literal records would duplicate both parents and silently rot the moment either one is corrected
+// — so the registry is derived, and a rebrand or espnScore fix upstream propagates for free.
+//
+// Verified live 2026-08-11 against ESPN `concacaf.leagues.cup` and Kalshi's own market subtitles:
+// all 36 codes across OPEN ∪ SETTLED markets resolve, and every Liga MX ESPN remap the tournament
+// needs (CRA→CAZ, SLA→SAN, CDG→GDL, QUE→QRO, MON→MTY, TIG→UANL, PUM→UNAM) was ALREADY correct in
+// the ligamx registry — ESPN uses the same abbreviations here as it does on mex.1. The MLS side
+// identity-maps (12/12 confirmed against same-date fixtures).
+//
+// **ligamx is applied SECOND so it wins collisions, and that is the whole point.** The two parents
+// overlap on exactly ONE abbr: `ATL`. Kalshi's subtitles prove `ATL` = Atlas and `ALA` = Atlante,
+// and the ligamx registry already carries both (ATL→ATS, ALA→ATL). MLS's ATL is Atlanta United and
+// has no espnScore, so an mls-wins union would identity-map Atlas onto ESPN's `ATL` — which in THIS
+// competition is Atlante. A different club, mapped silently, with no tripwire: the same two-sided
+// collision class as dimayor's CAL. teams.test.js pins the overlap set to exactly {ATL}, so a
+// SECOND collision introduced by any future rebrand fails the suite instead of resolving quietly.
+//
+// Limitation worth knowing: this pins `ATL` to Atlas for all time. Atlanta United did not qualify
+// for the 2026 edition; if it ever does, Kalshi must disambiguate and the mapping has to be
+// re-derived from subtitles rather than assumed.
+TEAMS.leaguescup = (() => {
+  const byAbbr = new Map();
+  for (const t of TEAMS.mls) byAbbr.set(t.abbr, t);
+  for (const t of TEAMS.ligamx) byAbbr.set(t.abbr, t); // ligamx wins ATL (Atlas, not Atlanta)
+  return [...byAbbr.values()];
+})();
+
 // ── Derived maps (legacy shapes, re-exported from their historical modules) ──────
 
 // Kalshi ticker abbr → canonical, per sport (legacy home: tonight/parse-teams.js).

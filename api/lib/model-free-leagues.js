@@ -96,6 +96,21 @@ export const MODEL_FREE_LEAGUES = {
   laliga: { espnSlug: "esp.1" },
   seriea: { espnSlug: "ita.1" },
   ligue1: { espnSlug: "fra.1" },
+  // Leagues Cup, adopted 2026-08-11 — the MLS × Liga MX summer tournament (KXLEAGUESCUPGAME), and
+  // the first CROSS-LEAGUE competition here: its `leaguescup` registry is derived as mls ∪ ligamx
+  // in teams.js rather than hand-written. ESPN slug is `concacaf.leagues.cup` with DOTS — the
+  // underscore forms (concacaf.leagues_cup / usa.leagues_cup / mex.leagues_cup) all return 0
+  // events; found by enumerating the core-API league index, not by guessing.
+  // Largest liquid book in the vet queue when adopted: 42 live markets, 39 real books, 1¢ median
+  // spread, overround 1.02, $4.19M volume. Default canonTeam suffices — the one collision (ATL) is
+  // resolved inside the derived registry, not here.
+  // SEASON SHAPE, and why gameTime will look wrong before it looks right: ESPN's own season types
+  // run League Phase → 2026-08-17, QF 08-17→09-01, SF 09-01→09-05, 3rd/Final 09-05→09-07, but the
+  // knockout fixtures are `count:0` — unpublished until the group phase resolves. So knockout rows
+  // log with `gameTime: null` and `leaguescup` WILL appear in `gameTimeNullBySport` until ESPN
+  // publishes. That is the scocup pattern and it self-heals; it is NOT a registry defect, and the
+  // ticker cannot backstop it (KXLEAGUESCUPGAME tickers are date-only, no HHMM).
+  leaguescup: { espnSlug: "concacaf.leagues.cup" },
   // 15th league, adopted 2026-08-10 — La Liga 2 (KXLALIGA2GAME). ESPN slug esp.2 verified live:
   // 22 teams, 33/33 real books, 5¢ median spread. Default canonTeam suffices (no ESPN-internal
   // abbr collision in the laliga2 registry; all Kalshi codes are 3-char).

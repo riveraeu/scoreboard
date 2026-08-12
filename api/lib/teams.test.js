@@ -52,6 +52,8 @@ const LEGACY_TEAM_NORM = {
   copalib: {},    // canonical = Kalshi abbrs, no aliases; espnScore remaps live in CANONICAL_TO_ESPN.
   ligaportugal: {}, // canonical = Kalshi abbrs, no aliases; the 14 espnScore remaps (incl. the
   // EST=Estoril / ESA=Estrela collision) live in CANONICAL_TO_ESPN, not TEAM_NORM.
+  leaguescup: {}, // DERIVED registry (mls ∪ ligamx) — inherits no aliases because neither parent
+  // has any; its espnScore remaps come from ligamx via CANONICAL_TO_ESPN.
 };
 
 const LEGACY_VALID_TEAMS = {
@@ -247,4 +249,56 @@ test("dimayor: Kalshi CAL is Deportivo Cali (ESPN DCI), never ESPN's own CAL (On
   // All 20 clubs registered — an incomplete registry is what let OCALI mis-parse, and it is the
   // precondition for dimayor being in parseGameTeams' validated variable-length allowlist.
   assert.strictEqual(_VALID_TEAMS.dimayor.size, 20);
+});
+
+// ── Leagues Cup: the derived cross-league registry (2026-08-11) ──────────────────
+//
+// `leaguescup` is the first registry in this file that is DERIVED (mls ∪ ligamx) rather than
+// written out. Everything below pins the properties that derivation depends on — if any of them
+// stops holding, the union silently starts mapping clubs to the wrong ESPN teams.
+
+test("leaguescup: the mls/ligamx overlap is EXACTLY {ATL} — a second collision must fail here", () => {
+  const mls = new Set(TEAMS.mls.map(t => t.abbr));
+  const overlap = TEAMS.ligamx.map(t => t.abbr).filter(a => mls.has(a)).sort();
+  // The union resolves collisions by "ligamx wins", which is only safe while ATL is the sole
+  // conflict. A rebrand that creates a second one would otherwise be resolved silently and
+  // wrongly, so this assertion is the tripwire for it — not a restatement of the current data.
+  assert.deepEqual(overlap, ["ATL"]);
+});
+
+test("leaguescup: ATL is Atlas (ESPN ATS), never Atlanta United; ALA is Atlante (ESPN ATL)", () => {
+  // Kalshi's own market subtitles are the source: ATL -> "Atlas", ALA -> "Atlante". ESPN's OWN
+  // abbr for Atlante in this competition is "ATL" and for Atlas is "ATS", so mls winning the
+  // union would identity-map Atlas onto Atlante — a different club, silently. Pinned from both
+  // directions, same as the dimayor CAL collision above.
+  assert.strictEqual(CANONICAL_TO_ESPN.leaguescup.ATL, "ATS");
+  assert.strictEqual(CANONICAL_TO_ESPN.leaguescup.ALA, "ATL");
+  assert.notStrictEqual(CANONICAL_TO_ESPN.leaguescup.ATL, "ATL");
+});
+
+test("leaguescup: every code in the live tournament resolves, with ligamx's ESPN remaps intact", () => {
+  // The 36 distinct codes seen across OPEN and SETTLED KXLEAGUESCUPGAME markets on 2026-08-11
+  // (TIE excluded — it is the 3-way draw leg, not a club).
+  const LIVE = ["ALA","AME","ASL","ATL","ATX","CDG","CHI","CIN","CLB","CLT","CRA","DAL","JUA",
+    "LAFC","LEO","MIA","MIN","MON","NCX","NSH","NYC","ORL","PAC","PHI","POR","PUE","PUM","QUE",
+    "RSL","SD","SEA","SLA","TIG","TIJ","TOL","VAN"];
+  for (const c of LIVE) assert.ok(_VALID_TEAMS.leaguescup.has(c), `${c} missing from leaguescup`);
+  // Liga MX remaps proven by same-date fixture against ESPN concacaf.leagues.cup — ESPN uses the
+  // same abbreviations here as on mex.1, which is what makes the union viable at all.
+  for (const [k, espn] of [["CRA","CAZ"],["SLA","SAN"],["CDG","GDL"],["QUE","QRO"],["MON","MTY"],
+                           ["TIG","UANL"],["PUM","UNAM"]])
+    assert.strictEqual(CANONICAL_TO_ESPN.leaguescup[k], espn, `${k} -> ${espn}`);
+  // MLS side identity-maps (12/12 confirmed against same-date fixtures); an accidental espnScore
+  // on any of these would be a silent remap.
+  for (const a of ["ATX","CHI","DAL","LAFC","MIA","NSH","NYC","ORL","PHI","POR","RSL","SD","SEA","VAN"])
+    assert.ok(!(a in CANONICAL_TO_ESPN.leaguescup), `${a} should map to itself`);
+});
+
+test("leaguescup: mixed-length codes are present, which is why it needs the allowlist path", () => {
+  // SD (2-char) and LAFC (4-char) are inherited from mls. Their presence is the precondition for
+  // leaguescup being in parseGameTeams' validated variable-length allowlist; if they ever left the
+  // registry the allowlist entry would be dead weight rather than load-bearing.
+  assert.ok(_VALID_TEAMS.leaguescup.has("SD"));
+  assert.ok(_VALID_TEAMS.leaguescup.has("LAFC"));
+  assert.strictEqual(_VALID_TEAMS.leaguescup.size, TEAMS.mls.length + TEAMS.ligamx.length - 1);
 });

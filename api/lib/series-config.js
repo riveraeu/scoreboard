@@ -129,6 +129,15 @@ export const SERIES_CONFIG = {
   // DIMAYOR. Surfaced by the morning-report discovery vet queue (REAL_BOOK, 2¢ median spread,
   // overround 1.02). ESPN slug bra.copa_do_brazil; registry shares brasileirao's espnScore aliases.
   KXCOPADOBRASILGAME: { sport: "copadobrasil", league: "copadobrasil", stat: "game", col: "ML", gameType: "modelFreeMl" },
+  // Leagues Cup game winner (adopted 2026-08-11) — the MLS × Liga MX summer tournament, pure
+  // config like DIMAYOR/Copa do Brasil. Largest liquid book in the vet queue at adoption: 42 live
+  // markets, 39 real books, 1¢ median spread, overround 1.02, $4.19M volume. 3-way (home/away/TIE).
+  // First CROSS-LEAGUE competition here — `leaguescup`'s registry is DERIVED as mls ∪ ligamx in
+  // teams.js (ligamx wins the single ATL collision: Kalshi ATL = Atlas, not Atlanta United).
+  // Thin window by design: ~17 group games plus ~8 knockout, then dormant until summer 2027.
+  // The 1H / 1HTOTAL / TEAMTOTAL siblings are deliberately NOT adopted — same short window, more
+  // surface area; they are clubSoccerThreshold rows if the ML capture proves worthwhile.
+  KXLEAGUESCUPGAME:   { sport: "leaguescup", league: "leaguescup", stat: "game", col: "ML", gameType: "modelFreeMl" },
   // Dutch Eredivisie game winner — 9th model-free maker league, pure config (adopted 2026-08-07).
   // 30/30 real books, 1¢ median spread, overround 1.01. ESPN slug ned.1.
   KXEREDIVISIEGAME:     { sport: "eredivisie", league: "eredivisie", stat: "game",   col: "ML", gameType: "modelFreeMl" },
