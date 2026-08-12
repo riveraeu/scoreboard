@@ -138,6 +138,17 @@ export const SERIES_CONFIG = {
   // The 1H / 1HTOTAL / TEAMTOTAL siblings are deliberately NOT adopted — same short window, more
   // surface area; they are clubSoccerThreshold rows if the ML capture proves worthwhile.
   KXLEAGUESCUPGAME:   { sport: "leaguescup", league: "leaguescup", stat: "game", col: "ML", gameType: "modelFreeMl" },
+  // The three siblings, adopted 2026-08-11 alongside GAME (initially deferred, then taken on the
+  // same window). Shapes verified against the RAW Kalshi payload, not a diagnostic's projection:
+  // 1H is the same 3-way suffix as GAME ("Portland wins 1st Half"); 1HTOTAL is a bare numeric
+  // suffix whose subtitle reads "Over 2.5 1H goals scored" — matched by the EXISTING total regex's
+  // optional `(?:1H\s+)?` group; TEAMTOTAL is team+threshold ("Tijuana de Caliente over 2.5 goals",
+  // full game, no 1H, hence no half tag). No SPREAD or BTTS series exists for this competition.
+  // The teamTotal/spread pickTeam capture is `/^([A-Z]+)/` over the ticker suffix, which handles
+  // leaguescup's inherited mixed-length codes (SD3 -> SD, LAFC3 -> LAFC) since it stops at the digit.
+  KXLEAGUESCUP1H:        { sport: "leaguescup", league: "leaguescup", stat: "1hgame",    col: "ML", gameType: "modelFreeMl", half: "1h" },
+  KXLEAGUESCUP1HTOTAL:   { sport: "leaguescup", league: "leaguescup", stat: "1htotal",   col: "G",  gameType: "clubSoccerThreshold", subtype: "total", half: "1h" },
+  KXLEAGUESCUPTEAMTOTAL: { sport: "leaguescup", league: "leaguescup", stat: "teamTotal", col: "G",  gameType: "clubSoccerThreshold", subtype: "teamTotal" },
   // Dutch Eredivisie game winner — 9th model-free maker league, pure config (adopted 2026-08-07).
   // 30/30 real books, 1¢ median spread, overround 1.01. ESPN slug ned.1.
   KXEREDIVISIEGAME:     { sport: "eredivisie", league: "eredivisie", stat: "game",   col: "ML", gameType: "modelFreeMl" },

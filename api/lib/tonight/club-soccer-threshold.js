@@ -3,7 +3,10 @@
 // (adopted 2026-07-23), Argentina Liga Profesional's full-game spread/total/BTTS (added 2026-07-24,
 // no `half` tag — see project_baseline_backlog_2026_07_24 memory), Copa do Brasil's full-game
 // total/spread (added 2026-08-05, no `half` tag, same pattern as Argentina), and Dutch Eredivisie
-// full-game spread (KXEREDIVISIESPREAD, added 2026-08-08, same pattern as Copa do Brasil). Phase 1, model-free.
+// full-game spread (KXEREDIVISIESPREAD, added 2026-08-08, same pattern as Copa do Brasil), and
+// Leagues Cup's 1H total + full-game team-total (KXLEAGUESCUP1HTOTAL/TEAMTOTAL, added 2026-08-11 —
+// the first CROSS-LEAGUE entry here, whose `leaguescup` registry is derived as mls ∪ ligamx in
+// teams.js). Phase 1, model-free.
 // One shared array + module across all four leagues (sport-tagged per row) —
 // unlike the shared GAME-winner module (model-free-ml.js, one path for all six leagues),
 // team identity here needs no subtitle-based disambiguation (none of MLS/LigaMX/Argentina have
@@ -34,6 +37,12 @@ const SCHEDULE_BY_SPORT = {
   copadobrasil: leagueSource("copadobrasil").getSchedule,
   eredivisie: leagueSource("eredivisie").getSchedule,
   laliga: leagueSource("laliga").getSchedule,
+  // leaguescup added 2026-08-11 (1HTOTAL + TEAMTOTAL). Like copadobrasil it has no per-league shim
+  // — its ML path runs straight off MODEL_FREE_LEAGUES, so the schedule comes from the same source.
+  // **This entry is the whole reason those rows get a gameTime**: omitting it is the exact 2026-07-24
+  // argprem failure, which is silent (the lookup is falsy-safe) and costs 100% of the league's
+  // gameTime — and leaguescup cannot fall back to the ticker, which is date-only.
+  leaguescup: leagueSource("leaguescup").getSchedule,
 };
 
 export async function emitClubSoccerThresholdPlays(ctx) {
