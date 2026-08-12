@@ -135,8 +135,8 @@ export const SERIES_CONFIG = {
   // First CROSS-LEAGUE competition here — `leaguescup`'s registry is DERIVED as mls ∪ ligamx in
   // teams.js (ligamx wins the single ATL collision: Kalshi ATL = Atlas, not Atlanta United).
   // Thin window by design: ~17 group games plus ~8 knockout, then dormant until summer 2027.
-  // The 1H / 1HTOTAL / TEAMTOTAL siblings are deliberately NOT adopted — same short window, more
-  // surface area; they are clubSoccerThreshold rows if the ML capture proves worthwhile.
+  // All FOUR series in the vet queue are adopted — GAME first, then the three siblings below on
+  // the same day. No SPREAD or BTTS series exists for this competition.
   KXLEAGUESCUPGAME:   { sport: "leaguescup", league: "leaguescup", stat: "game", col: "ML", gameType: "modelFreeMl" },
   // The three siblings, adopted 2026-08-11 alongside GAME (initially deferred, then taken on the
   // same window). Shapes verified against the RAW Kalshi payload, not a diagnostic's projection:
