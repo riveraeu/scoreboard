@@ -4,7 +4,6 @@
 // by the snapshot writer, the resolver/pregame updaters, the report reader, and the delta handlers)
 // plus the resolution-count high-water-mark helpers shared by the resolver and the report.
 
-import { neonQuery } from "../../neon.js";
 import { isNonFinalTerminal } from "../../settlement-reconcile.js";
 
 export const SHADOW_TABLE = "shadow_plays";
@@ -253,34 +252,6 @@ export async function _stampResolutionFloor(date, row, cache) {
     cache.put(key, JSON.stringify(merged), { expirationTtl: _RESOLUTION_KV_TTL }).catch(() => {});
   }
   return merged || row;
-}
-
-export async function _readResolutionRobust(yesterday, env, seedRow, cache) {
-  const read = async (write) => {
-    try {
-      const r = await neonQuery(_RESOLUTION_SQL, [yesterday], env, write ? { write: true } : {});
-      return _parseResolutionRow(r?.[0]);
-    } catch { return null; }
-  };
-  // Seed with Q6's already-run {write:true} read; cross-check against the default conn (the endpoint
-  // that was fresh on 2026-06-25). On the happy path this is a single extra COUNT query.
-  let best = _mergeResolution(_parseResolutionRow(seedRow), await read(false));
-  // Authoritative replica-proof floor: the resolver stamps yesterday's true count to KV. Merging it
-  // means a cold instance whose every SQL read is replica-stale still sees the real resolved count
-  // (the 2026-06-26 miss: all in-instance SQL reads returned 101/718 for >1min; KV held 717).
-  if (cache) {
-    const kv = await cache.get(`${_RESOLUTION_KV_PREFIX}${yesterday}`, "json").catch(() => null);
-    best = _mergeResolution(best, kv);
-  }
-  // Still incomplete? Give a lagging just-woken replica time to catch up, then re-read both + max.
-  if (best && best.total > 0 && best.resolved / best.total < 0.9) {
-    await new Promise(r => setTimeout(r, 1500));
-    const [w, d] = await Promise.all([read(true), read(false)]);
-    best = _mergeResolution(best, _mergeResolution(w, d));
-  }
-  // Persist the merged high-water mark so a warm read raises the floor for every later read.
-  if (cache && best && best.total > 0) await _stampResolutionFloor(yesterday, best, cache);
-  return best || { total: 0, resolved: 0, scored: 0, clvCaptured: 0 };
 }
 
 // ── ESPN resolution helpers (name matching + per-row win/actualValue) ──────────
