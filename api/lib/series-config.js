@@ -143,12 +143,17 @@ export const SERIES_CONFIG = {
   // 1H is the same 3-way suffix as GAME ("Portland wins 1st Half"); 1HTOTAL is a bare numeric
   // suffix whose subtitle reads "Over 2.5 1H goals scored" — matched by the EXISTING total regex's
   // optional `(?:1H\s+)?` group; TEAMTOTAL is team+threshold ("Tijuana de Caliente over 2.5 goals",
-  // full game, no 1H, hence no half tag). No SPREAD or BTTS series exists for this competition.
+  // full game, no 1H, hence no half tag). No SPREAD series exists for this competition.
   // The teamTotal/spread pickTeam capture is `/^([A-Z]+)/` over the ticker suffix, which handles
   // leaguescup's inherited mixed-length codes (SD3 -> SD, LAFC3 -> LAFC) since it stops at the digit.
   KXLEAGUESCUP1H:        { sport: "leaguescup", league: "leaguescup", stat: "1hgame",    col: "ML", gameType: "modelFreeMl", half: "1h" },
   KXLEAGUESCUP1HTOTAL:   { sport: "leaguescup", league: "leaguescup", stat: "1htotal",   col: "G",  gameType: "clubSoccerThreshold", subtype: "total", half: "1h" },
   KXLEAGUESCUPTEAMTOTAL: { sport: "leaguescup", league: "leaguescup", stat: "teamTotal", col: "G",  gameType: "clubSoccerThreshold", subtype: "teamTotal" },
+  // 1H BTTS, adopted 2026-08-12 off the vet queue -- the fixed-subtitle sibling left out of the
+  // 8/11 batch. Pure config: subtype "btts" is the same generic clubSoccerThreshold path already
+  // proven by KXMLS1HBTTS/KXLIGAMX1HBTTS/KXARGPREMDIVBTTS/KXLALIGABTTS. 12 live markets at
+  // adoption, group-phase games (subtitle "1st Half: Both Teams To Score", no threshold digit).
+  KXLEAGUESCUP1HBTTS:    { sport: "leaguescup", league: "leaguescup", stat: "1hbtts",    col: "G",  gameType: "clubSoccerThreshold", subtype: "btts", half: "1h" },
   // Dutch Eredivisie game winner — 9th model-free maker league, pure config (adopted 2026-08-07).
   // 30/30 real books, 1¢ median spread, overround 1.01. ESPN slug ned.1.
   KXEREDIVISIEGAME:     { sport: "eredivisie", league: "eredivisie", stat: "game",   col: "ML", gameType: "modelFreeMl" },
