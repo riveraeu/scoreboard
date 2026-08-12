@@ -143,7 +143,8 @@ Three findings worth stating plainly:
 
 `ks-1519` and `mlbf5t-2529` are the two cells whose books are positive on both halves. They are also
 the two lowest in-sample ¢/ct on the list (+4.22, +2.84) — which is the point: the screen removes the
-cells whose size came from the price level, and what is left is small.
+cells whose size came from the price level, and what is left is small. **How small is answered in
+§"The screen and the bar are in tension" below: both have since lost `reliable` status.**
 
 ## What this changes
 
@@ -158,6 +159,76 @@ cells whose size came from the price level, and what is left is small.
   changes fill dynamics and adverse selection. That question deserves its own pre-registration,
   scoped across categories rather than to one band, with the netting criterion built into its GREEN
   bar. It is not registered here.
+
+## The screen and the bar are in tension — the two CLEAN cells lost `reliable` (2026-08-11, later)
+
+Re-running the screen the same evening (report `since` 2026-07-12, generated 2026-08-12T01:53Z) the
+halves reproduced to the cent, but **both cells the screen had certified CLEAN were no longer on the
+`robustCandidates` board at all**:
+
+| cell | prereg | ¢/ct | day-clustered CI | eligible | reliable |
+|---|---|---|---|---|---|
+| `mlb\|strikeouts\|15-19` | ks-1519 | +4.22 | **[−1.15, +9.59]** | yes | **false** |
+| `mlb\|f5total\|25-29` | mlbf5t-2529 | +2.84 | **[−8.44, +14.13]** | yes | **false** |
+
+They did not fall out on sample — both still clear `ROBUST_BAR` comfortably (322 fills / 13 days /
+topDayShare 0.18; 104 / 12 / 0.19). They fell out because **their intervals now span zero**. So the
+set *{clears the structural bar}* ∩ *{both halves of its book positive}* is **empty**, and the only
+candidate the ladder does not explain is `wnba|threePointers|60-64`, which survives by being
+*inverted* rather than clean.
+
+### Why this is structural and not bad luck
+
+The neighbouring bands tell the story better than the cells do:
+
+| | 10-14 | 15-19 | 20-24 | | | 20-24 | 25-29 | 30-34 |
+|---|---|---|---|---|---|---|---|---|
+| `mlb\|strikeouts` ¢/ct | +1.47 | +4.22 | −0.67 | | `mlb\|f5total` ¢/ct | −2.55 | +2.84 | −1.93 |
+| reliable | false | false | false | | reliable | false | false | false |
+
+Every neighbour is flat, sign-alternating, and unreliable. These are not lone survivors in a
+structured book — they are **the largest wiggles in books that have no ladder at all**.
+
+And that is exactly what the netting screen selects for. Rank the categories by ladder steepness
+(`|sub-50| + |50+|`) and the two CLEAN books are the **flattest on the board**:
+
+| category | sub-50 | 50+ | steepness | screen |
+|---|---|---|---|---|
+| `mlb\|strikeouts` | +1.62 | +0.17 | **1.79** | CLEAN |
+| `mlb\|f5total` | +1.88 | +0.45 | **2.33** | CLEAN |
+| `mlb\|f5spread` | +1.76 | −1.91 | 3.67 | ARTIFACT |
+| `mlb\|spread` | +8.85 | −10.12 | 18.97 | ARTIFACT |
+| `wnba\|spread` | +13.91 | −14.11 | 28.02 | ARTIFACT |
+| `wnba\|totalPoints` | +17.93 | −12.43 | 30.36 | MIRRORED net+ |
+
+**"Both halves positive" and "steep ladder" are near-complements**, because a steep ladder is a
+price→outcome curve far off the diagonal, and a curve far off the diagonal on the favorite side is
+what makes the 50+ half negative. So the screen preferentially passes books whose curve is nearly
+diagonal — i.e. **books with no exploitable offset in either direction**. In those books a cell's
+`perContract` is small by construction, its CI is wide relative to its point estimate, and `reliable`
+is fragile.
+
+**The two instruments are therefore not independent filters that can be intersected freely.** The
+netting screen answers "is this cell an artifact of price level?", the robustness bar answers "is this
+cell distinguishable from zero?", and passing the first makes the second harder to pass. An empty
+intersection is the *expected* result of applying both to a book with no edge in it — which is the
+honest reading of the current board, not evidence that the screen is too strict.
+
+### What this does and does not change
+
+- **It changes nothing about the two live forward tests.** `ks-1519` and `mlbf5t-2529` keep their
+  windows, thresholds, and checkpoints (8/20 and 8/24). Criteria are immutable once written and an
+  observation made after the window opened cannot retire a forward test — same rule this document
+  applied to the anomaly redefinition. **This is recorded here rather than by editing those two
+  PREREG files**, exactly as the criterion-6 redefinition was.
+- **It is context for reading those checkpoints, not a prediction of them.** Both entered their
+  windows on in-sample evidence that has since weakened *on its own terms*, and `ks-1519` was
+  explicitly marginal at registration (CI-lo +0.08¢). Note the registration figures were computed on
+  windows ending 8/05 and 8/09 against this report's `since` 2026-07-12 window, so they are **not** a
+  like-for-like time series — the direction is real, the magnitudes are not comparable.
+- **It sharpens what a future candidate has to look like.** A cell worth pre-registering should be
+  distinguishable from zero *and* not explained by its book's price level. On the evidence here, the
+  cells that satisfy both are rare enough that finding one should itself be treated as surprising.
 
 ## Method note
 
