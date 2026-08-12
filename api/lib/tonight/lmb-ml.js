@@ -14,6 +14,7 @@
 
 import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
 import { getLmbSchedule } from "../lmb-schedule.js";
+import { kalshiTickerGameTime } from "../kalshi-ticker.js";
 
 export async function emitLmbPlays(ctx) {
   const { lmbMarkets, lmbPlays, cutoffStr, cache, isBustCache } = ctx;
@@ -42,7 +43,14 @@ export async function emitLmbPlays(ctx) {
       truePct: null, kalshiPct: m.kalshiPct, americanOdds: m.americanOdds ?? null,
       edge: null, dataConfidence: null, dcQualified: false, qualified: false,
       modelFree: true,
-      gameDate: m.gameDate, gameTime: schedGame?.gameTime ?? null, modelVersion: "lmb-modelfree-v1",
+      // Schedule first (statsapi reflects a moved first pitch; the ticker is frozen at listing),
+      // ticker second. The fallback exists because statsapi's sportId=23 slate is NOT always
+      // complete for a date Kalshi has already listed — on 2026-08-11 it carried 4 of the 6
+      // matchups Kalshi quoted, and the two it omitted logged `gameTime: null`, which grades and
+      // logs fine but is never maker-quotable (the silent-killer field, root CLAUDE.md).
+      // KXLMBGAME tickers carry HHMM (`KXLMBGAME-26AUG112130SDMCDJ-SDM`), and on the four games
+      // where both sources existed that day the two agreed to the minute, 4/4.
+      gameDate: m.gameDate, gameTime: schedGame?.gameTime ?? kalshiTickerGameTime(m.eventTicker), modelVersion: "lmb-modelfree-v1",
       opponent: m.opponent,
       kalshiVolume: m.kalshiVolume ?? null, kalshiTicker: m._ticker ?? null,
     });

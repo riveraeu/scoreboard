@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert";
-import { kalshiTickerDate } from "./kalshi-ticker.js";
+import { kalshiTickerDate, kalshiTickerGameTime } from "./kalshi-ticker.js";
 
 test("kalshiTickerDate — real tickers across sports", () => {
   // The three markets whose null game_date caused the 2026-07-27 cross-day mis-grade.
@@ -22,6 +22,31 @@ test("kalshiTickerDate — every month parses", () => {
   months.forEach((mon, i) => {
     assert.equal(kalshiTickerDate(`KXTEST-26${mon}05ABCDEF`), `2026-${String(i + 1).padStart(2, "0")}-05`);
   });
+});
+
+test("kalshiTickerGameTime — KXLMBGAME, pinned against statsapi", () => {
+  // lmb-ml.js falls back to the ticker when statsapi's sportId=23 slate omits a game Kalshi has
+  // already listed. These three are the 2026-08-11 LMB slate; the first was cross-checked against
+  // statsapi's own gameDate for that matchup and agreed to the minute (4/4 across the day's games
+  // that both sources carried). 3-char team codes, no player suffix — a shape not otherwise pinned.
+  assert.equal(kalshiTickerGameTime("KXLMBGAME-26AUG112145CALADM-CAL"), "2026-08-12T01:45:00.000Z");
+  assert.equal(kalshiTickerGameTime("KXLMBGAME-26AUG112130SDMCDJ-SDM"), "2026-08-12T01:30:00.000Z");
+  assert.equal(kalshiTickerGameTime("KXLMBGAME-26AUG112100PDCPDP-PDP"), "2026-08-12T01:00:00.000Z");
+  // The emit path passes an event_ticker (no side suffix); it must parse identically.
+  assert.equal(kalshiTickerGameTime("KXLMBGAME-26AUG112130SDMCDJ"), "2026-08-12T01:30:00.000Z");
+});
+
+test("kalshiTickerGameTime — ET offset resolves per date, never a constant", () => {
+  // EDT (−4) vs EST (−5): a constant offset would be an hour wrong for half the year.
+  assert.equal(kalshiTickerGameTime("KXMLBKS-26JUL271945CHCSTL-X"), "2026-07-27T23:45:00.000Z");
+  assert.equal(kalshiTickerGameTime("KXTEST-26JAN151945ABCDEF"), "2026-01-16T00:45:00.000Z");
+});
+
+test("kalshiTickerGameTime — null for a date-only ticker rather than a guessed midnight", () => {
+  assert.equal(kalshiTickerGameTime("KXWNBAPTS-26JUL28NYLA"), null);
+  assert.equal(kalshiTickerGameTime("KXATPMATCH-26JUN14HIJGIR"), null);
+  assert.equal(kalshiTickerGameTime("KXMLBTOTAL-HOUCWS"), null); // no date at all
+  assert.equal(kalshiTickerGameTime("KXTEST-26JUL052599ABC"), null); // impossible HHMM
 });
 
 test("kalshiTickerDate — returns null rather than guessing", () => {
