@@ -3,7 +3,8 @@
 // (adopted 2026-07-23), Argentina Liga Profesional's full-game spread/total/BTTS (added 2026-07-24,
 // no `half` tag — see project_baseline_backlog_2026_07_24 memory), Copa do Brasil's full-game
 // total/spread (added 2026-08-05, no `half` tag, same pattern as Argentina), and Dutch Eredivisie
-// full-game spread (KXEREDIVISIESPREAD, added 2026-08-08, same pattern as Copa do Brasil), and
+// full-game spread + total (KXEREDIVISIESPREAD 2026-08-08, KXEREDIVISIETOTAL 2026-08-11 — the
+// latter reached the vet queue by REVIVAL after an earlier pre-season auto-dismissal), and
 // Leagues Cup's 1H total + full-game team-total (KXLEAGUESCUP1HTOTAL/TEAMTOTAL, added 2026-08-11 —
 // the first CROSS-LEAGUE entry here, whose `leaguescup` registry is derived as mls ∪ ligamx in
 // teams.js). Phase 1, model-free.

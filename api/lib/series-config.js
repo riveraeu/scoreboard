@@ -153,6 +153,18 @@ export const SERIES_CONFIG = {
   // 30/30 real books, 1¢ median spread, overround 1.01. ESPN slug ned.1.
   KXEREDIVISIEGAME:     { sport: "eredivisie", league: "eredivisie", stat: "game",   col: "ML", gameType: "modelFreeMl" },
   KXEREDIVISIESPREAD:   { sport: "eredivisie", league: "eredivisie", stat: "spread", col: "G",  gameType: "clubSoccerThreshold", subtype: "spread" },
+  // Full-game total, adopted 2026-08-11 — the cheapest possible adoption: eredivisie already has a
+  // proven registry, a SCHEDULE_BY_SPORT entry and settlement authority, so this is one row and no
+  // other wiring. Reached the queue by REVIVAL, not first sighting: it was auto-dismissed earlier
+  // (pre-season, no maker had shown up) and the scan's re-screen pass restored it on REAL_BOOK —
+  // the mechanism that exists precisely because a pre-season book and a dead one look identical at
+  // a point in time. Subtitle "Over 5.5 goals scored" matches the existing total regex (its
+  // `(?:1H\s+)?` group is optional), verified against the RAW Kalshi payload.
+  // NOTE the siblings are deliberately absent, not overlooked: BTTS, TEAMTOTAL and every 1H variant
+  // are in DISMISSED_SERIES (vetted and rejected), and DISMISSED_SERIES is never auto-revived.
+  // CAVEAT recorded at adoption: REAL_BOOK proves a quote, not liquidity — 6 markets on a single
+  // fixture totalling ~$15 volume. Expect near-zero capture until the league's books deepen.
+  KXEREDIVISIETOTAL:    { sport: "eredivisie", league: "eredivisie", stat: "total",  col: "G",  gameType: "clubSoccerThreshold", subtype: "total" },
   KXCOPADOBRASILTOTAL:  { sport: "copadobrasil", league: "copadobrasil", stat: "total",  col: "G", gameType: "clubSoccerThreshold", subtype: "total" },
   KXCOPADOBRASILSPREAD: { sport: "copadobrasil", league: "copadobrasil", stat: "spread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread" },
   KXARGPREMDIVGAME:   { sport: "argprem", league: "argprem", stat: "game",     col: "ML", gameType: "modelFreeMl" },
