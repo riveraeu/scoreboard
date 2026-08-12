@@ -136,7 +136,10 @@ Three findings worth stating plainly:
 3. **`hrr-7074` fails differently.** Its book loses on *both* halves (−1.27 / −1.63, whole −1.50), so
    the ladder does not explain it — it is a lone +6.50 island in a uniformly negative category, which
    is the ordinary 1-in-N multiplicity story. Its forward window independently agrees: −8.73¢/ct over
-   6 days with `sideWon` 0.801 against a 0.60 bar.
+   6 days with `sideWon` 0.801 against a 0.60 bar. **`hrr-7074` was KILLED 2026-08-11** on exactly
+   that forward evidence (`docs/MAKER_HRR_PREREG.md` § RESULT) — the netting screen and the forward
+   test reached the same verdict by independent routes, which is the first time those two instruments
+   have been able to corroborate each other on a live cell.
 
 `ks-1519` and `mlbf5t-2529` are the two cells whose books are positive on both halves. They are also
 the two lowest in-sample ¢/ct on the list (+4.22, +2.84) — which is the point: the screen removes the

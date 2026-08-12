@@ -4,11 +4,11 @@ import assert from "node:assert/strict";
 import { PREREG_CELLS, evaluatePrereg } from "./maker-prereg.js";
 
 // The registry mirrors committed docs/MAKER_*_PREREG.md files whose thresholds are FIXED before the
-// forward window opens — moving one post-hoc voids the pre-registration. It is currently EMPTY
-// (f5total-5054 killed 2026-08-03). This structural contract stands whether the registry is empty or
-// not, and re-enforces the shape the moment a cell is added: every live entry must carry the fields
-// the report + PreregTracker render and a real committed PREREG doc. A NEW cell re-adds its own
-// exact-value pin here (per the "new id + new doc" rule) — this test never needs editing to add one.
+// forward window opens — moving one post-hoc voids the pre-registration. This structural contract
+// stands whether the registry is empty or full, and re-enforces the shape the moment a cell is added:
+// every live entry must carry the fields the report + PreregTracker render and a real committed
+// PREREG doc. A NEW cell re-adds its own exact-value pin here (per the "new id + new doc" rule) —
+// this test never needs editing to add one.
 test("every PREREG_CELLS entry carries its render-critical + doc fields", () => {
   for (const spec of PREREG_CELLS) {
     for (const f of ["id", "sport", "category", "band", "doc", "label", "forwardStart", "checkpoint", "criteria"])
@@ -19,21 +19,17 @@ test("every PREREG_CELLS entry carries its render-critical + doc fields", () => 
   }
 });
 
-// Exact-value pin for the live cell (the "new id + new doc re-adds its own pin" rule). These numbers
-// are FIXED by docs/MAKER_HRR_PREREG.md before its 2026-08-05 forward window opened — moving any of
-// them post-hoc voids the pre-registration, so a diff here is a tripwire, not a routine edit.
-test("hrr-7074 pins the pre-registered criteria fixed on 2026-08-05", () => {
-  const spec = PREREG_CELLS.find((s) => s.id === "hrr-7074");
-  assert.ok(spec, "hrr-7074 must be present");
-  assert.equal(spec.doc, "docs/MAKER_HRR_PREREG.md");
-  assert.equal(spec.sport, "mlb");
-  assert.equal(spec.category, "hrr");
-  assert.equal(spec.band, "70-74");
-  assert.equal(spec.forwardStart, "2026-08-05");
-  assert.equal(spec.checkpoint, "2026-08-19");
-  assert.deepEqual(spec.criteria, {
-    ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.60, minDays: 8, minFills: 50,
-  });
+// KILLED cells must stay killed. The KILL rule is "a failed forward test is the answer" — the cell is
+// not re-sliced, not widened, not given another two weeks, and a new test on the same market is a NEW
+// id + a NEW doc. Re-adding one of these ids would silently resurrect a pre-registration whose bar was
+// already failed on real forward data, which is precisely the re-opening the doctrine forbids.
+// `f5total-5054` killed 2026-08-03 (day 3/8, mechanism inverted); `hrr-7074` killed 2026-08-11
+// (day 6/8, sideWon 0.801 vs the < 0.60 bar — mechanism inverted the same way).
+test("killed cells are never re-added to PREREG_CELLS", () => {
+  for (const dead of ["f5total-5054", "hrr-7074"]) {
+    assert.equal(PREREG_CELLS.find((s) => s.id === dead), undefined,
+      `${dead} was KILLED on forward data — a new test is a new id + a new doc, never a re-open`);
+  }
 });
 
 // Exact-value pin for ks-1519 (the "new id + new doc re-adds its own pin" rule). Fixed by

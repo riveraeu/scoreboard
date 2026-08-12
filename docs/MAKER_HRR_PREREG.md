@@ -1,5 +1,14 @@
 # Pre-registration — mlb hrr 70-74¢ maker cell (2026-08-05)
 
+> ## ☠️ OUTCOME: **KILLED 2026-08-11** — hypothesis INVERTED. Do not re-open.
+>
+> Removed from `PREREG_CELLS`. Everything below this box is the original pre-registration, preserved
+> **unedited** — it is the record of what was committed before the forward window, and editing it
+> after the fact would destroy the only thing that made the test worth running. The result is
+> appended at the end of the file, never merged into the criteria.
+
+
+
 Written and committed **before** any forward day exists. The criteria below are fixed as of
 2026-08-05 and cannot be changed after seeing the forward result. The in-sample window runs through
 2026-08-04; the forward window opens 2026-08-05, so this file predates every day it is tested on.
@@ -110,3 +119,56 @@ last confirmation, not a formality.**
 Criteria, window, and green-light action are fixed as of 2026-08-05. This cell got here by being the
 one cell of ~555 to clear a structural bar; the forward test is the only thing standing between
 "looks green" and "is real," so the rule that evaluates it must not be adjustable after the fact.
+
+---
+
+# RESULT — KILLED 2026-08-11 (appended after the fact; nothing above was edited)
+
+Killed on day **6 of the 8-day sample floor**, before the 2026-08-19 checkpoint. A discretionary
+stop-risk kill, the same call as `f5total-5054` on 2026-08-03 — the doc's KILL rule is written for the
+checkpoint, so stopping early is a deviation, and it is recorded as one rather than dressed up as a
+checkpoint verdict.
+
+## Forward result (`game_date >= 2026-08-05`, read exactly as §"Forward window" specifies)
+
+`GET /api/shadow-report?makerCell=mlb|hrr|70-74&since=2026-08-05`
+
+| | forward | criterion | met |
+|---|---|---|---|
+| mean ¢/contract | **−8.73** | ≥ +5 | ✗ |
+| day-clustered CI | **[−19.91, +2.44]** | lo > 0 | ✗ |
+| positive days | **1 of 6 (17%)** | ≥ 60% | ✗ |
+| **sideWon** | **0.801** | < 0.60 | ✗ |
+| sample | 6d / 71 fills | ≥ 8d & ≥ 50 | ✗ |
+
+Per-day: `08-05` −27.5¢ (sideWon 1.00) · `08-06` −28.0¢ (1.00) · `08-07` **+5.94¢** (0.656) ·
+`08-08` −28.95¢ (1.00) · `08-09` −6.26¢ (0.769) · `08-10` −8.53¢ (0.800). Avg ask held ~70.6-72.3¢
+throughout, so the cell was quoting the intended price the whole window.
+
+## Why this is a kill and not "wait for the sample floor"
+
+**The mechanism inverted.** §Hypothesis staked a directional claim: the sold ~72¢ favorite should win
+**materially less** than its price. In-sample it did — 0.52 against 0.72 priced, 20 points below.
+Forward it won **0.801 against ~71.7¢ priced, ~8 points ABOVE**. Three of the six days ran sideWon
+exactly 1.0.
+
+That is not an underpowered version of the hypothesis, it is the opposite sign. Selling this favorite
+is the losing side of the trade, and no amount of additional sample makes the pre-registered direction
+correct. §KILL/EXTEND allows a single extension **only** when criterion 5 alone is unmet with 1-4
+otherwise trending pass; here 1-4 all fail, so the extension clause explicitly does not apply.
+
+§Hypothesis also flagged in advance that this mechanism story was the weak one — "a player-prop
+favorite priced 70-74¢ overshooting by ~20 points is a large claim" — and said that weakness was a
+reason to hold the bar strictly. Held.
+
+## What this cell cost, and what it bought
+
+Nothing in capital: `AWAITING_VALIDATED_EDGE` held throughout, V2 stayed `SHELVED`, and no real order
+was ever placed on it. What it bought is the **second worked example** of the standing lesson, now
+demonstrated rather than argued: `hrr|70-74` was the **only** cell of ~555 to clear the strict
+structural bar on the 8/05 tripwire, with a +20.29¢/ct in-sample point estimate and a day-clustered CI
+of [+4.39, +36.18] — and it still inverted forward. Robustness is necessary, not sufficient. The
+`robustCandidates` tripwire is doing its job when it produces a candidate that dies here; that is the
+forward test working, not the tripwire failing.
+
+Re-entry record: **0-for-7**.

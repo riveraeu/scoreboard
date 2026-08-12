@@ -15,10 +15,18 @@
 // KILL rule a failed forward test is the answer and the cell is not re-sliced. It is NOT in this
 // registry — a new forward test is a new id + a new doc, never a re-open.
 //
-// `hrr-7074` (docs/MAKER_HRR_PREREG.md) added 2026-08-05 — the only cell to clear the robustCandidates
-// structural bar on the 8/05 tripwire (in-sample +20.29¢/ct, 66 fills / 10 days, day-clustered CI
-// [+4.39, +36.18], sideWon ~0.52 vs ~0.72 priced). Criteria fixed before the 2026-08-05 forward window
-// opened; sideWonBelow is 0.60 not 0.45 because this favorite is priced ~72¢, not a coinflip.
+// `hrr-7074` (docs/MAKER_HRR_PREREG.md) was added 2026-08-05 and KILLED EARLY on 2026-08-11 — day 6
+// of 8, below the sample floor but failing all four substantive criteria (mean −8.73¢, day-clustered
+// CI [−19.91, +2.44], 1 of 6 days positive, sideWon 0.801 vs the < 0.60 bar). Second discretionary
+// stop-risk kill after f5total, and the stronger case of the two: the mechanism did not merely fail
+// to appear, it INVERTED. The hypothesis was that a 70-74¢ favorite is overpriced — in-sample it won
+// ~0.52 against ~0.72 priced, 20 points below. Forward it won 0.801 against ~71.7¢ priced, ~8 points
+// ABOVE. Three of the six days ran sideWon exactly 1.0. Selling that favorite is the losing side of
+// the trade, so no amount of remaining sample makes the pre-registered direction right.
+// Per the KILL rule it is NOT in this registry and is NOT re-sliced: a new forward test is a new id
+// + a new doc. The in-sample +20.29¢/ct is now the second worked example of the standing lesson that
+// robustness is necessary and not sufficient — it was the ONLY cell of ~555 to clear the structural
+// bar on 8/05 and it still inverted.
 //
 // `ks-1519` (docs/MAKER_KS_PREREG.md) added 2026-08-06 — second cell on the 8/06 tripwire (in-sample
 // +5.47¢/ct, 221 fills / 8 days, day-clustered CI [+0.08, +10.86], weighted sideWon ~0.114 vs ~0.165
@@ -80,12 +88,6 @@
 // Weighted sideWon ≈ 0.150 vs ~27¢ priced; bad days 8/05 (0.409) and 8/06 (0.588) are a structural risk.
 // Same ML-anchor mechanism as mlbsp cluster, applied to F5 half-game. sideWonBelow 0.22.
 export const PREREG_CELLS = [
-  {
-    id: "hrr-7074", sport: "mlb", category: "hrr", band: "70-74",
-    doc: "docs/MAKER_HRR_PREREG.md", label: "MLB HRR favorite 70-74¢",
-    forwardStart: "2026-08-05", checkpoint: "2026-08-19",
-    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.60, minDays: 8, minFills: 50 },
-  },
   {
     id: "ks-1519", sport: "mlb", category: "strikeouts", band: "15-19",
     doc: "docs/MAKER_KS_PREREG.md", label: "MLB strikeouts longshot 15-19¢",
