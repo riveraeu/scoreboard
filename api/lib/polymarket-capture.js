@@ -1,7 +1,9 @@
 // api/lib/polymarket-capture.js — Polymarket capture-all + resolver (2026-08-04).
 //
-// The Poly analog of shadow_plays: logs ONE model-free row per quoted side of every game-ML / total
-// / first-five (F5) market, captured pre-game, and grades it off Poly's own UMA settlement. This is
+// The Poly analog of shadow_plays: logs ONE model-free row per quoted side of every market family
+// listed in that league's `POLY_MARKETS.categories` (polymarket.js) — the registry is the single
+// source for which leagues and families are captured. Rows are captured pre-game and graded off
+// Poly's own UMA settlement. This is
 // the quote+outcome substrate for the cross-venue "venue-vig per category×band" view — NOT the
 // maker-fill instrument (that's a later layer). Failure-closed everywhere: a Poly hiccup must never
 // break the shadow_plays snapshot or the resolver.
@@ -20,7 +22,7 @@
 // "1"-priced token). Anything else (still pending, or a non-binary/scalar/void settlement) is left
 // unresolved and retried, or voided terminally after 14 days — never guessed.
 
-import { POLY_SERIES, fetchPolySeriesEvents, normPolyTeam } from "./polymarket.js";
+import { POLY_MARKETS, POLY_SPORTS_RE, POLY_SERIES, fetchPolySeriesEvents, normPolyTeam } from "./polymarket.js";
 import { fetchPolyOrderbook } from "./polymarket-book.js";
 import { CAPTURE_GATE, CAPTURE_CAP, capturableSpread } from "./config.js";
 import { pLimit } from "./utils.js";
@@ -30,10 +32,12 @@ import { POLY_PLAYS_TABLE, POLY_PLAYS_COLUMNS } from "./handlers/shadow/common.j
 
 const GAMMA = "https://gamma-api.polymarket.com";
 
-// Bounded CLOB walk budget per capture run (both sides of every in-band candidate market). A normal
-// MLB+WNBA slate is a few hundred candidate sides; the cap is a runaway guard, NOT a silent trim —
-// exceeding it is logged (capture doctrine: no silent caps).
-export const POLY_CAPTURE_MAX_WALKS = 800;
+// Bounded CLOB walk budget per capture run (both sides of every in-band candidate market). The cap
+// is a runaway guard, NOT a silent trim — exceeding it is logged (capture doctrine: no silent caps).
+// Raised 800 → 2000 on 2026-08-13 with the spread/f5total/f5spread categories: 800 was sized for
+// ml+total+f5 on MLB+WNBA (~286 sides) and the three new families add ~336 sides on MLB alone,
+// before NBA/NHL come back in season.
+export const POLY_CAPTURE_MAX_WALKS = 2000;
 const CLOB_CONCURRENCY = 8;
 
 function _parseArr(s) {
@@ -50,17 +54,22 @@ function _gameStartMs(event) {
   return Number.isFinite(t) ? t : null;
 }
 
-// Parse a Poly event ticker → { sport, awayPoly, homePoly, dateStr, family } or null. Unlike
-// polymarket.js's strict parseGameTicker (game-ML only), this ALSO admits the `-first-five-winner`
-// segment family. Player-props / futures / other suffixes are rejected (null). `family` is 'game'
-// (base event: ML + totals live inside it) or 'f5'.
+// Parse a Poly event ticker → { sport, awayPoly, homePoly, dateStr } or null. Unlike polymarket.js's
+// strict parseGameTicker (bare game tickers only), this ALSO admits the `-first-five-winner` event.
+// Player-props / futures / other suffixes are rejected (null).
+//
+// `segment` is 'f5' for the `-first-five-winner` event, else null. Category is otherwise decided by
+// `sportsMarketType` alone (2026-08-13) — the F5 winner carries its own type
+// (`baseball_team_first_five_winner`), verified live, so the old `family` plumbing is gone. The flag
+// survives ONLY as a guard: the 2026-08-04 build observed that event's winner as a `moneyline`-typed
+// market, and if Poly ever types it that way again, an F5 winner would silently land in the `ml`
+// bucket — corrupting the exact population the venue-vig compares rather than failing visibly.
 export function parseCaptureTicker(ticker) {
-  const t = String(ticker || "");
-  const base = /^(mlb|nba|nhl|wnba)-([a-z0-9]+)-([a-z0-9]+)-(\d{4}-\d{2}-\d{2})$/.exec(t);
-  if (base) return { sport: base[1], awayPoly: base[2], homePoly: base[3], dateStr: base[4], family: "game" };
-  const f5 = /^(mlb|nba|nhl|wnba)-([a-z0-9]+)-([a-z0-9]+)-(\d{4}-\d{2}-\d{2})-first-five-winner$/.exec(t);
-  if (f5) return { sport: f5[1], awayPoly: f5[2], homePoly: f5[3], dateStr: f5[4], family: "f5" };
-  return null;
+  const m = new RegExp(
+    `^(${POLY_SPORTS_RE})-([a-z0-9]+)-([a-z0-9]+)-(\\d{4}-\\d{2}-\\d{2})(-first-five-winner)?$`
+  ).exec(String(ticker || ""));
+  if (!m) return null;
+  return { sport: m[1], awayPoly: m[2], homePoly: m[3], dateStr: m[4], segment: m[5] ? "f5" : null };
 }
 
 // A real two-sided market (not an untraded 0.5/0.5 placeholder). Mirrors polymarket.js `_liquid`.
@@ -82,23 +91,43 @@ export function topOfBook(book) {
   return { askC, bidC, spreadC: +(askC - bidC).toFixed(1) };
 }
 
-// Category ('ml' | 'total' | 'f5') for a market, or null to skip (spreads, unknown types). F5-family
-// events carry their winner as a moneyline-typed market; everything under a base game event is
-// keyed off sportsMarketType.
-function _category(family, sportsMarketType) {
-  if (family === "f5") return "f5";
-  if (sportsMarketType === "moneyline") return "ml";
-  if (sportsMarketType === "totals") return "total";
-  return null;
-}
+// Categories carrying a threshold/handicap. Their `line` is part of the market's identity — a
+// spread row without it is indistinguishable from the opposite alt line, the same unrecoverable-
+// column class as a dropped row missing its ticker.
+const _LINED = new Set(["total", "spread", "f5total", "f5spread"]);
+// Categories whose two outcomes are the two TEAMS by display name ("Tampa Bay Rays"), not Over/Under
+// or Yes/No. **Their outcome order is NOT away-first** — measured 2026-08-13 over 78 live MLB spread
+// markets: 38 matched the moneyline's away-first order and 40 did not, and outcome[0] is not the
+// favorite either (0 of 78). So these MUST resolve their side by NAME, never by index.
+const _NAME_SIDED = new Set(["spread", "f5spread"]);
+// …and their `line` is stated from outcome[0]'s perspective: one event carries BOTH "TB −1.5" and
+// "NYY −1.5" as separate markets with flipped orderings. Each row therefore stores the line from its
+// OWN side's perspective, so a row is self-describing instead of needing the ordering convention.
+const _SIGNED_LINE = _NAME_SIDED;
 
 // Best-effort normalized side label for the vig-by-category buckets. Grading never depends on this
-// (the winner is decided by token id), so an unrecognized label is stored verbatim, not dropped.
-function _side(category, outcome, idx) {
+// (the winner is decided by token id), so an unrecognized label is stored verbatim, not dropped —
+// and an unmatched team name yields the verbatim name rather than a coin-flip away/home claim.
+function _side(category, outcome, idx, nameToSide) {
   const o = String(outcome || "");
-  if (category === "total") return /over/i.test(o) ? "over" : /under/i.test(o) ? "under" : o.toLowerCase();
-  if (category === "ml") return idx === 0 ? "away" : "home"; // Poly ordering is [away, home]
-  return /yes/i.test(o) ? "yes" : /no/i.test(o) ? "no" : o.toLowerCase(); // f5
+  if (category === "ml") return idx === 0 ? "away" : "home"; // ml IS the away-first reference
+  if (_NAME_SIDED.has(category)) return nameToSide?.[o] || o.toLowerCase();
+  if (/over/i.test(o)) return "over";
+  if (/under/i.test(o)) return "under";
+  if (/yes/i.test(o)) return "yes";
+  if (/no/i.test(o)) return "no";
+  return o.toLowerCase();
+}
+
+// Display-name → 'away'/'home', read off the event's OWN moneyline market (the one market whose
+// order is reliably [away, home]). Empty when the event has no live moneyline — the F5-winner event,
+// or the occasional game event without one — in which case name-sided rows keep the verbatim name.
+function _nameToSide(event) {
+  const ml = (event?.markets || []).find(
+    (m) => m?.sportsMarketType === "moneyline" && !m?.closed && m?.active !== false
+  );
+  const o = _parseArr(ml?.outcomes).map(String);
+  return o.length === 2 ? { [o[0]]: "away", [o[1]]: "home" } : {};
 }
 
 // Pure: raw Gamma event → array of pre-CLOB capture candidates (one per outcome of each ml/total/f5
@@ -114,22 +143,28 @@ export function buildCaptureCandidates(event, nowMs = Date.now()) {
   const home = normPolyTeam(tk.sport, tk.homePoly);
   const game = away && home ? `${away}@${home}` : null;
 
+  const categories = POLY_MARKETS[tk.sport]?.categories || {};
+  const nameToSide = _nameToSide(event);
   const out = [];
   for (const m of (event?.markets || [])) {
     if (m?.closed || m?.active === false || !_liquid(m)) continue;
-    const category = _category(tk.family, m.sportsMarketType);
+    // On the F5 event, a plain moneyline IS the first-five winner (see parseCaptureTicker).
+    const category = tk.segment === "f5" && categories[m.sportsMarketType] === "ml"
+      ? "f5" : categories[m.sportsMarketType];
     if (!category) continue;
     const outcomes = _parseArr(m.outcomes).map(String);
     const tokens = _parseArr(m.clobTokenIds).map(String);
     const prices = _parseArr(m.outcomePrices).map(Number);
     if (tokens.length !== 2 || outcomes.length !== 2) continue; // binary markets only
-    const line = category === "total" && isFinite(Number(m.line)) ? Number(m.line) : null;
+    const line = _LINED.has(category) && isFinite(Number(m.line)) ? Number(m.line) : null;
     for (let i = 0; i < 2; i++) {
       const gammaPriceC = isFinite(prices[i]) ? +(prices[i] * 100).toFixed(1) : null;
       out.push({
         sport: tk.sport, category, event_ticker: event.ticker, market_id: String(m.id),
         game, game_date: gameDate, token_id: tokens[i], outcome: outcomes[i],
-        side: _side(category, outcomes[i], i), line, gammaPriceC,
+        side: _side(category, outcomes[i], i, nameToSide),
+        line: line != null && i === 1 && _SIGNED_LINE.has(category) ? -line : line,
+        gammaPriceC,
       });
     }
   }

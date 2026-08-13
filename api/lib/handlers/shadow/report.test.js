@@ -115,16 +115,19 @@ test("the note states the null and never reads as a shortlist", () => {
 // venueCategoryFromKalshiTicker maps a Kalshi series ticker onto Poly's three families. The
 // startsWith(PREFIX + "-") rule must isolate the F5 WINNER from F5 total/spread and the full-game
 // total from team-total — a drift here silently pools different market classes into one vig cell.
-test("venueCategoryFromKalshiTicker: series prefixes isolate ml/total/f5, siblings reject", () => {
+test("venueCategoryFromKalshiTicker: series prefixes isolate ml/total/spread/f5 families", () => {
   assert.equal(venueCategoryFromKalshiTicker("KXMLBGAME-26AUG04LADCHC-LAD"), "ml");
   assert.equal(venueCategoryFromKalshiTicker("KXWNBAGAME-26AUG04TORGSV-GSV"), "ml");
   assert.equal(venueCategoryFromKalshiTicker("KXMLBTOTAL-26AUG04LADCHC-8.5"), "total");
   assert.equal(venueCategoryFromKalshiTicker("KXMLBF5-26AUG041940LADCHC-LAD"), "f5");
-  // siblings that must NOT be miscategorized (out of Poly scope → null)
-  assert.equal(venueCategoryFromKalshiTicker("KXMLBF5TOTAL-26AUG04LADCHC-4.5"), null);
-  assert.equal(venueCategoryFromKalshiTicker("KXMLBF5SPREAD-26AUG04LADCHC-0.5"), null);
+  // Added to Poly scope 2026-08-13 — each must land in its OWN category, never pooled into the
+  // shorter prefix it shares a stem with (KXMLBF5-, KXMLBTOTAL-).
+  assert.equal(venueCategoryFromKalshiTicker("KXMLBSPREAD-26AUG04LADCHC-1.5"), "spread");
+  assert.equal(venueCategoryFromKalshiTicker("KXWNBASPREAD-26AUG04TORGSV-5.5"), "spread");
+  assert.equal(venueCategoryFromKalshiTicker("KXMLBF5TOTAL-26AUG04LADCHC-4.5"), "f5total");
+  assert.equal(venueCategoryFromKalshiTicker("KXMLBF5SPREAD-26AUG04LADCHC-0.5"), "f5spread");
+  // still out of Poly scope → null
   assert.equal(venueCategoryFromKalshiTicker("KXMLBTEAMTOTAL-26AUG04LADCHC-LAD3.5"), null);
-  assert.equal(venueCategoryFromKalshiTicker("KXMLBSPREAD-26AUG04LADCHC-1.5"), null);
   assert.equal(venueCategoryFromKalshiTicker(""), null);
 });
 

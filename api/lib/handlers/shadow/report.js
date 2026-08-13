@@ -64,14 +64,26 @@ const _makerBandCase = (col) => `CASE
 // a mechanism, never a bet (feedback_no_insample_target_picker_ui). This is VIG, distinct from the
 // maker-PnL the categoryBands heatmap shows.
 //
-// Kalshi category is derived from the market's OWN series prefix (kalshi_ticker) so it maps onto
-// Polymarket's three families exactly: ml = game winner, total = full-game total, f5 = first-five
-// winner. `startsWith(PREFIX + "-")` isolates KXMLBF5- (f5 winner) from KXMLBF5TOTAL-/KXMLBF5SPREAD-,
-// and KXMLBTOTAL- (total) from KXMLBTEAMTOTAL-. A wrong/absent series name fails safe (empty cell).
+// Kalshi category is derived from the market's OWN series prefix (kalshi_ticker) so it maps onto the
+// Poly-side category names one-for-one: ml = game winner, total = full-game total, spread = full-game
+// spread, f5 = first-five winner, f5total/f5spread = the F5 threshold families. `startsWith(PREFIX +
+// "-")` isolates KXMLBF5- (f5 winner) from KXMLBF5TOTAL-/KXMLBF5SPREAD-, and KXMLBTOTAL- (total) from
+// KXMLBTEAMTOTAL-; no prefix here is a prefix of another under that guard, so iteration order carries
+// no meaning. A wrong/absent series name fails safe (empty cell).
+//
+// THIS MAP IS THE KALSHI HALF OF A PAIR — the Poly half is each league's `categories` in
+// polymarket.js `POLY_MARKETS`. A category present in one and not the other still captures, but its
+// Δ is always empty, which reads as "no divergence" rather than "not built". Add both or neither.
+// Deliberately NOT derived from SERIES_CONFIG: its `stat` values are per-sport idiosyncratic
+// (`totalRuns`, `teamRuns`) and KXMLBGAME/KXMLBF5 have no SERIES_CONFIG row at all, so deriving it
+// would be a chokepoint on paper and a silent-drift generator in practice.
 export const KALSHI_VENUE_CATEGORY_PREFIXES = {
-  ml:    ["KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME"],
-  total: ["KXMLBTOTAL", "KXWNBATOTAL", "KXNBATOTAL", "KXNHLTOTAL"],
-  f5:    ["KXMLBF5"],
+  ml:       ["KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME"],
+  total:    ["KXMLBTOTAL", "KXWNBATOTAL", "KXNBATOTAL", "KXNHLTOTAL"],
+  spread:   ["KXMLBSPREAD", "KXWNBASPREAD", "KXNBASPREAD", "KXNHLSPREAD"],
+  f5:       ["KXMLBF5"],
+  f5total:  ["KXMLBF5TOTAL"],
+  f5spread: ["KXMLBF5SPREAD"],
 };
 export function venueCategoryFromKalshiTicker(ticker) {
   const t = String(ticker || "");

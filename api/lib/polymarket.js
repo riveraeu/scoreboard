@@ -26,9 +26,55 @@ import { PT_FMT } from "./pt.js";
 
 const GAMMA = "https://gamma-api.polymarket.com";
 
-// Sport → Polymarket Gamma series id (from GET /sports, 2026-06-23). Written generically for all
-// four leagues; only the in-season ones produce events, so off-season leagues are free no-ops.
-export const POLY_SERIES = { mlb: "3", nba: "10345", nhl: "10346", wnba: "10105" };
+// THE Polymarket capture registry — one row per league we mirror from Kalshi (2026-08-13). Single
+// source for three things that used to be hardcoded in three separate places: which Gamma series
+// get fetched, which sports the event-ticker regexes admit, and which `sportsMarketType`s become
+// captured rows. Adding a league is one row here + a `teams.js` `polymarket` alias block (optional,
+// see below); adding a market family to an existing league is one line in its `categories`.
+//
+//   series     — Gamma series id, the fetch key. **VERIFY IT RETURNS EVENTS BEFORE TRUSTING IT.**
+//                `GET /sports`'s own `series` field is unreliable: it lists Argentina as 10285 and
+//                NFL as 10187, both of which return ZERO events, while their live events carry
+//                10312 and 12185. Discover the real one with `GET /events?tag_slug=<slug>` and read
+//                the series id off a returned event. Do NOT switch the fetch itself to tag_slug —
+//                that endpoint mixes season futures into the same limit-capped page (50+ futures
+//                rows on `tag_slug=mlb`, leaving only 41 game events), so it would REDUCE coverage.
+//   slug       — Gamma sport slug. Discovery/verification key only, never the fetch key. Also the
+//                join to `POLY_DISMISSED_SPORTS` / `polymarket_sports_seen` — a league built here
+//                must be removed from the dismissal list, which is never auto-revived.
+//   categories — Poly `sportsMarketType` → our category name. The category names are shared with
+//                the Kalshi side of the venue-vig comparison (`KALSHI_VENUE_CATEGORY_PREFIXES` in
+//                handlers/shadow/report.js) — a category added here with no Kalshi prefix captures
+//                fine but produces no Δ, which is a half-built comparison, so add both.
+//
+// Only in-season leagues produce events, so an off-season row is a free no-op.
+export const POLY_MARKETS = {
+  mlb: {
+    series: "3", slug: "mlb",
+    categories: {
+      moneyline: "ml", totals: "total", spreads: "spread",
+      // All three F5 families live under the BARE game ticker (verified live 2026-08-13) except the
+      // winner, which sits under `-first-five-winner`; both tickers parse, so no regex branch.
+      baseball_team_first_five_winner: "f5",
+      baseball_team_first_five_total: "f5total",
+      baseball_team_first_five_spread: "f5spread",
+    },
+  },
+  wnba: { series: "10105", slug: "wnba", categories: { moneyline: "ml", totals: "total", spreads: "spread" } },
+  nba:  { series: "10345", slug: "nba",  categories: { moneyline: "ml", totals: "total", spreads: "spread" } },
+  nhl:  { series: "10346", slug: "nhl",  categories: { moneyline: "ml", totals: "total", spreads: "spread" } },
+};
+
+// Sports we capture, as a regex alternation — derived so a new POLY_MARKETS row is admitted by both
+// ticker parsers without touching either.
+export const POLY_SPORTS_RE = Object.keys(POLY_MARKETS).join("|");
+
+// Sport → Gamma series id. DERIVED from POLY_MARKETS (was the hand-written source until 2026-08-13);
+// kept as its own export because the observatory (`fetchPolymarketGames`) and the polymarket-scan
+// baseline diff both key off this exact shape.
+export const POLY_SERIES = Object.fromEntries(
+  Object.entries(POLY_MARKETS).map(([sport, cfg]) => [sport, cfg.series])
+);
 
 // Gamma sport slugs vetted-and-rejected for the observatory. The polymarket-scan cron reconciles
 // these to status='dismissed' in polymarket_sports_seen, so triaged noise clears on a code change
@@ -91,7 +137,8 @@ function _parseArr(s) {
 // Parse a game event ticker → { sport, awayPoly, homePoly, dateStr } or null. The strict shape
 // (exactly two abbr segments + an ISO date, no suffix) rejects props/first-five/futures tickers.
 export function parseGameTicker(ticker) {
-  const m = /^(mlb|nba|nhl|wnba)-([a-z0-9]+)-([a-z0-9]+)-(\d{4}-\d{2}-\d{2})$/.exec(String(ticker || ""));
+  const m = new RegExp(`^(${POLY_SPORTS_RE})-([a-z0-9]+)-([a-z0-9]+)-(\\d{4}-\\d{2}-\\d{2})$`)
+    .exec(String(ticker || ""));
   if (!m) return null;
   return { sport: m[1], awayPoly: m[2], homePoly: m[3], dateStr: m[4] };
 }

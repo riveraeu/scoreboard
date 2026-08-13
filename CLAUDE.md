@@ -30,7 +30,8 @@ curl -s "https://scoreboard-ivory-xi.vercel.app/api/auth/shadow-stats?resolvetri
    7. Match surrounding idiom — Web-API style, no Node-only APIs casually.
    8. Delete on the way past — remove superseded code (dead branches, orphaned helpers/imports/params, obsolete comments) in the SAME commit.
 3. **Implement** — delete whatever the change orphans as you go. If backend logic changed, confirm via `/api/tonight?debug=1` (or the relevant endpoint) and print fields proving correctness.
-4. **Deploy and document** — `git push origin main`. Update CLAUDE.md + relevant `docs/*.md` in the same commit. Save a memory entry for anything non-obvious.
+4. **Cross-venue check (any NEW Kalshi market or league)** — does Polymarket list the same thing? Record the answer either way: a `POLY_MARKETS` row/category in `api/lib/polymarket.js` (+ its Kalshi prefix in `KALSHI_VENUE_CATEGORY_PREFIXES`), or an explicit note that there's no counterpart. Three traps: (a) **the `/sports` catalog's `series` id is unreliable** — verify it returns events, discover the real one via `tag_slug` (arg 10285→10312, nfl 10187→12185); (b) `POLY_DISMISSED_SPORTS` is **never auto-revived**, so a league dismissed before its Kalshi build must be removed by hand (`uslc`/`sclc` sat stale this way); (c) the shape must be **like-for-like** — Poly lists PGA/NASCAR as event-winner/top-5 against Kalshi's H2H, and a Δ across different products is worse than no data. NOT a gate: a missing counterpart never blocks the Kalshi build.
+5. **Deploy and document** — `git push origin main`. Update CLAUDE.md + relevant `docs/*.md` in the same commit. Save a memory entry for anything non-obvious.
 
 ## What This Is
 
@@ -92,6 +93,8 @@ These bite during *any* change. Each links to detail in `docs/*.md` or memory.
 **`gameScores` today+tomorrow merge** — key shape `${hA}|${gameDate}|${event.date}` prevents post-midnight wipe + DH game-2 overwrite. The inline duplicate in `mlb.js` must mirror it.
 
 **Kalshi UNDER pricing — use `no_ask_dollars`, not `1 - yes_ask_dollars`.** YES/NO books are independent (3–7¢ spread).
+
+**Polymarket outcome order is away-first ONLY for moneyline.** Spread/F5-spread markets print both outcomes as team display names in arbitrary order — measured over 78 live MLB spreads: 38 away-first, 40 not, and outcome[0] isn't the favorite either (0/78). Index-derived sides are a coin flip, so `polymarket-capture.js` resolves them by NAME against the event's own moneyline market (`_nameToSide`), falling back to the verbatim name rather than guessing. The signed `line` belongs to **outcome[0]** — one event carries both "TB −1.5" and "NYY −1.5" as separate markets — so each row stores the line from its own side's perspective. Poly market families are registry-driven (`POLY_MARKETS`); adding one there without its `KALSHI_VENUE_CATEGORY_PREFIXES` twin captures rows whose Δ is silently always empty.
 
 **Traded volume ≠ resting liquidity** — a `volume_fp:0` market can have a deep book, so volume is not a liquidity proxy. Slippage is measured by walking the live full book (`/api/kalshi-orderbook` → `walkFill`, `api/lib/kalshi-book.js`) for real VWAP. The snapshot cron's cached top-3 `_depth` + `blend-fill.js` were deleted 2026-08-13: the depth phase had never once run, and its blend silently **rewrote captured prices**, so repairing it would have moved the measured quantity under live pre-registrations.
 
