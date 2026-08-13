@@ -250,7 +250,61 @@ export async function updateMakerQuotes({ snapResults, staging, snapshotDate, en
       `INSERT INTO maker_quotes (${cols.join(", ")}) VALUES ${tuples.join(", ")}`,
       values, env, { write: true });
   }
-  return { eligible: want.size, opened: toOpen.length, closed: toClose.length, kept: keep.size };
+  return { eligible: want.size, opened: toOpen.length, closed: toClose.length, kept: keep.size,
+    stagingTickers: idx.size };
+}
+
+// ── Quote-pass telemetry ─────────────────────────────────────────────────────────────────────
+// The quote pass is the ONE subsystem here with no durable record of what it did. Its result
+// object is returned in the kalshi-snapshot cron's HTTP response, which Vercel discards — so when
+// quoting collapsed on 2026-08-12 (92 tickers vs the ~1,800-2,000 of every other day, first zero-
+// fill day in the engine's 24-day history) there was no way to tell WHICH branch failed: staging
+// missing, snaps empty, or staging present but nothing eligible. Those are different bugs with
+// different fixes, and by morning both staging (6h TTL) and the Vercel logs were gone.
+//
+// Writing the result into `kalshi:snap:_meta` would NOT have helped: that key is SET whole every
+// cycle with EX 600, so by the 6am report the failing cycle is ~360 overwrites gone. The record
+// has to survive the night, so it is its own per-PT-day key with a 48h TTL.
+//
+// A Redis HASH with HINCRBY, not a read-modify-write JSON blob: counters stay correct even if two
+// cron invocations ever overlap, and no cycle can clobber another's contribution. Pure function so
+// the command shape is pinned by test — this is a tripwire, and a tripwire that silently writes
+// the wrong shape is worse than none.
+export const QUOTEPASS_KEY_PREFIX = "maker:quotepass:";
+export const QUOTEPASS_TTL_S = 172800; // 48h — must outlive the overnight window the 6am report reads
+
+// `meta` is updateMakerQuotes' return, or {skipped:"no_staging"|"no_snaps"}, or {error:"..."}.
+// Returns Upstash pipeline commands (arrays), ready for pipeWriteChunked. Never throws.
+export function quotePassTelemetryCommands(dayPT, meta, nowIso) {
+  const key = `${QUOTEPASS_KEY_PREFIX}${dayPT}`;
+  const m = meta || {};
+  const outcome = m.skipped || (m.error ? "error" : "ran");
+  const cmds = [["HINCRBY", key, "cycles", 1]];
+  if (outcome === "no_staging") cmds.push(["HINCRBY", key, "skippedNoStaging", 1]);
+  else if (outcome === "no_snaps") cmds.push(["HINCRBY", key, "skippedNoSnaps", 1]);
+  else if (outcome === "error") cmds.push(["HINCRBY", key, "errors", 1]);
+  else {
+    // Sums, not a max: `sumEligible / ran` answers "was quoting healthy ALL day" where a max only
+    // proves it was healthy once, and both are atomic where a max would need read-modify-write.
+    cmds.push(["HINCRBY", key, "ran", 1]);
+    cmds.push(["HINCRBY", key, "sumEligible", Math.round(m.eligible || 0)]);
+    cmds.push(["HINCRBY", key, "sumOpened", Math.round(m.opened || 0)]);
+    cmds.push(["HINCRBY", key, "sumClosed", Math.round(m.closed || 0)]);
+  }
+  const fields = {
+    lastAt: nowIso, lastOutcome: outcome,
+    lastEligible: m.eligible, lastOpened: m.opened, lastClosed: m.closed, lastKept: m.kept,
+    lastStagingPlays: m.stagingPlays, lastStagingTickers: m.stagingTickers,
+    lastError: m.error,
+  };
+  const flat = [];
+  for (const [k, v] of Object.entries(fields)) {
+    if (v == null) continue; // absent field beats a "null" string a reader has to special-case
+    flat.push(k, String(v));
+  }
+  if (flat.length) cmds.push(["HSET", key, ...flat]);
+  cmds.push(["EXPIRE", key, QUOTEPASS_TTL_S]);
+  return cmds;
 }
 
 // ── Tape replay: disabled 2026-07-28, RE-ENABLED 2026-07-29 ──────────────────────────────────

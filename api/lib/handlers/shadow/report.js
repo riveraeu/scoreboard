@@ -32,6 +32,7 @@ import { verifyJWT } from "../../auth-utils.js";
 import { isArmed as isMakerV2Armed } from "../../maker-live.js";
 import { fetchKalshiSettlements, resolveTickerSideViaKalshi } from "../../kalshi-settlement.js";
 import { PREREG_CELLS, evaluatePrereg } from "../../maker-prereg.js";
+import { QUOTEPASS_KEY_PREFIX } from "../../maker.js";
 import { weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl, quotedOutcomesByBand,
   adverseSelectionWithinBand, exitCounterfactual, ladderAnomalies } from "../../maker-stats.js";
 
@@ -1099,14 +1100,50 @@ async function handleShadowReport({ path, request, env, cache }) {
     const daysBehind = latestGraded
       ? Math.round((Date.parse(`${expectedThrough}T00:00:00Z`) - Date.parse(`${latestGraded}T00:00:00Z`)) / 86400000)
       : null;
-    const diagnosis = current ? "current"
+    // Quote-pass telemetry for the day in question (api/lib/maker.js). Read BEFORE composing
+    // `diagnosis`, because without it the no-fills branch has to name three possible causes it
+    // cannot distinguish — which is exactly how 2026-08-12 stayed unexplained. Absent (key expired,
+    // or a cache with no hgetall) → the old wording, which is still the honest answer then.
+    const qp = cache?.hgetall
+      ? await cache.hgetall(`${QUOTEPASS_KEY_PREFIX}${expectedThrough}`).catch(() => null)
+      : null;
+    const _n = (v) => (v == null ? null : Number(v));
+    const quotePass = qp ? {
+      cycles: _n(qp.cycles) || 0, ran: _n(qp.ran) || 0,
+      skippedNoStaging: _n(qp.skippedNoStaging) || 0, skippedNoSnaps: _n(qp.skippedNoSnaps) || 0,
+      errors: _n(qp.errors) || 0,
+      avgEligible: _n(qp.ran) > 0 ? Math.round((_n(qp.sumEligible) || 0) / _n(qp.ran)) : null,
+      sumOpened: _n(qp.sumOpened) || 0, sumClosed: _n(qp.sumClosed) || 0,
+      lastAt: qp.lastAt ?? null, lastOutcome: qp.lastOutcome ?? null,
+      lastStagingPlays: _n(qp.lastStagingPlays), lastStagingTickers: _n(qp.lastStagingTickers),
+      lastError: qp.lastError ?? null,
+    } : null;
+
+    let diagnosis = current ? "current"
       : (latestFill != null && latestFill >= expectedThrough)
         ? "fills detected but NOT graded — grading stalled (Kalshi rate-limit; tape walk didn't reach end)"
         : "no fills for last night — tape replay or quoting did not run";
+    // Name the actual branch when the telemetry can. Ordered most-specific first; each string
+    // points at ONE subsystem, so it can be acted on without re-deriving the cause by hand.
+    if (!current && quotePass && latestFill != null && latestFill < expectedThrough) {
+      if (quotePass.cycles === 0) {
+        diagnosis = "no quote-pass cycles ran — the kalshi-snapshot cron did not fire";
+      } else if (quotePass.skippedNoStaging >= quotePass.cycles * 0.5) {
+        diagnosis = `quoting skipped ${quotePass.skippedNoStaging}/${quotePass.cycles} cycles for missing shadow:staging — the tonight cron did not write it`;
+      } else if (quotePass.skippedNoSnaps >= quotePass.cycles * 0.5) {
+        diagnosis = `quoting skipped ${quotePass.skippedNoSnaps}/${quotePass.cycles} cycles for empty snaps — every Kalshi series fetch failed`;
+      } else if (quotePass.errors >= quotePass.cycles * 0.5) {
+        diagnosis = `quote pass threw on ${quotePass.errors}/${quotePass.cycles} cycles — last: ${quotePass.lastError || "unknown"}`;
+      } else if (quotePass.ran > 0 && quotePass.avgEligible === 0) {
+        diagnosis = `quote pass ran ${quotePass.ran} cycles but nothing was ever eligible — staging carried ${quotePass.lastStagingTickers ?? "?"} tickers`;
+      } else if (quotePass.ran > 0) {
+        diagnosis = `quote pass ran ${quotePass.ran}/${quotePass.cycles} cycles at avg ${quotePass.avgEligible} eligible — quoting worked; the tape replay found no fills`;
+      }
+    }
     dataFreshness = {
       expectedThrough, latestGradedMakerDay: latestGraded, latestMakerFillDay: latestFill,
       ungradedFills: Number(mf?.ungraded || 0), latestResolvedShadowDay: _d(sp?.latest_resolved),
-      makerTableCurrent: current, daysBehind, diagnosis,
+      makerTableCurrent: current, daysBehind, diagnosis, quotePass,
     };
   } catch (e) { console.error("[shadow-report] dataFreshness skipped:", e?.message); }
 

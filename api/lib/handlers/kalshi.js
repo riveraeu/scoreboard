@@ -15,7 +15,7 @@ import { neonQuery, neonExec } from "../neon.js";
 import { fetchKalshiOrderbook } from "../kalshi-book.js";
 import { pipeWriteChunked } from "../kv-pipeline.js";
 import { gzipToString } from "../kv-compress.js";
-import { updateMakerQuotes } from "../maker.js";
+import { updateMakerQuotes, quotePassTelemetryCommands } from "../maker.js";
 import { importKalshiKey as _importKalshiKey } from "../kalshi-order-client.js";
 import { resolveOpenMakerPositions } from "./shadow.js";
 import { enrichSeries, checkSeriesLiquidity, fetchSeriesMeta, SCREEN_AUTO_DISMISS } from "../kalshi-series-check.js";
@@ -352,12 +352,25 @@ export async function handleKalshiRoutes(ctx) {
           snapResults: _snapResults, staging: _staging, snapshotDate: _mkToday, env,
         });
         _makerMeta.ms = Date.now() - _mkT;
+        _makerMeta.stagingPlays = (_staging.plays?.length || 0) + (_staging.dropped?.length || 0);
       } else {
         _makerMeta = { skipped: !_staging ? "no_staging" : "no_snaps" };
       }
     } catch (e) {
       _makerMeta = { error: String(e?.message || e) };
       console.error(`[kalshi-snapshot] maker quote pass failed: ${_makerMeta.error}`);
+    }
+
+    // Durable per-day record of what the quote pass just did (api/lib/maker.js). The result above
+    // lives only in this response, which the cron runner discards — so an overnight collapse like
+    // 2026-08-12's leaves no evidence by morning. Failure-closed and LAST: telemetry must never be
+    // the reason a cron that already wrote its snaps reports a failure.
+    try {
+      await _pipeWrite(quotePassTelemetryCommands(
+        new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }),
+        _makerMeta, new Date().toISOString()));
+    } catch (e) {
+      console.error(`[kalshi-snapshot] quote-pass telemetry write failed: ${String(e?.message || e)}`);
     }
 
     // ── Shadow maker V2 (api/lib/maker-live.js, 2026-07-21) ── REAL resting orders, scoped to

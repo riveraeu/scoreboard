@@ -44,6 +44,25 @@ Decode a ticker to confirm the date: `KXMLBKS-26APR152140SEASD` = series `KXMLBK
 ## "Kalshi market visible on the web app but missing from our pipeline"
 A market can show on kalshi.com (with odds) while `yes_ask_dollars` is `0`/null in the trading API — pre-market/preview state. The pipeline correctly skips `price=0`. Once Kalshi assigns an ask it appears on the next request (Kalshi data is always fetched fresh — no cache bust needed).
 
+## "No maker fills for last night" — which subsystem actually failed
+
+Read **`dataFreshness.quotePass`** on `/api/shadow-report` first. It is the maker quote pass's own per-day record (KV hash `maker:quotepass:{ptDate}`, 48h TTL) and it names the branch, which the bare `diagnosis` string could not:
+
+| Reading | Means |
+|---|---|
+| `cycles: 0` | the kalshi-snapshot cron never fired |
+| `skippedNoStaging` ≈ `cycles` | `shadow:staging:{ptDate}` was missing — the **tonight** cron didn't write it |
+| `skippedNoSnaps` ≈ `cycles` | every Kalshi series fetch failed that cycle |
+| `errors` ≈ `cycles` | the pass threw; `lastError` carries the message |
+| `ran` high, `avgEligible: 0` | staging was present but nothing was quotable — check `lastStagingTickers` |
+| `ran` high, `avgEligible` normal | quoting was fine; the failure is downstream in tape replay |
+
+`diagnosis` restates whichever of these applies, so usually you can stop at that string. Fall back to the table when it says something generic — that means the key had expired (>48h) or the run predates this telemetry (shipped 2026-08-13).
+
+**Segments are not recoverable.** `maker_quotes` rows are written at quote time from a book that existed at that instant; nothing reconstructs them. `?makerDetectDay=` only re-derives *fills* from segments that already exist, and `?makerBackfill=` is blocked on any day that has live segments (409), writes `source='backfill'` which every board query filters out, and covers 5 MLB prop series. A day that lost its quoting lost it permanently — which is why the telemetry above matters more than any repair path.
+
+**Watch `newFills`**: it is the count the replay *detected*, not rows inserted (the insert is `ON CONFLICT DO NOTHING`). A large `newFills` on a re-run is almost always re-detection of rows already present — confirm against `makerBoard.daily[].fills` before concluding anything was recovered.
+
 ## Cache busting
 `?bust=1` skips reads for the byteam maps (`byteam:{mlb,nhl,nba,nba:scoring}`), `gameTimes:v2:{date}`, and `nba:pace:2526` — forcing fresh ESPN game times + team data. (The byteam maps are now **infra-only** — home/away resolution, weather, lineups — not a model.) `mlb:barrelPct` is NOT busted (own 6h TTL). If bust fires before lineups/probables exist, `byteam:mlb` is written with a 60s TTL so the next request retries.
 

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { computeMakerQuote, replayFills, MAKER_FEE_SERIES } from "./maker.js";
+import { computeMakerQuote, replayFills, MAKER_FEE_SERIES,
+  quotePassTelemetryCommands, QUOTEPASS_KEY_PREFIX, QUOTEPASS_TTL_S } from "./maker.js";
 import { MAKER_BAND, MAKER_FULL_BAND, MAKER_INSIDE_C, MAKER_SIZE } from "./config.js";
 
 const NOW = Date.parse("2026-07-19T18:00:00Z");
@@ -187,4 +188,69 @@ test("single-side default is unchanged — returns the favorite, never an array"
   const q = computeMakerQuote(favYes, futureRow, NOW);
   assert.ok(!Array.isArray(q));
   assert.equal(q.side, "yes");
+});
+
+// ── Quote-pass telemetry ─────────────────────────────────────────────────────────────────────
+// This is a tripwire for an outage that left no evidence (2026-08-12). A silently-wrong command
+// shape would reproduce exactly that failure, so the shape is pinned rather than trusted.
+const AT = "2026-08-13T14:00:00.000Z";
+const KEY = `${QUOTEPASS_KEY_PREFIX}2026-08-13`;
+const cmdFor = (cmds, verb, field) =>
+  cmds.find(c => c[0] === verb && (field === undefined || c[2] === field));
+
+test("quotePassTelemetryCommands: a healthy cycle increments ran + the sums", () => {
+  const cmds = quotePassTelemetryCommands("2026-08-13",
+    { eligible: 5486, opened: 120, closed: 98, kept: 5366, stagingPlays: 4181, stagingTickers: 2898 }, AT);
+  assert.deepEqual(cmdFor(cmds, "HINCRBY", "cycles"), ["HINCRBY", KEY, "cycles", 1]);
+  assert.deepEqual(cmdFor(cmds, "HINCRBY", "ran"), ["HINCRBY", KEY, "ran", 1]);
+  assert.deepEqual(cmdFor(cmds, "HINCRBY", "sumEligible"), ["HINCRBY", KEY, "sumEligible", 5486]);
+  assert.deepEqual(cmdFor(cmds, "HINCRBY", "sumOpened"), ["HINCRBY", KEY, "sumOpened", 120]);
+  assert.deepEqual(cmdFor(cmds, "HINCRBY", "sumClosed"), ["HINCRBY", KEY, "sumClosed", 98]);
+  // No skip/error counter may be touched on a healthy cycle.
+  for (const f of ["skippedNoStaging", "skippedNoSnaps", "errors"]) {
+    assert.equal(cmdFor(cmds, "HINCRBY", f), undefined, `${f} must not increment`);
+  }
+  const hset = cmdFor(cmds, "HSET");
+  assert.equal(hset[hset.indexOf("lastOutcome") + 1], "ran");
+  assert.equal(hset[hset.indexOf("lastEligible") + 1], "5486");
+  assert.equal(hset[hset.indexOf("lastStagingTickers") + 1], "2898");
+  // TTL must outlive the overnight window the 6am report reads.
+  assert.deepEqual(cmds.at(-1), ["EXPIRE", KEY, QUOTEPASS_TTL_S]);
+  assert.ok(QUOTEPASS_TTL_S >= 86400, "TTL must survive at least one night");
+});
+
+test("quotePassTelemetryCommands: each skip branch increments its OWN counter, never ran", () => {
+  for (const [skipped, field] of [["no_staging", "skippedNoStaging"], ["no_snaps", "skippedNoSnaps"]]) {
+    const cmds = quotePassTelemetryCommands("2026-08-13", { skipped }, AT);
+    assert.deepEqual(cmdFor(cmds, "HINCRBY", field), ["HINCRBY", KEY, field, 1]);
+    assert.deepEqual(cmdFor(cmds, "HINCRBY", "cycles"), ["HINCRBY", KEY, "cycles", 1]);
+    assert.equal(cmdFor(cmds, "HINCRBY", "ran"), undefined, "a skipped cycle never counts as ran");
+    assert.equal(cmdFor(cmds, "HINCRBY", "sumEligible"), undefined);
+    const hset = cmdFor(cmds, "HSET");
+    assert.equal(hset[hset.indexOf("lastOutcome") + 1], skipped);
+  }
+});
+
+test("quotePassTelemetryCommands: an error cycle records the message", () => {
+  const cmds = quotePassTelemetryCommands("2026-08-13", { error: "boom" }, AT);
+  assert.deepEqual(cmdFor(cmds, "HINCRBY", "errors"), ["HINCRBY", KEY, "errors", 1]);
+  assert.equal(cmdFor(cmds, "HINCRBY", "ran"), undefined);
+  const hset = cmdFor(cmds, "HSET");
+  assert.equal(hset[hset.indexOf("lastOutcome") + 1], "error");
+  assert.equal(hset[hset.indexOf("lastError") + 1], "boom");
+});
+
+test("quotePassTelemetryCommands: counters are HINCRBY, never a read-modify-write GET/SET", () => {
+  // The whole point of the hash is that overlapping cycles can't clobber each other.
+  const cmds = quotePassTelemetryCommands("2026-08-13", { eligible: 1, opened: 0, closed: 0, kept: 1 }, AT);
+  const verbs = new Set(cmds.map(c => c[0]));
+  assert.ok(!verbs.has("GET") && !verbs.has("SET"), "no read-modify-write on the counter key");
+  assert.deepEqual([...verbs].sort(), ["EXPIRE", "HINCRBY", "HSET"]);
+});
+
+test("quotePassTelemetryCommands: absent fields are omitted, not stringified to 'null'", () => {
+  const cmds = quotePassTelemetryCommands("2026-08-13", { skipped: "no_staging" }, AT);
+  const hset = cmdFor(cmds, "HSET");
+  assert.ok(!hset.includes("null") && !hset.includes("undefined"));
+  assert.equal(hset.indexOf("lastStagingTickers"), -1);
 });

@@ -97,6 +97,17 @@ function makeCache(env) {
       async delete(key) {
         await cmd("DEL", key);
       },
+      // Read a Redis HASH as a plain object. Needed by counter keys written with HINCRBY
+      // (maker:quotepass:* — see quotePassTelemetryCommands), where a JSON blob under GET would
+      // have meant a racy read-modify-write on every cron cycle. Upstash returns a flat
+      // [field, value, ...] array. Returns null when the key is absent; never throws.
+      async hgetall(key) {
+        const { result } = await cmd("HGETALL", key);
+        if (!Array.isArray(result) || !result.length) return null;
+        const out = {};
+        for (let i = 0; i + 1 < result.length; i += 2) out[result[i]] = result[i + 1];
+        return out;
+      },
       // Atomically increment a counter and set its TTL on the first increment.
       // On subsequent increments, check TTL and heal any key that survived without one
       // (e.g. a prior INCR completed but EXPIRE timed out), preventing permanent lockout.
