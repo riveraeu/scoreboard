@@ -17,11 +17,15 @@ test("insertChunkSize never lets a chunk exceed the Postgres bind-parameter limi
   }
 });
 
-test("insertChunkSize leaves headroom below the hard limit", () => {
-  // 60000, not 65535, so adding one column to a caller can't land it exactly on the edge.
-  assert.ok(PARAM_BUDGET < PG_MAX_PARAMS);
-  assert.equal(insertChunkSize(15), 4000); // maker_quotes
-  assert.equal(insertChunkSize(6), 10000); // maker_fills
+test("the budget is sized by Neon's REQUEST limit, far below the param ceiling", () => {
+  // Measured 2026-08-13: a 4000×15 chunk (60000 params, well under 65535) still failed against
+  // Neon's HTTP transport. The binding constraint is request SIZE, so the budget is deliberately
+  // an order of magnitude below the Postgres limit. A future "optimization" back toward 65535
+  // reintroduces the outage — this assertion is the guard, not a style preference.
+  assert.ok(PARAM_BUDGET <= 16000,
+    `budget ${PARAM_BUDGET} is too close to the param ceiling; Neon fails on request size first`);
+  assert.equal(insertChunkSize(15), 533);  // maker_quotes
+  assert.equal(insertChunkSize(6), 1333);  // maker_fills
 });
 
 test("insertChunkSize rejects a non-positive column count instead of returning Infinity", () => {
@@ -35,18 +39,21 @@ test("insertChunkSize rejects a non-positive column count instead of returning I
 // covered by the chunk math below rather than mocked. What IS asserted here is everything that
 // happens before the first query: batching decisions and row validation.
 
-test("the historical failure would now split into chunks, none over the limit", () => {
-  const cols = 15, ROWS = 5486;
+test("the real failing batch splits into chunks that each stay inside the budget", () => {
+  // 5698×15 is the batch the live telemetry caught failing ([insert(5698x15)]), after an earlier
+  // 4000-row chunking attempt had ALSO failed — so the test pins the observed batch, not a
+  // hypothetical one.
+  const cols = 15, ROWS = 5698;
   const size = insertChunkSize(cols);
-  const chunks = Math.ceil(ROWS / size);
-  assert.ok(chunks > 1, "5486 rows × 15 cols must not go out as one statement");
-  assert.equal(chunks, 2);
-  // Every chunk, including the remainder, stays under the ceiling.
+  assert.ok(Math.ceil(ROWS / size) > 1, "must not go out as one statement");
   for (let i = 0; i < ROWS; i += size) {
-    assert.ok(Math.min(size, ROWS - i) * cols <= PG_MAX_PARAMS);
+    const params = Math.min(size, ROWS - i) * cols;
+    assert.ok(params <= PARAM_BUDGET, `chunk at ${i} sends ${params} params, over budget`);
+    assert.ok(params <= PG_MAX_PARAMS);
   }
-  // And the pre-fix single statement would NOT have.
-  assert.ok(ROWS * cols > PG_MAX_PARAMS, "the bug being fixed must actually exceed the limit");
+  // Both prior states must be excluded: the unbatched statement AND the 4000-row chunk.
+  assert.ok(ROWS * cols > PG_MAX_PARAMS, "unbatched exceeded even the Postgres ceiling");
+  assert.ok(4000 * cols > PARAM_BUDGET, "the 4000-row chunk that still failed is now excluded");
 });
 
 test("neonBatchInsert is a no-op on an empty batch", async () => {

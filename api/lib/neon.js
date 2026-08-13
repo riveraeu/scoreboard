@@ -63,10 +63,16 @@ export async function neonExec(ddl, env) {
 // quoting did not run". It took the quote-pass telemetry to name it. Structurally the same failure as
 // the HTTP 414 in kalshi-settlement.js: a request built from an unbounded collection with no size gate.
 //
-// Budget is 60000 rather than 65535 so adding a column to a caller can't land it exactly on the edge.
+// Postgres' 65535 is NOT the binding limit here — Neon's HTTP transport gives out first. Measured
+// 2026-08-13: a 4000-row × 15-col chunk (60000 params, ~1.7MB of SQL text + JSON params) still failed
+// with the same opaque "Database request failed", while a 31-row insert on the same connection
+// succeeded. So the budget is set by REQUEST SIZE, not the parameter ceiling: 8000 params keeps a
+// chunk near ~200KB. The extra round-trips are a few per cron cycle and cost nothing that matters.
+// Do not raise this to "use the real limit" — the real limit is not the one that was hit.
+//
 // `table`/`cols` are trusted identifiers from call sites, never user input (same convention as
 // _makerBandCase's `col`); only the VALUES are ever parameterized.
-export const PARAM_BUDGET = 60000;
+export const PARAM_BUDGET = 8000;
 
 export function insertChunkSize(colCount, budget = PARAM_BUDGET) {
   if (!Number.isInteger(colCount) || colCount <= 0) {
@@ -93,9 +99,18 @@ export async function neonBatchInsert({ table, cols, rows, suffix = "", env, bud
       const base = ri * cols.length;
       return `(${cols.map((_, j) => `$${base + j + 1}`).join(", ")})`;
     });
-    await neonQuery(
-      `INSERT INTO ${table} (${cols.join(", ")}) VALUES ${tuples.join(", ")}${suffix ? ` ${suffix}` : ""}`,
-      values, env, { write: true });
+    // Annotate with the CHUNK's own size, not the batch total. The caller's label reports the whole
+    // batch, which cannot distinguish "the batch is too big" from "chunking is not working" — the
+    // exact ambiguity that cost a deploy cycle on 2026-08-13.
+    try {
+      await neonQuery(
+        `INSERT INTO ${table} (${cols.join(", ")}) VALUES ${tuples.join(", ")}${suffix ? ` ${suffix}` : ""}`,
+        values, env, { write: true });
+    } catch (e) {
+      e.message = `chunk ${Math.floor(i / size) + 1}/${Math.ceil(rows.length / size)} `
+        + `(${chunk.length} rows, ${values.length} params): ${e?.message || e}`;
+      throw e;
+    }
     sent += chunk.length;
   }
   return sent;
