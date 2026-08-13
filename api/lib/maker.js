@@ -188,7 +188,15 @@ export async function ensureMakerTables(env) {
 // (zero extra Kalshi calls). Diffs desired quotes against open segments: unchanged → keep,
 // changed/ineligible → close (valid_to), new → insert. Idempotent per cycle.
 export async function updateMakerQuotes({ snapResults, staging, snapshotDate, env, nowMs = Date.now() }) {
-  await ensureMakerTables(env);
+  // Label every DB round-trip so a failure names the statement AND its size. Neon's HTTP API
+  // answers a failed request with a bare "Database request failed" carrying no PG error fields at
+  // all, so without this the caller records four indistinguishable statements as one string — which
+  // is what made the 2026-08-12 quoting outage take three deploys to localize.
+  const _at = async (step, fn) => {
+    try { return await fn(); }
+    catch (e) { e.message = `[${step}] ${e?.message || e}`; throw e; }
+  };
+  await _at("ensureTables", () => ensureMakerTables(env));
 
   // Staging index: market ticker → play row (prefer the over/yes-framed row when a
   // total-style market logged both sides under one ticker).
@@ -216,9 +224,9 @@ export async function updateMakerQuotes({ snapResults, staging, snapshotDate, en
   }
 
   // Diff against open segments, matched on ticker+side.
-  const open = await neonQuery(
+  const open = await _at("selectOpen", () => neonQuery(
     `SELECT id, ticker, quote_side, quote_ask FROM maker_quotes WHERE valid_to IS NULL`,
-    [], env, { write: true });
+    [], env, { write: true }));
   const keep = new Set();
   const toClose = [];
   for (const o of open) {
@@ -230,8 +238,9 @@ export async function updateMakerQuotes({ snapResults, staging, snapshotDate, en
   const toOpen = [...want.entries()].filter(([key]) => !keep.has(key));
 
   if (toClose.length) {
-    await neonQuery(`UPDATE maker_quotes SET valid_to = NOW() WHERE id = ANY($1::int[])`,
-      [toClose], env, { write: true });
+    await _at(`close(${toClose.length})`, () => neonQuery(
+      `UPDATE maker_quotes SET valid_to = NOW() WHERE id = ANY($1::int[])`,
+      [toClose], env, { write: true }));
   }
   if (toOpen.length) {
     // Chunked by bind-parameter count (neon.js). A single statement here capped the pass at
@@ -246,7 +255,8 @@ export async function updateMakerQuotes({ snapResults, staging, snapshotDate, en
       shadowId(row, snapshotDate), row.direction ?? null,
       q.side, q.ask, MAKER_SIZE, q.yesAsk, q.yesBid, q.noAsk, q.noBid,
     ]);
-    await neonBatchInsert({ table: "maker_quotes", cols, rows, env });
+    await _at(`insert(${rows.length}x${cols.length})`,
+      () => neonBatchInsert({ table: "maker_quotes", cols, rows, env }));
   }
   return { eligible: want.size, opened: toOpen.length, closed: toClose.length, kept: keep.size,
     stagingTickers: idx.size };
