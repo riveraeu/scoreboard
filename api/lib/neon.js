@@ -49,6 +49,58 @@ export async function neonExec(ddl, env) {
   }
 }
 
+// ── Multi-row INSERT, chunked by BIND-PARAMETER count ────────────────────────────────────────
+// Postgres binds at most 65535 parameters per statement. A multi-row INSERT of N rows × C columns
+// sends N·C of them, so every unbatched builder carries a silent row ceiling of 65535/C — and
+// crossing it does not degrade, it throws ("Database request failed" through the Neon HTTP driver,
+// which names neither the limit nor the statement).
+//
+// `maker_quotes` (15 cols → 4369 rows) crossed its ceiling on 2026-08-12, when the Leagues Cup +
+// Eredivisie builds added ~400 quote sides to a slate already near it, and then DEADLOCKED: the
+// INSERT failed, so no segments were written, so the next cycle rebuilt the same oversized batch and
+// failed identically. Quoting was dead for two days — the whole maker instrument, silently, while
+// capture and grading looked fine — and the daily report's canned diagnosis blamed "tape replay or
+// quoting did not run". It took the quote-pass telemetry to name it. Structurally the same failure as
+// the HTTP 414 in kalshi-settlement.js: a request built from an unbounded collection with no size gate.
+//
+// Budget is 60000 rather than 65535 so adding a column to a caller can't land it exactly on the edge.
+// `table`/`cols` are trusted identifiers from call sites, never user input (same convention as
+// _makerBandCase's `col`); only the VALUES are ever parameterized.
+export const PARAM_BUDGET = 60000;
+
+export function insertChunkSize(colCount, budget = PARAM_BUDGET) {
+  if (!Number.isInteger(colCount) || colCount <= 0) {
+    throw new Error(`insertChunkSize: colCount must be a positive integer, got ${colCount}`);
+  }
+  return Math.max(1, Math.floor(budget / colCount));
+}
+
+// `rows` is an array of value arrays, each the same length as `cols`. Returns the row count sent.
+export async function neonBatchInsert({ table, cols, rows, suffix = "", env, budget = PARAM_BUDGET }) {
+  if (!rows?.length) return 0;
+  const size = insertChunkSize(cols.length, budget);
+  let sent = 0;
+  for (let i = 0; i < rows.length; i += size) {
+    const chunk = rows.slice(i, i + size);
+    const values = [];
+    const tuples = chunk.map((r, ri) => {
+      // A row of the wrong width silently shifts every subsequent placeholder onto the wrong value,
+      // which writes plausible garbage rather than failing — worth one cheap check per row.
+      if (r.length !== cols.length) {
+        throw new Error(`neonBatchInsert(${table}): row ${i + ri} has ${r.length} values, expected ${cols.length}`);
+      }
+      values.push(...r);
+      const base = ri * cols.length;
+      return `(${cols.map((_, j) => `$${base + j + 1}`).join(", ")})`;
+    });
+    await neonQuery(
+      `INSERT INTO ${table} (${cols.join(", ")}) VALUES ${tuples.join(", ")}${suffix ? ` ${suffix}` : ""}`,
+      values, env, { write: true });
+    sent += chunk.length;
+  }
+  return sent;
+}
+
 // Batch-resolve helper. Updates resolved/won/actual_value/resolved_at on existing rows.
 // Uses UPDATE FROM (VALUES ...) so each chunk is one round-trip.
 export async function neonBatchResolve(updates, env, chunkSize = 100) {

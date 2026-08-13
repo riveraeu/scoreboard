@@ -38,7 +38,7 @@
 
 import { capturableSpread, MAKER_BAND, MAKER_FULL_BAND, MAKER_INSIDE_C, MAKER_SIZE } from "./config.js";
 import { shadowId } from "./shadow-id.js";
-import { neonQuery, neonExec } from "./neon.js";
+import { neonQuery, neonExec, neonBatchInsert } from "./neon.js";
 import { fetchKalshiSettlements, resolveTickerSideViaKalshi } from "./kalshi-settlement.js";
 
 // The only configured series with maker fees (fee_type "quadratic_with_maker_fees",
@@ -234,21 +234,19 @@ export async function updateMakerQuotes({ snapResults, staging, snapshotDate, en
       [toClose], env, { write: true });
   }
   if (toOpen.length) {
+    // Chunked by bind-parameter count (neon.js). A single statement here capped the pass at
+    // 65535/15 = 4369 segments and deadlocked the whole engine for two days once the slate grew
+    // past it — see neonBatchInsert's comment. The row count is the SLATE, so it only ever grows.
     const cols = ["ticker", "series", "sport", "category", "game_date", "game_time",
       "shadow_row_id", "row_direction", "quote_side", "quote_ask", "size",
       "book_yes_ask", "book_yes_bid", "book_no_ask", "book_no_bid"];
-    const values = [];
-    const tuples = toOpen.map(([, { q, row, series, ticker }], i) => {
-      values.push(ticker, series, row.sport ?? null, row.stat ?? row.gameType ?? null,
-        row.gameDate ?? snapshotDate ?? null, row.gameTime ?? null,
-        shadowId(row, snapshotDate), row.direction ?? null,
-        q.side, q.ask, MAKER_SIZE, q.yesAsk, q.yesBid, q.noAsk, q.noBid);
-      const base = i * cols.length;
-      return `(${cols.map((_, j) => `$${base + j + 1}`).join(", ")})`;
-    });
-    await neonQuery(
-      `INSERT INTO maker_quotes (${cols.join(", ")}) VALUES ${tuples.join(", ")}`,
-      values, env, { write: true });
+    const rows = toOpen.map(([, { q, row, series, ticker }]) => [
+      ticker, series, row.sport ?? null, row.stat ?? row.gameType ?? null,
+      row.gameDate ?? snapshotDate ?? null, row.gameTime ?? null,
+      shadowId(row, snapshotDate), row.direction ?? null,
+      q.side, q.ask, MAKER_SIZE, q.yesAsk, q.yesBid, q.noAsk, q.noBid,
+    ]);
+    await neonBatchInsert({ table: "maker_quotes", cols, rows, env });
   }
   return { eligible: want.size, opened: toOpen.length, closed: toClose.length, kept: keep.size,
     stagingTickers: idx.size };
@@ -399,16 +397,16 @@ export async function detectAndGradeMakerFills({ env, dayPT, force = false, offs
   }
 
   if (fills.length) {
-    const values = [];
-    const tuples = fills.map((f, i) => {
-      values.push(f.quote_id, f.ticker, f.trade_id, f.traded_at, f.contracts, f.fill_ask);
-      const b = i * 6;
-      return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6})`;
+    // Same parameter-count chunking as the quote insert. 6 cols → a 10922-row ceiling, and the
+    // busiest day on record is 6527 fills — untriggered, but the identical unbatched pattern, so it
+    // is fixed at the same time rather than left as the next instance of the same outage.
+    await neonBatchInsert({
+      table: "maker_fills",
+      cols: ["quote_id", "ticker", "trade_id", "traded_at", "contracts", "fill_ask"],
+      rows: fills.map(f => [f.quote_id, f.ticker, f.trade_id, f.traded_at, f.contracts, f.fill_ask]),
+      suffix: "ON CONFLICT (quote_id, trade_id) DO NOTHING",
+      env,
     });
-    await neonQuery(
-      `INSERT INTO maker_fills (quote_id, ticker, trade_id, traded_at, contracts, fill_ask)
-       VALUES ${tuples.join(", ")} ON CONFLICT (quote_id, trade_id) DO NOTHING`,
-      values, env, { write: true });
   }
 
   // nextOffset: where to resume. If we stopped on a 429 mid-walk, resume at the batch we reached;

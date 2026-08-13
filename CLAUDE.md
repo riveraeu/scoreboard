@@ -107,6 +107,8 @@ These bite during *any* change. Each links to detail in `docs/*.md` or memory.
 
 **Shadow-snapshot KV staging** — tonight handler writes `shadow:staging:{date}` (TTL 6h) after DC computation; shadow-snapshot/pregame-snap read it first (~100ms) instead of re-fetching `/api/tonight?debug=1`. `dropped > 0` confirms the dropped-capture path is live.
 
+**Postgres caps a statement at 65535 bind parameters** — a multi-row INSERT of N rows × C columns silently has an N ceiling of `65535/C`, and crossing it THROWS. `maker_quotes` (15 cols → 4369) crossed it 2026-08-12 and **deadlocked** for two days: the insert failed, so no segments existed, so every later cycle rebuilt the same oversized batch. Neon's HTTP driver reports only `Database request failed`. Bulk inserts go through `neonBatchInsert` (`api/lib/neon.js`) — never hand-roll one, the row count is the slate and the slate only grows.
+
 **Neon HTTP SQL API (`api/lib/neon.js`):**
 1. Uses `@neondatabase/serverless` — raw fetch fails with "missing authentication credentials".
 2. `neon().query(sql, params)` returns the rows array **directly** (not `{ rows }`).
