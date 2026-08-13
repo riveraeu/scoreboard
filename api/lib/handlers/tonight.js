@@ -12,7 +12,6 @@ import { SERIES_CONFIG } from "../series-config.js";
 import { PT_FMT } from "../pt.js";
 import { computeDataConfidence } from "../tonight/dc.js";
 import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
-import { blendMarketPrice } from "../tonight/blend-fill.js";
 import { CAPTURE_GATE, CAPTURE_CAP, capturableSpread } from "../config.js";
 import { TEAM_NORM, normTeam, parseGameTeams } from "../tonight/parse-teams.js";
 import { emitAllMlAndSpread } from "../tonight/ml-spread.js";
@@ -175,7 +174,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
                 if (_tMo) _tGameDate = `20${_tDateSeg.slice(0, 2)}-${_tMo}-${_tDateSeg.slice(5, 7)}`;
               }
               const _tAO = _tPct >= 50 ? Math.round(-(_tPct / (100 - _tPct)) * 100) : Math.round((100 - _tPct) / _tPct * 100);
-              tennisMatchMarkets.push({ gameType: "tennisMatch", sport, tour: cfg.tour, eventTicker: m.event_ticker, player: _tPick, opponentRaw: _tOpp, matchup: _tMatchup, kalshiPct: _tPct, americanOdds: _tAO, kalshiVolume: _tVol, gameDate: _tGameDate, _ticker: m.ticker, _yesAsk: _tYesAsk, _depth: m._depth });
+              tennisMatchMarkets.push({ gameType: "tennisMatch", sport, tour: cfg.tour, eventTicker: m.event_ticker, player: _tPick, opponentRaw: _tOpp, matchup: _tMatchup, kalshiPct: _tPct, americanOdds: _tAO, kalshiVolume: _tVol, gameDate: _tGameDate, _ticker: m.ticker, _yesAsk: _tYesAsk });
               continue;
             }
             // ── Golf PGA H2H branch ── binary "A beats B in the Nth Round" markets (KXPGAH2H).
@@ -294,7 +293,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
               const _fCodeSeg = _fSeg.slice(7); // fighter codes (last-name based, usually 3+3)
               if (!_fCodeSeg) continue;
               const _fAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
-              fightMarkets.push({ eventTicker: m.event_ticker, codeSegment: _fCodeSeg, gameDate: _fGameDate, threshold: _fN, yesPct: _fYesPct, noPct: _fNoPct, yesAO: _fAO(_fYesPct), noAO: _fAO(_fNoPct), kalshiVolume: _fVol, _ticker: m.ticker, _depth: m._depth });
+              fightMarkets.push({ eventTicker: m.event_ticker, codeSegment: _fCodeSeg, gameDate: _fGameDate, threshold: _fN, yesPct: _fYesPct, noPct: _fNoPct, yesAO: _fAO(_fYesPct), noAO: _fAO(_fNoPct), kalshiVolume: _fVol, _ticker: m.ticker });
               continue;
             }
             // ── UFC/Boxing match-winner (KXUFCFIGHT + KXBOXING) branch ── one YES market per fighter.
@@ -346,7 +345,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
                 _nPlayer = (m.yes_sub_title || "").trim();
                 if (!_nPlayer) continue;
               }
-              nascarMarkets.push({ subtype: cfg.subtype, eventTicker: m.event_ticker, raceCode: _nRace, player: _nPlayer, opponent: _nOpp, gameDate: _nDate, kalshiPct: _nPct, americanOdds: _nAO(_nPct), kalshiVolume: _nVol, _ticker: m.ticker, _depth: m._depth });
+              nascarMarkets.push({ subtype: cfg.subtype, eventTicker: m.event_ticker, raceCode: _nRace, player: _nPlayer, opponent: _nOpp, gameDate: _nDate, kalshiPct: _nPct, americanOdds: _nAO(_nPct), kalshiVolume: _nVol, _ticker: m.ticker });
               continue;
             }
             // ── LMB (Mexican League) game-winner branch ── binary, two markets per event (one per
@@ -381,7 +380,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
                 if (_lmMo) _lmGameDate = `20${_lmDateSeg.slice(0, 2)}-${_lmMo}-${_lmDateSeg.slice(5, 7)}`;
               }
               const _lmAO = _lmPct >= 50 ? Math.round(-(_lmPct / (100 - _lmPct)) * 100) : Math.round((100 - _lmPct) / _lmPct * 100);
-              lmbMarkets.push({ eventTicker: m.event_ticker, gameTeam1: _lmT1, gameTeam2: _lmT2, pickTeam: _lmPick, opponent: _lmPick === _lmT1 ? _lmT2 : _lmT1, gameDate: _lmGameDate, kalshiPct: _lmPct, americanOdds: _lmAO, kalshiVolume: _lmVol, _ticker: m.ticker, _depth: m._depth });
+              lmbMarkets.push({ eventTicker: m.event_ticker, gameTeam1: _lmT1, gameTeam2: _lmT2, pickTeam: _lmPick, opponent: _lmPick === _lmT1 ? _lmT2 : _lmT1, gameDate: _lmGameDate, kalshiPct: _lmPct, americanOdds: _lmAO, kalshiVolume: _lmVol, _ticker: m.ticker });
               continue;
             }
             // ── MODEL-FREE SOCCER game-winner branch (3-way home/away/tie) ────────────────────
@@ -428,7 +427,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
                 if (_mfMo) _mfGameDate = `20${_mfDateSeg.slice(0, 2)}-${_mfMo}-${_mfDateSeg.slice(5, 7)}`;
               }
               const _mfAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
-              (modelFreeMarkets[cfg.league] ||= []).push({ eventTicker: m.event_ticker, homeTeam: _mfHome, awayTeam: _mfAway, side: _mfSide, sideCode: _mfSideCode, gameDate: _mfGameDate, kalshiPct: _mfYesPct, noKalshiPct: _mfNoPct, americanOdds: _mfAO(_mfYesPct), kalshiVolume: _mfVol, _ticker: m.ticker, _depth: m._depth, half: cfg.half || null });
+              (modelFreeMarkets[cfg.league] ||= []).push({ eventTicker: m.event_ticker, homeTeam: _mfHome, awayTeam: _mfAway, side: _mfSide, sideCode: _mfSideCode, gameDate: _mfGameDate, kalshiPct: _mfYesPct, noKalshiPct: _mfNoPct, americanOdds: _mfAO(_mfYesPct), kalshiVolume: _mfVol, _ticker: m.ticker, half: cfg.half || null });
               continue;
             }
             // ── MLS/Liga MX threshold branch (1H spread/total/BTTS + full-game team-total) ──
@@ -489,7 +488,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
                 if (_ctMo) _ctGameDate = `20${_ctSegment.slice(0, 2)}-${_ctMo}-${_ctSegment.slice(5, 7)}`;
               }
               const _ctAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
-              clubSoccerThresholdMarkets.push({ sport, subtype: cfg.subtype, half: cfg.half || null, eventTicker: m.event_ticker, segment: _ctSegment, gameDate: _ctGameDate, homeTeam: _ctHome, awayTeam: _ctAway, threshold: _ctThreshold, pickTeam: _ctPickTeam, kalshiPct: _ctYesPct, noKalshiPct: _ctNoPct, americanOdds: _ctAO(_ctYesPct), noAmericanOdds: _ctAO(_ctNoPct), kalshiVolume: _ctVol, _ticker: m.ticker, _depth: m._depth });
+              clubSoccerThresholdMarkets.push({ sport, subtype: cfg.subtype, half: cfg.half || null, eventTicker: m.event_ticker, segment: _ctSegment, gameDate: _ctGameDate, homeTeam: _ctHome, awayTeam: _ctAway, threshold: _ctThreshold, pickTeam: _ctPickTeam, kalshiPct: _ctYesPct, noKalshiPct: _ctNoPct, americanOdds: _ctAO(_ctYesPct), noAmericanOdds: _ctAO(_ctNoPct), kalshiVolume: _ctVol, _ticker: m.ticker });
               continue;
             }
             // ── Scottish League Cup spread branch ── threshold market ("<team> wins by more
@@ -538,7 +537,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
                 if (_scsMo) _scsGameDate = `20${_scsSegment.slice(0, 2)}-${_scsMo}-${_scsSegment.slice(5, 7)}`;
               }
               const _scsAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
-              scocupSpreadMarkets.push({ segment: _scsSegment, gameDate: _scsGameDate, teamName: _scsTeamName, threshold: _scsStrike, line: _scsStrike, kalshiPct: _scsYesPct, noKalshiPct: _scsNoPct, americanOdds: _scsAO(_scsYesPct), noAmericanOdds: _scsAO(_scsNoPct), kalshiVolume: _scsVol, eventTicker: m.event_ticker, _ticker: m.ticker, _depth: m._depth, _stale: _scsStale, _yesSpreadC: _scsYesSpreadC, _noSpreadC: _scsNoSpreadC });
+              scocupSpreadMarkets.push({ segment: _scsSegment, gameDate: _scsGameDate, teamName: _scsTeamName, threshold: _scsStrike, line: _scsStrike, kalshiPct: _scsYesPct, noKalshiPct: _scsNoPct, americanOdds: _scsAO(_scsYesPct), noAmericanOdds: _scsAO(_scsNoPct), kalshiVolume: _scsVol, eventTicker: m.event_ticker, _ticker: m.ticker, _stale: _scsStale, _yesSpreadC: _scsYesSpreadC, _noSpreadC: _scsNoSpreadC });
               continue;
             }
             // ── Scottish League Cup total branch ── threshold market ("Over N.5 goals scored"),
@@ -574,7 +573,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
                 if (_sctMo) _sctGameDate = `20${_sctSegment.slice(0, 2)}-${_sctMo}-${_sctSegment.slice(5, 7)}`;
               }
               const _sctAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
-              scocupTotalMarkets.push({ segment: _sctSegment, gameDate: _sctGameDate, threshold: _sctStrike, line: _sctStrike, kalshiPct: _sctYesPct, noKalshiPct: _sctNoPct, americanOdds: _sctAO(_sctYesPct), noAmericanOdds: _sctAO(_sctNoPct), kalshiVolume: _sctVol, eventTicker: m.event_ticker, _ticker: m.ticker, _depth: m._depth });
+              scocupTotalMarkets.push({ segment: _sctSegment, gameDate: _sctGameDate, threshold: _sctStrike, line: _sctStrike, kalshiPct: _sctYesPct, noKalshiPct: _sctNoPct, americanOdds: _sctAO(_sctYesPct), noAmericanOdds: _sctAO(_sctNoPct), kalshiVolume: _sctVol, eventTicker: m.event_ticker, _ticker: m.ticker });
               continue;
             }
             // ── MLB pitcher outs-recorded branch ── threshold ladder per starter ("Senga: 15+").
@@ -611,7 +610,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
               if (_oT1 && _oMktSuffix.startsWith(_oT1)) _oPitTeam = _oT1;
               else if (_oT2 && _oMktSuffix.startsWith(_oT2)) _oPitTeam = _oT2;
               const _oAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
-              outsMarkets.push({ player: _oName, threshold: _oThreshold, gameTeam1: _oT1, gameTeam2: _oT2, pitcherTeam: _oPitTeam, yesPct: _oYesPct, noPct: _oNoPct, yesAO: _oAO(_oYesPct), noAO: _oAO(_oNoPct), kalshiVolume: _oVol, gameDate: _oDate, _ticker: m.ticker, _depth: m._depth });
+              outsMarkets.push({ player: _oName, threshold: _oThreshold, gameTeam1: _oT1, gameTeam2: _oT2, pitcherTeam: _oPitTeam, yesPct: _oYesPct, noPct: _oNoPct, yesAO: _oAO(_oYesPct), noAO: _oAO(_oNoPct), kalshiVolume: _oVol, gameDate: _oDate, _ticker: m.ticker });
               continue;
             }
             const strike = parseFloat(m.floor_strike);
@@ -673,7 +672,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
               }
               const _tYesBid = parseFloat(m.yes_bid_dollars) || 0;
               const _tSpread = yesAsk > 0 && _tYesBid > 0 ? Math.round((yesAsk - _tYesBid) * 100) : null;
-              totalMarkets.push({ gameType: "total", sport, stat, col, segment, threshold, kalshiPct: pct, americanOdds: _toAO, noKalshiPct: noPct, noKalshiAO: _tNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _tGameDate, kalshiSpread: _tSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: _tYesBid, _noAsk: noAsk, _depth: m._depth });
+              totalMarkets.push({ gameType: "total", sport, stat, col, segment, threshold, kalshiPct: pct, americanOdds: _toAO, noKalshiPct: noPct, noKalshiAO: _tNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _tGameDate, kalshiSpread: _tSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: _tYesBid, _noAsk: noAsk });
               continue;
             }
 
@@ -709,7 +708,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
               }
               const _ttYesBid = parseFloat(m.yes_bid_dollars) || 0;
               const _ttSpread = yesAsk > 0 && _ttYesBid > 0 ? Math.round((yesAsk - _ttYesBid) * 100) : null;
-              teamTotalMarkets.push({ gameType: "teamTotal", sport, stat, col, threshold, kalshiPct: pct, americanOdds: _ttAO, noKalshiPct: noPct, noKalshiAO: _ttNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, scoringTeam, gameDate: _ttGameDate, kalshiSpread: _ttSpread, _ticker: m.ticker, _yesAsk: yesAsk, _noAsk: noAsk, _depth: m._depth });
+              teamTotalMarkets.push({ gameType: "teamTotal", sport, stat, col, threshold, kalshiPct: pct, americanOdds: _ttAO, noKalshiPct: noPct, noKalshiAO: _ttNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, scoringTeam, gameDate: _ttGameDate, kalshiSpread: _ttSpread, _ticker: m.ticker, _yesAsk: yesAsk, _noAsk: noAsk });
               continue;
             }
 
@@ -746,7 +745,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
               }
               const _spYesBid = parseFloat(m.yes_bid_dollars) || 0;
               const _spSpread = yesAsk > 0 && _spYesBid > 0 ? Math.round((yesAsk - _spYesBid) * 100) : null;
-              spreadMarkets.push({ gameType: "spread", sport, stat, col, segment, line: strike, marginTeam, kalshiPct: pct, americanOdds: _spAO, noKalshiPct: noPct, noKalshiAO: _spNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _spGameDate, kalshiSpread: _spSpread, _ticker: m.ticker, _yesAsk: yesAsk, _noAsk: noAsk, _depth: m._depth });
+              spreadMarkets.push({ gameType: "spread", sport, stat, col, segment, line: strike, marginTeam, kalshiPct: pct, americanOdds: _spAO, noKalshiPct: noPct, noKalshiAO: _spNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _spGameDate, kalshiSpread: _spSpread, _ticker: m.ticker, _yesAsk: yesAsk, _noAsk: noAsk });
               continue;
             }
 
@@ -837,7 +836,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
             // fire, failure-closed.
             const _hrrNoQuote = stat === "hrr" && noAsk > 0 && capturableSpread(noSpreadC)
               ? { noKalshiPct: noPct, noKalshiAO } : {};
-            qualifyingMarkets.push({ playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct: pct, americanOdds, kalshiVolume: volume, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, kalshiSpread, ...(propDirection ? { direction: propDirection, noKalshiPct: noPct, noKalshiAO } : _hrrNoQuote), _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: yesBid, _yesAskSize: yesAskSize, _depth: m._depth });
+            qualifyingMarkets.push({ playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct: pct, americanOdds, kalshiVolume: volume, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, kalshiSpread, ...(propDirection ? { direction: propDirection, noKalshiPct: noPct, noKalshiAO } : _hrrNoQuote), _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: yesBid, _yesAskSize: yesAskSize });
           }
         }
         if (qualifyingMarkets.length === 0 && totalMarkets.length === 0) {
@@ -848,37 +847,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         // Falls back into nbaGameOdds for teams ESPN doesn't include in today's scoreboard odds.
         // Same fallback applied for MLB + NHL below — ESPN scoreboard only carries today's odds,
         // so tomorrow's games render with O/U "—" without a Kalshi-derived backfill.
-        // Blended fill price (player props): re-price kalshiPct to the true cost of sweeping a
-        // unit-sized position, not just top-of-book ask. Depth comes from the snapshot cron's
-        // cached `_depth` (kalshi:snap:{ticker}) — NO live orderbook fetch on the hot path
-        // (replaced the prior live walk 2026-05-31; see blend-fill.js). Player props are always
-        // a YES buy. Markets without cached depth keep top-of-book (blendMarketPrice → null).
-        for (const m of qualifyingMarkets) {
-          const blended = blendMarketPrice(m._depth, "yes", m.kalshiPct);
-          if (blended) { m.kalshiPct = blended.pct; m.americanOdds = blended.americanOdds; }
-          // Under props (totalBases) actually buy the NO side — re-price it from the NO book
-          // too, mirroring the totals/spreads loop below. HRR rows carry noKalshiPct without a
-          // direction (props.js decides the flip) — their NO price needs the same re-price so
-          // the flip compares blended fills on both sides.
-          if (m.noKalshiPct != null) {
-            const nb = blendMarketPrice(m._depth, "no", m.noKalshiPct);
-            if (nb) { m.noKalshiPct = nb.pct; m.noKalshiAO = nb.americanOdds; }
-          }
-        }
-        // Blended fill price (totals / team totals / spreads): same cached-depth blend, but each
-        // of these has TWO tradeable sides — the OVER/margin (YES buy) and the UNDER/cover (NO
-        // buy) — so we re-price both. Done here at the PARSE site (before game-totals.js and
-        // ml-spread.js read these arrays) so the emit modules need zero changes; they consume
-        // already-slippage-adjusted kalshiPct/noKalshiPct. YES re-prices kalshiPct+americanOdds;
-        // NO re-prices noKalshiPct+noKalshiAO. Markets without cached depth keep top-of-book.
-        for (const m of [...totalMarkets, ...teamTotalMarkets, ...spreadMarkets]) {
-          const yb = blendMarketPrice(m._depth, "yes", m.kalshiPct);
-          if (yb) { m.kalshiPct = yb.pct; m.americanOdds = yb.americanOdds; }
-          const nb = blendMarketPrice(m._depth, "no", m.noKalshiPct);
-          if (nb) { m.noKalshiPct = nb.pct; m.noKalshiAO = nb.americanOdds; }
-        }
         // E1: Line movement tracking — record opening price the first time we see each ticker.
-        // lineMove = current yesAsk (after blend) - openYesAsk (first seen today).
+        // lineMove = current yesAsk - openYesAsk (first seen today).
         // KV key: lineOpen:{ticker}:{gameDate} → openYesAsk (cents, 0-100)
         if (CACHE2) {
           const _allTrackedMarkets = [...qualifyingMarkets, ...totalMarkets];

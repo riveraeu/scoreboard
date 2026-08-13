@@ -93,7 +93,7 @@ These bite during *any* change. Each links to detail in `docs/*.md` or memory.
 
 **Kalshi UNDER pricing — use `no_ask_dollars`, not `1 - yes_ask_dollars`.** YES/NO books are independent (3–7¢ spread).
 
-**Traded volume ≠ resting liquidity** — a `volume_fp:0` market can have a deep book; cached `_depth` reports a false-0 slippage. Order paths walk the live full book (`/api/kalshi-orderbook` → `walkFill`, `api/lib/kalshi-book.js`) for real VWAP.
+**Traded volume ≠ resting liquidity** — a `volume_fp:0` market can have a deep book, so volume is not a liquidity proxy. Slippage is measured by walking the live full book (`/api/kalshi-orderbook` → `walkFill`, `api/lib/kalshi-book.js`) for real VWAP. The snapshot cron's cached top-3 `_depth` + `blend-fill.js` were deleted 2026-08-13: the depth phase had never once run, and its blend silently **rewrote captured prices**, so repairing it would have moved the measured quantity under live pre-registrations.
 
 **Kalshi snap-first read chain (`/api/tonight`)** — 2-tier (`api/lib/tonight/kalshi-pipeline.js`): `kalshi:snap:{ticker}` (cron every 2 min, all-or-nothing 180s freshness) → REST + `kalshi:stale:{ticker}` (30-min fallback). `KXMLBGAME` uses the same chain. Diagnose `usedSnaps:false` via `kalshiSnap.meta` in `?debug=1`.
 
