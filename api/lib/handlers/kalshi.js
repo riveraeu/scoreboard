@@ -357,7 +357,18 @@ export async function handleKalshiRoutes(ctx) {
         _makerMeta = { skipped: !_staging ? "no_staging" : "no_snaps" };
       }
     } catch (e) {
-      _makerMeta = { error: String(e?.message || e) };
+      // Capture the Postgres error FIELDS, not just `message`. Neon's HTTP SQL API answers a failed
+      // statement with a bare "Database request failed" — a string that appears nowhere in the driver
+      // or this repo, names neither the statement nor the cause, and cost a full round of wrong
+      // guesses on 2026-08-13. `code`/`detail`/`routine` are what actually identify it.
+      const _parts = [String(e?.message || e)];
+      for (const k of ["code", "severity", "detail", "hint", "routine", "constraint", "table", "column", "where"]) {
+        if (e?.[k]) _parts.push(`${k}=${String(e[k]).slice(0, 120)}`);
+      }
+      if (e?.sourceError?.message && e.sourceError.message !== e?.message) {
+        _parts.push(`source=${String(e.sourceError.message).slice(0, 200)}`);
+      }
+      _makerMeta = { error: _parts.join(" | ").slice(0, 600) };
       console.error(`[kalshi-snapshot] maker quote pass failed: ${_makerMeta.error}`);
     }
 
