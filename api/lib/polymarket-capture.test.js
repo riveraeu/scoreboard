@@ -38,6 +38,11 @@ test("parseCaptureTicker: base game + F5 parse; props/futures reject", () => {
     { sport: "atp", awayPoly: "aguilar", homePoly: "cilic", dateStr: "2026-08-13", segment: null });
   assert.deepEqual(parseCaptureTicker("wta-putints-samsono-2026-08-13"),
     { sport: "wta", awayPoly: "putints", homePoly: "samsono", dateStr: "2026-08-13", segment: null });
+  assert.deepEqual(parseCaptureTicker("dota2-og-huliga-2026-08-14"),
+    { sport: "dota2", awayPoly: "og", homePoly: "huliga", dateStr: "2026-08-14", segment: null });
+  // The "-more-markets" suffix a couple of live dota2 tickers carry is rejected like any other
+  // suffixed ticker (props/futures) — no special-cased carve-out.
+  assert.equal(parseCaptureTicker("dota2-rnx-nem-2026-07-12-more-markets"), null);
 });
 
 test("POLY_MARKETS: derived POLY_SERIES matches, and every category has a Kalshi vig counterpart", () => {
@@ -291,6 +296,33 @@ test("buildCaptureCandidates: atp/wta ml-only, no team registry, set/game props 
   const cands = buildCaptureCandidates(ev, nowMs);
   assert.deepEqual(cands.map((c) => c.category), ["ml", "ml"]);
   assert.equal(cands.find((c) => c.side === "away").outcome, "Daniel Merida Aguilar");
+  assert.equal(cands[0].game, null);
+});
+
+test("buildCaptureCandidates: dota2 ml-only, child_moneyline (per-map) and props skipped", () => {
+  const nowMs = Date.parse("2026-08-14T12:00:00Z");
+  const future = "2026-08-14 23:00:00+00";
+  const mkt = (sportsMarketType, line, outcomes, id) => ({
+    sportsMarketType, line, gameStartTime: future, bestBid: 0.4, bestAsk: 0.6,
+    outcomes: JSON.stringify(outcomes), outcomePrices: '["0.66","0.34"]',
+    clobTokenIds: `["${id}a","${id}b"]`, id,
+  });
+  const ev = {
+    ticker: "dota2-og-huliga-2026-08-14",
+    markets: [
+      // series/match winner — the one that matches Kalshi's KXDOTA2GAME.
+      mkt("moneyline", null, ["OG", "HULIGANI"], 990),
+      // per-MAP winner, same outcome names — a different sportsMarketType key, must be skipped.
+      mkt("child_moneyline", null, ["OG", "HULIGANI"], 991),
+      mkt("child_moneyline", null, ["OG", "HULIGANI"], 992),
+      mkt("map_handicap", -1.5, ["OG", "HULIGANI"], 993),
+      mkt("kill_over_under_game", 50.5, ["Over", "Under"], 994),
+      mkt("dota2_rampage", null, ["Yes", "No"], 995),
+    ],
+  };
+  const cands = buildCaptureCandidates(ev, nowMs);
+  assert.deepEqual(cands.map((c) => c.category), ["ml", "ml"]);
+  assert.equal(cands.find((c) => c.side === "away").outcome, "OG");
   assert.equal(cands[0].game, null);
 });
 

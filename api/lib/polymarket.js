@@ -110,6 +110,18 @@ export const POLY_MARKETS = {
   // aggregation time only (mirrors the category-CASE pattern, doesn't touch the stored column).
   atp:  { series: "10365", slug: "atp", categories: { moneyline: "ml" } },
   wta:  { series: "10366", slug: "wta", categories: { moneyline: "ml" } },
+  // Dota 2 (Phase 2, 2026-08-14) — catalog id (10309) verified live, 29 events. ml-ONLY via the
+  // "moneyline" sportsMarketType (overall SERIES/match winner), matching Kalshi's KXDOTA2GAME
+  // (one YES per team per MATCH, not per map). Poly's Bo3/Bo5 events ALSO carry a same-named-
+  // outcome "child_moneyline" (one per individual map) plus a large prop family (map_handicap,
+  // first_blood_game, kill_over_under_game, dota2_rampage, …) with no Kalshi counterpart —
+  // `categories` keys on the EXACT sportsMarketType string, so "child_moneyline" is a different
+  // key and is skipped automatically, no extra filtering needed. No teams.js registry (esports
+  // rosters are effectively unbounded, same reasoning as UFC/ATP/WTA) — `game` stays null.
+  // Two of 29 live tickers carry a "-more-markets" suffix (e.g. "dota2-rnx-nem-2026-07-12-more-
+  // markets") that the strict 2-segment regex rejects, same as any other suffixed ticker — minor,
+  // ~7% of the slate, not worth a regex carve-out for.
+  dota2: { series: "10309", slug: "dota2", categories: { moneyline: "ml" } },
 };
 
 // Sports we capture, as a regex alternation — derived so a new POLY_MARKETS row is admitted by both
