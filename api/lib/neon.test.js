@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { insertChunkSize, neonBatchInsert, PARAM_BUDGET } from "./neon.js";
+import { insertChunkSize, neonBatchInsert, isRetryableNeonError, PARAM_BUDGET } from "./neon.js";
 
 // Postgres' hard ceiling. The bug this guards against is not a slowdown — crossing it throws, and
 // for maker_quotes it threw on a retry loop that rebuilt the same oversized batch every 2 minutes,
@@ -59,6 +59,19 @@ test("the real failing batch splits into chunks that each stay inside the budget
 test("neonBatchInsert is a no-op on an empty batch", async () => {
   assert.equal(await neonBatchInsert({ table: "t", cols: ["a"], rows: [], env: {} }), 0);
   assert.equal(await neonBatchInsert({ table: "t", cols: ["a"], rows: null, env: {} }), 0);
+});
+
+// ── isRetryableNeonError ──
+// Neon's HTTP driver gives no PG error fields for either cause of "Database request failed" (a
+// transient blip vs a chunk still too big) — this predicate is the retry gate, so it must fire on
+// exactly that opaque string and nothing else (a real SQL error must fail fast, not retry 3x first).
+
+test("isRetryableNeonError matches Neon's exact opaque failure string, nothing else", () => {
+  assert.equal(isRetryableNeonError(new Error("Database request failed")), true);
+  assert.equal(isRetryableNeonError({ message: "Database request failed" }), true);
+  assert.equal(isRetryableNeonError(new Error("syntax error at or near \"SELCT\"")), false);
+  assert.equal(isRetryableNeonError(new Error("duplicate key value violates unique constraint")), false);
+  assert.equal(isRetryableNeonError(new Error("Database request failed (extra context)")), false);
 });
 
 test("neonBatchInsert rejects a row of the wrong width rather than shifting placeholders", async () => {

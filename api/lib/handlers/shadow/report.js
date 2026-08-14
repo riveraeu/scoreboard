@@ -99,6 +99,10 @@ const _kalshiCatCaseSql = `CASE ${Object.entries(KALSHI_VENUE_CATEGORY_PREFIXES)
   .join(" ")} ELSE NULL END`;
 const _kalshiTickerFilterSql = Object.values(KALSHI_VENUE_CATEGORY_PREFIXES).flat()
   .map((p) => `kalshi_ticker LIKE '${p}-%'`).join(" OR ");
+// Poly's own category column is one of the same keys — derived so a new venue-vig category can't
+// drift out of sync the way 'spread'/'f5total'/'f5spread' did on 2026-08-13 (added to the prefix map
+// and the Kalshi-side classifier, but the Poly-side query's hand-written IN-list was never updated).
+const _venueVigCategoriesSql = Object.keys(KALSHI_VENUE_CATEGORY_PREFIXES).map((c) => `'${c}'`).join(", ");
 
 // Pure: assemble the venueVig cells from the two aggregation result sets. Each row: {sport, category,
 // band, n, days, avg_ask, win_pct}. vig = avg_ask − win_pct (¢). deltaVig = kalshiVig − polyVig, only
@@ -1251,7 +1255,7 @@ async function handleShadowReport({ path, request, env, cache }) {
           COUNT(*)::int AS n, COUNT(DISTINCT game_date)::int AS days,
           ROUND(AVG(ask_c), 1) AS avg_ask, ROUND(AVG((won)::int::numeric) * 100, 1) AS win_pct
         FROM polymarket_plays
-        WHERE won IS NOT NULL AND ask_c IS NOT NULL AND category IN ('ml','total','f5')
+        WHERE won IS NOT NULL AND ask_c IS NOT NULL AND category IN (${_venueVigCategoriesSql})
           AND COALESCE(game_date, snapshot_date::varchar) >= $1
         GROUP BY sport, category, ${_makerBandCase("ask_c")}`, [since], env, { write: true }),
     ]);

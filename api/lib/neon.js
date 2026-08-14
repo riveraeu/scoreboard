@@ -81,6 +81,16 @@ export function insertChunkSize(colCount, budget = PARAM_BUDGET) {
   return Math.max(1, Math.floor(budget / colCount));
 }
 
+// Neon's HTTP driver answers BOTH a genuinely transient failure (network blip, pool contention) and
+// a chunk that's still too big for the request-size limit PARAM_BUDGET only approximates with the
+// exact same opaque string, no PG error fields to tell them apart (see PARAM_BUDGET comment above).
+// Retrying is safe under either cause: a transient failure recovers, and a still-too-big chunk just
+// fails again identically after one wasted round-trip — so the retry is capped low, not open-ended.
+export function isRetryableNeonError(e) {
+  return String(e?.message || e) === "Database request failed";
+}
+const NEON_RETRY_BACKOFF_MS = [400, 1200];
+
 // `rows` is an array of value arrays, each the same length as `cols`. Returns the row count sent.
 export async function neonBatchInsert({ table, cols, rows, suffix = "", env, budget = PARAM_BUDGET }) {
   if (!rows?.length) return 0;
@@ -99,17 +109,26 @@ export async function neonBatchInsert({ table, cols, rows, suffix = "", env, bud
       const base = ri * cols.length;
       return `(${cols.map((_, j) => `$${base + j + 1}`).join(", ")})`;
     });
+    const sql = `INSERT INTO ${table} (${cols.join(", ")}) VALUES ${tuples.join(", ")}${suffix ? ` ${suffix}` : ""}`;
     // Annotate with the CHUNK's own size, not the batch total. The caller's label reports the whole
     // batch, which cannot distinguish "the batch is too big" from "chunking is not working" — the
     // exact ambiguity that cost a deploy cycle on 2026-08-13.
-    try {
-      await neonQuery(
-        `INSERT INTO ${table} (${cols.join(", ")}) VALUES ${tuples.join(", ")}${suffix ? ` ${suffix}` : ""}`,
-        values, env, { write: true });
-    } catch (e) {
-      e.message = `chunk ${Math.floor(i / size) + 1}/${Math.ceil(rows.length / size)} `
-        + `(${chunk.length} rows, ${values.length} params): ${e?.message || e}`;
-      throw e;
+    let lastErr = null;
+    for (let attempt = 0; attempt <= NEON_RETRY_BACKOFF_MS.length; attempt++) {
+      try {
+        await neonQuery(sql, values, env, { write: true });
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (!isRetryableNeonError(e) || attempt === NEON_RETRY_BACKOFF_MS.length) break;
+        await new Promise((r) => setTimeout(r, NEON_RETRY_BACKOFF_MS[attempt]));
+      }
+    }
+    if (lastErr) {
+      lastErr.message = `chunk ${Math.floor(i / size) + 1}/${Math.ceil(rows.length / size)} `
+        + `(${chunk.length} rows, ${values.length} params): ${lastErr?.message || lastErr}`;
+      throw lastErr;
     }
     sent += chunk.length;
   }
