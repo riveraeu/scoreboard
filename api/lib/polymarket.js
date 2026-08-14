@@ -92,6 +92,24 @@ export const POLY_MARKETS = {
   // above), so `game` is null for every UFC row and venueVig aggregates by sport×category×band
   // with no team join anyway.
   ufc:  { series: "38", slug: "ufc", categories: { moneyline: "ml" } },
+  // ATP + WTA tennis (Phase 2, 2026-08-14). Unlike NFL/UFC, the catalog ids (10365/10366) were
+  // RIGHT this time — verified live (41/29 real match events). ml-ONLY: Kalshi's KXATPMATCH/
+  // KXWTAMATCH are match-winner only, and Poly lists a large set/game prop family
+  // (tennis_set_totals, tennis_set_handicap, tennis_first_set_winner, …) with no Kalshi
+  // counterpart at all — same "no product to compare against" reasoning as NFL's spread/
+  // team_totals. No teams.js registry — like UFC, players are an unbounded pool, not a fixed
+  // team roster; `game` stays null by design.
+  //
+  // sport MISMATCH, not a copy-paste of the NFL/KBO/UFC pattern: Kalshi collapses both tours into
+  // ONE `shadow_plays.sport = "tennis"` (tour is a separate feature field), but Poly's own ticker
+  // prefix is "atp"/"wta" — the sport segment IS the tour, there's no bare "tennis" prefix to key
+  // on. Keeping the registry key + captured row's `sport` column as "atp"/"wta" (truthful, and
+  // matches every other Poly discovery/dedup path that keys off the real Gamma slug) means
+  // venueVig's cross-venue join would otherwise NEVER match — two Poly buckets against Kalshi's
+  // one. `report.js`'s venueVig Poly-side query normalizes sport IN ('atp','wta') -> 'tennis' at
+  // aggregation time only (mirrors the category-CASE pattern, doesn't touch the stored column).
+  atp:  { series: "10365", slug: "atp", categories: { moneyline: "ml" } },
+  wta:  { series: "10366", slug: "wta", categories: { moneyline: "ml" } },
 };
 
 // Sports we capture, as a regex alternation — derived so a new POLY_MARKETS row is admitted by both

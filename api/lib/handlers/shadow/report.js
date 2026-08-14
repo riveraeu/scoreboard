@@ -78,7 +78,7 @@ const _makerBandCase = (col) => `CASE
 // (`totalRuns`, `teamRuns`) and KXMLBGAME/KXMLBF5 have no SERIES_CONFIG row at all, so deriving it
 // would be a chokepoint on paper and a silent-drift generator in practice.
 export const KALSHI_VENUE_CATEGORY_PREFIXES = {
-  ml:       ["KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME", "KXNFLGAME", "KXKBOGAME", "KXUFCFIGHT"],
+  ml:       ["KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME", "KXNFLGAME", "KXKBOGAME", "KXUFCFIGHT", "KXATPMATCH", "KXWTAMATCH"],
   total:    ["KXMLBTOTAL", "KXWNBATOTAL", "KXNBATOTAL", "KXNHLTOTAL", "KXNFLTOTAL"],
   spread:   ["KXMLBSPREAD", "KXWNBASPREAD", "KXNBASPREAD", "KXNHLSPREAD"],
   f5:       ["KXMLBF5"],
@@ -103,6 +103,12 @@ const _kalshiTickerFilterSql = Object.values(KALSHI_VENUE_CATEGORY_PREFIXES).fla
 // drift out of sync the way 'spread'/'f5total'/'f5spread' did on 2026-08-13 (added to the prefix map
 // and the Kalshi-side classifier, but the Poly-side query's hand-written IN-list was never updated).
 const _venueVigCategoriesSql = Object.keys(KALSHI_VENUE_CATEGORY_PREFIXES).map((c) => `'${c}'`).join(", ");
+// Poly-side sport normalization: Kalshi collapses ATP+WTA into ONE shadow_plays.sport = 'tennis'
+// (tour is a separate feature field), but Poly's own ticker/registry key IS the tour ('atp'/'wta')
+// — left that way in polymarket_plays because it's the truthful, discovery-matching value. Without
+// this the venueVig join never fires (two Poly sport buckets vs Kalshi's one, same "silently always
+// empty" trap the category IN-list drift caused on 2026-08-14). Add here, never on the stored column.
+const _pVigSportSql = `CASE WHEN sport IN ('atp', 'wta') THEN 'tennis' ELSE sport END`;
 
 // Pure: assemble the venueVig cells from the two aggregation result sets. Each row: {sport, category,
 // band, n, days, avg_ask, win_pct}. vig = avg_ask − win_pct (¢). deltaVig = kalshiVig − polyVig, only
@@ -1251,13 +1257,13 @@ async function handleShadowReport({ path, request, env, cache }) {
         WHERE ask IS NOT NULL AND category IS NOT NULL
         GROUP BY sport, category, ${_makerBandCase("ask")}`, [since], env, { write: true }),
       neonQuery(`
-        SELECT sport, category, ${_makerBandCase("ask_c")} AS band,
+        SELECT ${_pVigSportSql} AS sport, category, ${_makerBandCase("ask_c")} AS band,
           COUNT(*)::int AS n, COUNT(DISTINCT game_date)::int AS days,
           ROUND(AVG(ask_c), 1) AS avg_ask, ROUND(AVG((won)::int::numeric) * 100, 1) AS win_pct
         FROM polymarket_plays
         WHERE won IS NOT NULL AND ask_c IS NOT NULL AND category IN (${_venueVigCategoriesSql})
           AND COALESCE(game_date, snapshot_date::varchar) >= $1
-        GROUP BY sport, category, ${_makerBandCase("ask_c")}`, [since], env, { write: true }),
+        GROUP BY ${_pVigSportSql}, category, ${_makerBandCase("ask_c")}`, [since], env, { write: true }),
     ]);
     venueVig = computeVenueVig(_kVig, _pVig);
   } catch (e) { console.error("[shadow-report] venueVig skipped:", e?.message); }
