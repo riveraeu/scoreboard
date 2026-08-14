@@ -170,6 +170,13 @@ export const SERIES_CONFIG = {
   // CAVEAT recorded at adoption: REAL_BOOK proves a quote, not liquidity — 6 markets on a single
   // fixture totalling ~$15 volume. Expect near-zero capture until the league's books deepen.
   KXEREDIVISIETOTAL:    { sport: "eredivisie", league: "eredivisie", stat: "total",  col: "G",  gameType: "clubSoccerThreshold", subtype: "total" },
+  // Eerste Divisie (Dutch 2nd tier) game winner + full-game spread/total — 19th model-free maker
+  // league, adopted 2026-08-14. GAME 48/48 real books, SPREAD 21/28, TOTAL 36/36. ESPN slug ned.2.
+  // BTTS is also a real book (6/7) but deliberately not adopted here, matching Eredivisie's own
+  // scope choice — a discovery candidate for later, not dismissed.
+  KXEERSTEDIVGAME:      { sport: "eerstediv", league: "eerstediv", stat: "game",   col: "ML", gameType: "modelFreeMl" },
+  KXEERSTEDIVSPREAD:    { sport: "eerstediv", league: "eerstediv", stat: "spread", col: "G",  gameType: "clubSoccerThreshold", subtype: "spread" },
+  KXEERSTEDIVTOTAL:     { sport: "eerstediv", league: "eerstediv", stat: "total",  col: "G",  gameType: "clubSoccerThreshold", subtype: "total" },
   KXCOPADOBRASILTOTAL:  { sport: "copadobrasil", league: "copadobrasil", stat: "total",  col: "G", gameType: "clubSoccerThreshold", subtype: "total" },
   KXCOPADOBRASILSPREAD: { sport: "copadobrasil", league: "copadobrasil", stat: "spread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread" },
   KXARGPREMDIVGAME:   { sport: "argprem", league: "argprem", stat: "game",     col: "ML", gameType: "modelFreeMl" },

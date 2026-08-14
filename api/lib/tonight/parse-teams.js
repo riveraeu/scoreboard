@@ -48,8 +48,10 @@ export function parseGameTeams(eventTicker, sport) {
   // Live event segments confirm the split is unambiguous under longest-left-first: SDPUE → SD|PUE,
   // LAFCQUE → LAFC|QUE, everything else 3+3. SD is the only 2-char and LAFC the only 4-char code in
   // the tournament's 36, which is what keeps every split unique.
+  // eerstediv joined 2026-08-14: "AZ" (Jong AZ Alkmaar) is a 2-char Kalshi code, everything else
+  // 3-char — GRAAZ (5 chars) needs the validated 2+3 fallback here, not the unvalidated one below.
   if ((sport === "wnba" || sport === "mls" || sport === "brasileirao" || sport === "nwsl" || sport === "argprem" || sport === "copadobrasil" || sport === "ligue1" || sport === "usl" || sport === "copalib" || sport === "nfl" || sport === "kbo"
-       || sport === "dimayor" || sport === "leaguescup") && valid) {
+       || sport === "dimayor" || sport === "leaguescup" || sport === "eerstediv") && valid) {
     for (let i = Math.min(4, rest.length - 2); i >= 2; i--) {
       const a = normTeam(sport, rest.slice(0, i));
       for (let j = Math.min(4, rest.length - i); j >= 2; j--) {

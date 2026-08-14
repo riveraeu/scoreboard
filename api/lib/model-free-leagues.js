@@ -137,6 +137,15 @@ export const MODEL_FREE_LEAGUES = {
   // Estoril vs ESPN EST = Estrela) and CSM = Marítimo, both resolved by same-date fixture matching
   // rather than name similarity. See the teams.js block for the evidence.
   ligaportugal: { espnSlug: "por.1" },
+  // 19th league, adopted 2026-08-14 — Eerste Divisie, Dutch 2nd tier (KXEERSTEDIVGAME). ESPN slug
+  // ned.2 verified live: exact same-date fixture match (FC Volendam vs TOP Oss, 2026-08-15, matching
+  // Kalshi's VOLOSS ticker). 48/48 real books on GAME, real books across SPREAD/TOTAL too (BTTS also
+  // real but deliberately not built here, matching Eredivisie's own scope). Default canonTeam
+  // suffices (no ESPN-internal abbr collision — the "Jong" mismatches are handled as plain espnScore
+  // remaps, not a shared-abbr collision like RIV/IRM or LOU/LFC). AZ (2-char, Jong AZ Alkmaar) →
+  // eerstediv in parseGameTeams' variable-length allowlist (this commit). See the teams.js block for
+  // the unusually high (10/20) mismatch rate and why.
+  eerstediv: { espnSlug: "ned.2" },
 };
 
 export const MODEL_FREE_LEAGUE_KEYS = Object.keys(MODEL_FREE_LEAGUES);

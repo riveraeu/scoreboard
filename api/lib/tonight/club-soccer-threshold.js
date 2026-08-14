@@ -7,7 +7,8 @@
 // latter reached the vet queue by REVIVAL after an earlier pre-season auto-dismissal), and
 // Leagues Cup's 1H total + full-game team-total (KXLEAGUESCUP1HTOTAL/TEAMTOTAL, added 2026-08-11 —
 // the first CROSS-LEAGUE entry here, whose `leaguescup` registry is derived as mls ∪ ligamx in
-// teams.js). Phase 1, model-free.
+// teams.js), and Eerste Divisie's full-game spread + total (KXEERSTEDIVSPREAD/TOTAL, added
+// 2026-08-14, no `half` tag). Phase 1, model-free.
 // One shared array + module across all four leagues (sport-tagged per row) —
 // unlike the shared GAME-winner module (model-free-ml.js, one path for all six leagues),
 // team identity here needs no subtitle-based disambiguation (none of MLS/LigaMX/Argentina have
@@ -37,6 +38,7 @@ const SCHEDULE_BY_SPORT = {
   mls: getMlsSchedule, ligamx: getLigaMxSchedule, argprem: getArgPremSchedule,
   copadobrasil: leagueSource("copadobrasil").getSchedule,
   eredivisie: leagueSource("eredivisie").getSchedule,
+  eerstediv: leagueSource("eerstediv").getSchedule,
   laliga: leagueSource("laliga").getSchedule,
   // leaguescup added 2026-08-11 (1HTOTAL + TEAMTOTAL). Like copadobrasil it has no per-league shim
   // — its ML path runs straight off MODEL_FREE_LEAGUES, so the schedule comes from the same source.

@@ -28,10 +28,11 @@ test("authoritative set covers the shadow-only sports + mlb/wnba/nfl; nba/nhl st
   // +1 2026-08-10: ligaportugal (KXLIGAPORTUGALGAME), 18th model-free soccer league.
   // +1 2026-08-11: leaguescup (KXLEAGUESCUPGAME), the MLS × Liga MX summer tournament and the
   // first CROSS-LEAGUE competition here — its team registry is DERIVED as mls ∪ ligamx in teams.js.
-  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 35);
+  // +1 2026-08-14: eerstediv (KXEERSTEDIVGAME), Dutch 2nd tier, 19th model-free soccer league.
+  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 36);
   for (const s of ["tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb",
                    "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem", "dimayor",
-                   "copadobrasil", "eredivisie",
+                   "copadobrasil", "eredivisie", "eerstediv",
                    "epl", "laliga", "seriea", "ligue1", "jleague",
                    "laliga2", "usl", "copalib", "ligaportugal",
                    "mlb", "wnba", "dota2", "kleague", "kbo",

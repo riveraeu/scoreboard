@@ -54,6 +54,8 @@ const LEGACY_TEAM_NORM = {
   // EST=Estoril / ESA=Estrela collision) live in CANONICAL_TO_ESPN, not TEAM_NORM.
   leaguescup: {}, // DERIVED registry (mls ∪ ligamx) — inherits no aliases because neither parent
   // has any; its espnScore remaps come from ligamx via CANONICAL_TO_ESPN.
+  eerstediv: {}, // canonical = Kalshi abbrs, no aliases; the 10 espnScore remaps (incl. the four
+  // "Jong" reserve-team abbrs) live in CANONICAL_TO_ESPN, not TEAM_NORM.
 };
 
 const LEGACY_VALID_TEAMS = {
@@ -82,6 +84,7 @@ const LEGACY_VALID_TEAMS = {
   usl: ["BIR","BRO","CHS","CSS","DET","HFD","IND","JAX","LAS","LEX","LFC","LOU","MIA","MON","NEW","OAK","OC","PAS","PIT","RHI","SAN","SRP","TBR","TUL"],
   copalib: ["CARC","COQ","COR","CPO","CRU","ELP","FLA","FLU","IND","LDU","MIR","PAL","PLA","RIV","TOL","UC"],
   ligaportugal: ["ACV","ALV","ARO","BEN","BRA","CAS","CDN","CSM","ESA","EST","FAM","FCP","GIL","MOR","RAV","SCL","SPO","VIT"],
+  eerstediv: ["ALM","PSV","EIN","MAA","HER","DBO","BRE","VEN","WAA","DOR","ROD","HEL","VOL","OSS","GRA","AZ","AJA","EMM","UTR","VIT"],
 };
 
 const LEGACY_CANONICAL_TO_ESPN = {
@@ -106,6 +109,7 @@ const LEGACY_CANONICAL_TO_ESPN = {
   usl:     { BIR: "BRM", BRO: "BFKC", CSS: "COS", IND: "INDY", LAS: "LVL", LFC: "LOU", MON: "MTB", NEW: "NMU", OC: "OCSC", PAS: "ELP", SAN: "SAFC", SRP: "SAC" },
   copalib: { CARC: "ROS", CPO: "CPT", ELP: "EST", IND: "IDV", UC: "CDUC" },
   ligaportugal: { ARO: "FCA", BEN: "SLB", BRA: "SCB", CAS: "CPAC", CSM: "MAR", ESA: "EST", EST: "EPF", FAM: "FCF", GIL: "GVFC", MOR: "MFC", RAV: "RAFC", SCL: "CDSC", SPO: "SCP", VIT: "VSC" },
+  eerstediv: { PSV: "JPS", MAA: "MVV", BRE: "NAC", VEN: "VVV", WAA: "RKC", ROD: "RJC", OSS: "TOP", AZ: "JAZ", AJA: "JAJ", UTR: "JUT" },
 };
 
 const LEGACY_WNBA_TEAM_IDS = {
@@ -301,4 +305,30 @@ test("leaguescup: mixed-length codes are present, which is why it needs the allo
   assert.ok(_VALID_TEAMS.leaguescup.has("SD"));
   assert.ok(_VALID_TEAMS.leaguescup.has("LAFC"));
   assert.strictEqual(_VALID_TEAMS.leaguescup.size, TEAMS.mls.length + TEAMS.ligamx.length - 1);
+});
+
+// eerstediv (Dutch 2nd tier), adopted 2026-08-14. Every mapping verified by same-date ESPN
+// scoreboard cross-reference over live GAME-market tickers 8/14-8/21, not name similarity — see
+// teams.js for the full evidence (VOL/OSS = FC Volendam/TOP Oss on 2026-08-15, matching Kalshi's
+// VOLOSS ticker exactly).
+test("eerstediv: ESPN-side abbr mismatches verified live 2026-08-14 (Jong-prefix + city/club naming)", () => {
+  assert.strictEqual(CANONICAL_TO_ESPN.eerstediv.PSV, "JPS"); // Jong PSV
+  assert.strictEqual(CANONICAL_TO_ESPN.eerstediv.AZ,  "JAZ"); // Jong AZ Alkmaar
+  assert.strictEqual(CANONICAL_TO_ESPN.eerstediv.AJA, "JAJ"); // Jong Ajax
+  assert.strictEqual(CANONICAL_TO_ESPN.eerstediv.UTR, "JUT"); // Jong FC Utrecht
+  assert.strictEqual(CANONICAL_TO_ESPN.eerstediv.MAA, "MVV"); // MVV Maastricht
+  assert.strictEqual(CANONICAL_TO_ESPN.eerstediv.BRE, "NAC"); // NAC Breda
+  assert.strictEqual(CANONICAL_TO_ESPN.eerstediv.VEN, "VVV"); // VVV-Venlo
+  assert.strictEqual(CANONICAL_TO_ESPN.eerstediv.WAA, "RKC"); // RKC Waalwijk
+  assert.strictEqual(CANONICAL_TO_ESPN.eerstediv.ROD, "RJC"); // Roda JC Kerkrade
+  assert.strictEqual(CANONICAL_TO_ESPN.eerstediv.OSS, "TOP"); // TOP Oss
+  // Identity teams must NOT carry an espnScore entry.
+  for (const a of ["ALM", "EIN", "HER", "DBO", "DOR", "HEL", "VOL", "GRA", "EMM", "VIT"]) {
+    assert.ok(!(a in CANONICAL_TO_ESPN.eerstediv), `${a} should map to itself, not be remapped`);
+  }
+});
+
+test("eerstediv: AZ is a 2-char code mixed with 3-char, which is why it needs the allowlist path", () => {
+  assert.ok(_VALID_TEAMS.eerstediv.has("AZ"));
+  assert.strictEqual(_VALID_TEAMS.eerstediv.size, 20);
 });

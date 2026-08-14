@@ -176,6 +176,18 @@ test("normTeam: passthrough for unmapped abbrs, mapping for aliases", () => {
   assert.equal(normTeam("nosport", "ABC"), "ABC");
 });
 
+test("parseGameTeams: eerstediv 2+3 / 3+2 splits (Jong AZ Alkmaar's 2-char AZ code)", () => {
+  // eerstediv has no kalshi aliases, so TEAM_NORM.eerstediv is EMPTY and has2charPrefix can never
+  // see "AZ" on its own — without eerstediv in the variable-length allowlist, a 3+2 pair like
+  // GRAAZ would only parse by the unvalidated fallback's luck, and any OTHER registry gap would
+  // silently drop the row the way OCALI did for dimayor before it validated both halves.
+  assert.deepEqual(parseGameTeams(ticker("GRAAZ"), "eerstediv"), ["GRA", "AZ"]);
+  assert.deepEqual(parseGameTeams(ticker("EMMAZ"), "eerstediv"), ["EMM", "AZ"]);
+  assert.deepEqual(parseGameTeams(ticker("AJAEMM"), "eerstediv"), ["AJA", "EMM"]);  // 3+3
+  assert.deepEqual(parseGameTeams(ticker("UTRVIT"), "eerstediv"), ["UTR", "VIT"]);  // 3+3
+  assert.deepEqual(parseGameTeams(ticker("VITALM"), "eerstediv"), ["VIT", "ALM"]);  // 3+3
+});
+
 test("TEAM_NORM targets are all valid canonical teams", () => {
   // Every normalization must land inside _VALID_TEAMS for its sport, otherwise the
   // parser validates against an abbr no other map recognizes (silent market drop).

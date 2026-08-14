@@ -592,6 +592,41 @@ export const TEAMS = {
     { abbr: "EXC" },                    // Excelsior Rotterdam
     { abbr: "CAM" },                    // SC Cambuur
   ],
+  // Eerste Divisie (Dutch 2nd tier) — model-free maker (KXEERSTEDIVGAME, built 2026-08-14).
+  // ESPN slug ned.2 verified live: exact same-date fixture match (VOL/OSS = FC Volendam/TOP Oss,
+  // 2026-08-15, matching Kalshi's VOLOSS ticker precisely). Registry is every team observed across
+  // live GAME-market tickers 8/14-8/21 (20 teams — the doctrine of adding teams only as first seen
+  // in a live ticker, same as NWSL/LigaMX's partial rosters). **Unusually high mismatch rate (10/20)**
+  // vs Eredivisie's 3/18: the Eerste Divisie fields several Eredivisie clubs' reserve ("Jong") sides,
+  // and Kalshi's 3-char code drops the "Jong" prefix entirely (its own team-name text still shows
+  // it, e.g. "Jong AZ Alkmaar") while ESPN's abbr keeps a leading J (JAZ/JAJ/JPS/JUT). A handful of
+  // senior clubs also use Kalshi codes that don't match ESPN's own abbreviation scheme (city-based
+  // vs club-name-based: BRE→NAC, WAA→RKC, ROD→RJC, MAA→MVV, OSS→TOP). All 10 mismatches verified by
+  // same-date ESPN scoreboard cross-reference, not name similarity. **AZ is a 2-char Kalshi code**
+  // (Jong AZ Alkmaar) mixed with 3-char everywhere else — `eerstediv` is in parseGameTeams'
+  // variable-length-split allowlist for this reason (tonight/parse-teams.js).
+  eerstediv: [
+    { abbr: "ALM" },                    // Almere City FC
+    { abbr: "PSV", espnScore: "JPS" },  // Jong PSV
+    { abbr: "EIN" },                    // FC Eindhoven
+    { abbr: "MAA", espnScore: "MVV" },  // MVV Maastricht
+    { abbr: "HER" },                    // Heracles Almelo
+    { abbr: "DBO" },                    // FC Den Bosch
+    { abbr: "BRE", espnScore: "NAC" },  // NAC Breda
+    { abbr: "VEN", espnScore: "VVV" },  // VVV-Venlo
+    { abbr: "WAA", espnScore: "RKC" },  // RKC Waalwijk
+    { abbr: "DOR" },                    // FC Dordrecht
+    { abbr: "ROD", espnScore: "RJC" },  // Roda JC Kerkrade
+    { abbr: "HEL" },                    // Helmond Sport
+    { abbr: "VOL" },                    // FC Volendam
+    { abbr: "OSS", espnScore: "TOP" },  // TOP Oss
+    { abbr: "GRA" },                    // De Graafschap
+    { abbr: "AZ",  espnScore: "JAZ" },  // Jong AZ Alkmaar
+    { abbr: "AJA", espnScore: "JAJ" },  // Jong Ajax
+    { abbr: "EMM" },                    // FC Emmen
+    { abbr: "UTR", espnScore: "JUT" },  // Jong FC Utrecht
+    { abbr: "VIT" },                    // Vitesse Arnhem
+  ],
   // English Premier League — model-free maker (KXEPLGAME, built 2026-08-10). ESPN slug eng.1
   // verified live. All 20 teams confirmed from KXPREMIERLEAGUE season-futures tickers 2026-08-10.
   // 5 ESPN-side mismatches: BRI→BHA, CFC→CHE, LFC→LIV, MCI→MNC, MUN→MAN.
