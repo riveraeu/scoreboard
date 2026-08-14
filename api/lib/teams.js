@@ -568,10 +568,12 @@ export const TEAMS = {
     { abbr: "HAN" }, // Hanwha Eagles
     { abbr: "KIA" }, // Kia Tigers
     { abbr: "KIW" }, // Kiwoom Heroes
-    { abbr: "KTW" }, // KT Wiz
+    // Polymarket's own ticker abbrs are shorter than Kalshi's for these two (verified live
+    // 2026-08-14 against all 10 teams; every other code matches canonical lowercase exactly).
+    { abbr: "KTW", polymarket: ["kt"] },  // KT Wiz
     { abbr: "LG"  }, // LG Twins — the 2-char code; see allowlist note above
     { abbr: "LOT" }, // Lotte Giants
-    { abbr: "NCD" }, // NC Dinos
+    { abbr: "NCD", polymarket: ["nc"] },  // NC Dinos
     { abbr: "SAM" }, // Samsung Lions
     { abbr: "SSG" }, // SSG Landers
   ],

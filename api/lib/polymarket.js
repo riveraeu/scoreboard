@@ -70,6 +70,11 @@ export const POLY_MARKETS = {
   // "Bills") — `_nameToSide` can't resolve them, and team_totals need a per-team field the schema
   // doesn't carry. Both deferred to their own design pass rather than shipped half-built.
   nfl:  { series: "12185", slug: "nfl", categories: { moneyline: "ml", totals: "total" } },
+  // KBO Korean baseball (Phase 2, 2026-08-14) — verified live via `GET /sports` + a
+  // `tag_slug=kbo` cross-check (both agree on 10370, so unlike Argentina/NFL the catalog id was
+  // right this time). Moneyline ONLY — matches Kalshi (KXKBOGAME is 2-way ML, no totals/spread
+  // book at all) and Poly itself lists no other family for this league.
+  kbo:  { series: "10370", slug: "kbo", categories: { moneyline: "ml" } },
 };
 
 // Sports we capture, as a regex alternation — derived so a new POLY_MARKETS row is admitted by both
