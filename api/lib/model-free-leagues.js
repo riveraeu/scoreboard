@@ -39,6 +39,20 @@
 // Dota2-style ticker-parse path — ticker encodes gameDate (YYMONDD + 3+3 teams), gameTime=null
 // (occurrence_datetime is settlement expiration, not kickoff). See tonight/ticker-ml-modelfree.js,
 // the shared emitter for this no-ESPN ticker-parsed shape (kleague + kbo).
+// Czech FNL (KXCZEFNLGAME/SPREAD/TOTAL/BTTS) vetted 2026-08-14, real books on every sibling
+// (GAME 42/42, SPREAD 8/16, TOTAL 12/12, BTTS 3/4) — PARKED, same class as CANPL: no ESPN slug
+// found after cze.2/cze.3/cze.nfl/cze.national/cze.fnl1/cze.2liga/cze.nb/cze.b/cze.2a/cze.2.division/
+// cze.2nd/cze.fnl.1 all returned empty, ESPN's own core league directory (216 leagues) has no Czech
+// entry at all (not even cze.1, which DOES resolve live — that directory is curated, not
+// authoritative), and the ID-neighborhood around cze.1's own numeric id (5347) has no valid
+// siblings. **Do not re-probe those slugs.** Same kleague/kbo-style ticker-parse workaround
+// (gameTime:null forever, capture+grade only, never maker-quotable) is a live option if this is
+// ever revisited — not attempted here since it wasn't asked for.
+// Finnish Ykkösliiga (KXFINYLGAME/SPREAD/TOTAL/BTTS), same vet: real books everywhere (GAME 24/24,
+// TOTAL 10/18, SPREAD 6/12, BTTS 2/3), but a DIFFERENT blocker than Czech — `fin.2` IS a valid ESPN
+// slug ("Finnish 1. Division") but returns ZERO teams and ZERO events for the entire month, so
+// there's no schedule to match Kalshi tickers against even though the league object exists. Also
+// PARKED; same kleague/kbo ticker-parse escape hatch applies.
 // And cross-check team abbrs on BOTH sides: collisions have hit ~1 per non-US league, in
 // Kalshi-vs-ESPN (chnsl "SHE", ligamx "ATL") and ESPN-internal (argprem "RIV") flavors.
 
