@@ -1,18 +1,18 @@
 import React from 'react';
 
-// Shadow Maker landing page. Stripped to a single element 2026-07-29 (see below): the category ×
-// band heatmap is the only thing on it, because it is the one view for understanding where the
-// engine's PnL actually comes from and whether any of it is real.
+// Shadow Maker landing page. Rewritten 2026-08-13 to surface the FULL /api/shadow-report payload,
+// not just the heatmap — every top-level report field now has a home here, in the same priority
+// order the daily-report workflow already uses (robust candidates -> preregistrations -> discovery
+// -> polymarket coverage parity), plus a data-freshness banner up top and a report-meta/uiHealth
+// footer at the bottom. Table/stat-tile visual language borrowed from the published
+// "Kalshi Market Coverage" artifact, reworked into this file's existing dark palette (C below) — no
+// new theme system, no new files (this component stays self-contained/inline-styled).
 //
-// What used to be here and why it's gone: portfolio tiles, the V2 open-positions block, the
-// DoThisBanner (data-health + scheduled checkpoints), the cross-check strip (V1↔V2 / model↔market),
-// the equity curve, and per-sport utilization. All removed at the user's request to keep one
-// focused view. The integrity checks those surfaced are NOT lost — they still run server-side and
-// are reachable on demand: /api/shadow-report?makerQueueCheck=1 (V1 vs V2), ?makerSideAudit=,
-// /api/kalshi-dryrun-check (grading), and the resolver's own tripwires. The table itself also keeps
-// its integrity signals: the anomaly ring (out of LADDER order — see below) and reliability muting.
-// If a bug-catcher or a due-checkpoint surface is wanted back on the page later, restore from git
-// history (the components lived in this file through commit c04dda0).
+// Sections intentionally NOT rendered: makerBoard.fills/live/adverseSelection/crossChecks (the V1/V2
+// fill-PnL instruments) — dropped from the daily readout 2026-08-03 (feedback_morning_report_omit_
+// maker_instruments): those run continuously but are un-arm-able and produce nothing actionable, so
+// they're noise here too. robustCandidates IS shown (per explicit request), but framed as a tripwire
+// — never a ranked/sorted target list (feedback_no_insample_target_picker_ui).
 
 const C = { green:"#3fb950", amber:"#e3b341", red:"#f78166", blue:"#58a6ff", gray:"#8b949e", dim:"#484f58", text:"#c9d1d9", bg:"#0d1117", card:"#161b22", border:"#21262d" };
 
@@ -45,6 +45,242 @@ const _BANDS = ["0-4", "5-9", "10-14", "15-19", "20-24", "25-29", "30-34", "35-3
 // Criteria were fixed BEFORE the forward window opened — see api/lib/maker-prereg.js + each
 // docs/MAKER_*_PREREG.md. Not a bet. Checkpoint = calendar date when terminal verdict fires.
 const _PREREG_COLOR = { COLLECTING: C.blue, ON_TRACK: C.green, FAILING: C.amber, PASS: C.green, KILL: C.red };
+
+// ---- shared report-section primitives ---------------------------------------------------------
+function _SectionLabel({ children }) {
+  return <div style={{ color:C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, marginBottom:6 }}>{children}</div>;
+}
+
+function _StatTile({ label, value, color }) {
+  return (
+    <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:6, padding:"7px 10px", display:"flex", flexDirection:"column", gap:2, minWidth:88 }}>
+      <span style={{ fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace", fontSize:16, fontWeight:600, color: color || C.text, fontVariantNumeric:"tabular-nums" }}>{value ?? "—"}</span>
+      <span style={{ fontSize:9, letterSpacing:0.5, textTransform:"uppercase", color:C.dim }}>{label}</span>
+    </div>
+  );
+}
+
+function _StatRow({ children }) {
+  return <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:10 }}>{children}</div>;
+}
+
+// Generic report-table renderer — used by robustCandidates, discovery (kalshi + poly), and the
+// polymarket divergence list, so column shape lives at each call site, not four hand-rolled tables.
+function _Table({ columns, rows, keyFn }) {
+  if (!rows?.length) return null;
+  return (
+    <div style={{ overflowX:"auto", border:`1px solid ${C.border}`, borderRadius:6, marginBottom:8 }}>
+      <table style={{ borderCollapse:"collapse", width:"100%", fontSize:10 }}>
+        <thead>
+          <tr>
+            {columns.map(col => (
+              <th key={col.key} style={{ textAlign: col.align || "left", padding:"6px 8px", color:C.dim, fontWeight:700, fontSize:9, textTransform:"uppercase", letterSpacing:0.4, borderBottom:`1px solid ${C.border}`, background:C.bg, whiteSpace:"nowrap" }}>
+                {col.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={keyFn ? keyFn(r) : i}>
+              {columns.map(col => (
+                <td key={col.key} style={{ padding:"6px 8px", borderBottom:`1px solid ${C.border}`, color: col.dim ? C.gray : C.text, textAlign: col.align || "left", whiteSpace:"nowrap", fontVariantNumeric:"tabular-nums" }}>
+                  {col.render ? col.render(r) : (r[col.key] ?? "—")}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ---- DATA FRESHNESS BANNER --------------------------------------------------------------------
+// report.dataFreshness — pipeline-currency health (distinct from uiHealth, which is a render
+// self-check). Silent-ish when current; surfaces the diagnosis string when the maker table has
+// fallen behind (the same symptom class as the 8/12-13 quote-pass deadlock).
+function DataFreshnessBanner({ df }) {
+  if (!df) return null;
+  const ok = df.makerTableCurrent;
+  const dot = ok ? C.green : C.amber;
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 10px", marginBottom:14, background:C.card, border:`1px solid ${ok ? C.border : C.amber}`, borderRadius:6, fontSize:10, flexWrap:"wrap" }}>
+      <span style={{ width:7, height:7, borderRadius:"50%", background:dot, flexShrink:0 }} />
+      <span style={{ color:C.text }}>
+        {ok
+          ? `Maker table current through ${df.expectedThrough}.`
+          : `Maker table ${df.daysBehind}d behind (expected through ${df.expectedThrough}) — ${df.diagnosis}`}
+      </span>
+      <span style={{ marginLeft:"auto", color:C.dim, fontFamily:"ui-monospace,monospace", fontSize:9 }}>
+        graded {df.latestGradedMakerDay} · fills {df.latestMakerFillDay} · ungraded {df.ungradedFills} · resolved {df.latestResolvedShadowDay}
+        {df.quotePass != null ? ` · quotePass ${typeof df.quotePass === "object" ? JSON.stringify(df.quotePass) : df.quotePass}` : ""}
+      </span>
+    </div>
+  );
+}
+
+// ---- ROBUST CANDIDATES TRIPWIRE ----------------------------------------------------------------
+// report.robustCandidates — cells clearing the structural bar (fills/days/top-day-share). NEVER a
+// ranked target list (feedback_no_insample_target_picker_ui) — a hit is a prompt to pre-register a
+// NAMED mechanism + pass the netting screen, nothing here is bettable on its own. Read the ASYMMETRY
+// between the positive/negative arms, not the count alone (a price-monotone ladder book lights one
+// arm by construction — docs/MAKER_LADDER_ARTIFACT.md).
+const _candCols = [
+  { key:"cell", label:"Cell" },
+  { key:"fills", label:"Fills", align:"right" },
+  { key:"days", label:"Days", align:"right" },
+  { key:"perContract", label:"¢/ct", align:"right", render: r => `${r.perContract > 0 ? "+" : ""}${r.perContract}` },
+  { key:"ci", label:"Day-clustered CI", align:"right", render: r => `${r.ciLo > 0 ? "+" : ""}${r.ciLo}…${r.ciHi > 0 ? "+" : ""}${r.ciHi}` },
+  { key:"topDayShare", label:"Top day", align:"right", render: r => `${Math.round((r.topDayShare ?? 0) * 100)}%` },
+];
+
+function RobustCandidatesTripwire({ data }) {
+  if (!data) return null;
+  const { bar, eligible, noiseFloor, count, negativeCount, candidates = [], negatives = [], note } = data;
+  const pos = [...candidates].sort((a, b) => b.perContract - a.perContract);
+  const neg = [...negatives].sort((a, b) => a.perContract - b.perContract);
+  return (
+    <div>
+      <div style={{ padding:"8px 10px", marginBottom:8, background:C.card, border:`1px solid ${C.red}`, borderRadius:6, fontSize:10, color:C.text, lineHeight:1.5 }}>
+        <b style={{ color:C.red }}>TRIPWIRE — not a bet list.</b> {note}
+      </div>
+      <div style={{ fontSize:9, color:C.dim, marginBottom:8 }}>
+        bar: ≥{bar?.minFills} fills · ≥{bar?.minDays}d · top-day share ≤{Math.round((bar?.maxTopDayShare ?? 0) * 100)}% · {eligible} eligible cells · noise floor ~{noiseFloor}¢/arm
+      </div>
+      <_StatRow>
+        <_StatTile label="Positive arm" value={count} color={C.green} />
+        <_StatTile label="Negative arm" value={negativeCount} color={C.red} />
+      </_StatRow>
+      {pos.length > 0 && (
+        <>
+          <div style={{ fontSize:9, color:C.gray, marginBottom:4 }}>Positive arm ({pos.length})</div>
+          <_Table columns={_candCols} rows={pos} keyFn={r => r.cell} />
+        </>
+      )}
+      {neg.length > 0 && (
+        <>
+          <div style={{ fontSize:9, color:C.gray, marginBottom:4 }}>Negative arm ({neg.length})</div>
+          <_Table columns={_candCols} rows={neg} keyFn={r => r.cell} />
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---- DISCOVERY / MARKET OVERVIEW ---------------------------------------------------------------
+// report.discovery — Kalshi series-vet queue + report.discovery.polymarket — per-league Poly vet
+// queue. Counts + toVet tables straight from the report; no hand-authored verdicts (the report
+// doesn't compute a "build this" call, so this section shows what was screened, not a
+// recommendation — see docs/MAKER_LADDER_ARTIFACT.md-adjacent series-vet doctrine: a REAL_BOOK
+// screen proves liquidity, never buildability).
+const _kalshiVetCols = [
+  { key:"ticker", label:"Ticker" },
+  { key:"title", label:"What" },
+  { key:"markets", label:"Live", align:"right" },
+  { key:"realBooks", label:"Real", align:"right" },
+  { key:"medianSpreadC", label:"Spread", align:"right", render: r => r.medianSpreadC != null ? `${r.medianSpreadC}¢` : "—" },
+  { key:"overround", label:"Overround", align:"right", render: r => r.overround ?? "—" },
+  { key:"firstSeen", label:"First seen" },
+  { key:"perGame", label:"Type", render: r => (
+      <span style={{ fontSize:9, fontWeight:700, letterSpacing:0.4, textTransform:"uppercase", padding:"2px 6px", borderRadius:3, background: r.perGame ? "rgba(88,166,255,0.15)" : "rgba(139,148,158,0.15)", color: r.perGame ? C.blue : C.gray }}>
+        {r.perGame ? "per-game" : "futures"}
+      </span>
+    ) },
+];
+const _polyVetCols = [
+  { key:"sport", label:"League" },
+  { key:"marketTypes", label:"Market types", render: r => r.marketTypes || "—" },
+  { key:"sampleEvent", label:"Sample event", render: r => r.sampleEvent || "—" },
+  { key:"liveEvents", label:"Live", align:"right" },
+  { key:"firstSeen", label:"First seen" },
+];
+
+function DiscoveryOverview({ discovery }) {
+  if (!discovery) return null;
+  const k = discovery.counts || {};
+  const p = discovery.polymarket?.counts || {};
+  return (
+    <div>
+      <div style={{ fontSize:9, color:C.gray, marginBottom:4 }}>Kalshi ({discovery.venue || "kalshi"})</div>
+      <_StatRow>
+        <_StatTile label="Adopted" value={k.adopted} color={C.green} />
+        <_StatTile label="Shortlisted" value={k.shortlisted} color={C.blue} />
+        <_StatTile label="Baseline" value={k.baseline} />
+        <_StatTile label="New" value={k.new} color={C.amber} />
+        <_StatTile label="Dismissed" value={k.dismissed} color={C.dim} />
+        <_StatTile label="Auto-dismissed today" value={discovery.autoDismissedToday} />
+      </_StatRow>
+      {discovery.toVet?.length > 0 && (
+        <>
+          <div style={{ fontSize:9, color:C.dim, marginBottom:4 }}>To vet — real books not yet built, screened this pass</div>
+          <_Table columns={_kalshiVetCols} rows={discovery.toVet} keyFn={r => r.ticker} />
+        </>
+      )}
+      {discovery.note && <div style={{ fontSize:9, color:C.dim, marginBottom:14, lineHeight:1.5 }}>{discovery.note}</div>}
+
+      <div style={{ fontSize:9, color:C.gray, marginBottom:4 }}>Polymarket</div>
+      <_StatRow>
+        <_StatTile label="Adopted" value={p.adopted} color={C.green} />
+        <_StatTile label="Baseline" value={p.baseline} />
+        <_StatTile label="New" value={p.new} color={C.amber} />
+        <_StatTile label="Dismissed" value={p.dismissed} color={C.dim} />
+      </_StatRow>
+      {discovery.polymarket?.toVet?.length > 0 && (
+        <>
+          <div style={{ fontSize:9, color:C.dim, marginBottom:4 }}>To vet — leagues for cross-venue capture extension</div>
+          <_Table columns={_polyVetCols} rows={discovery.polymarket.toVet} keyFn={r => r.sport} />
+        </>
+      )}
+      {discovery.polymarket?.note && <div style={{ fontSize:9, color:C.dim, lineHeight:1.5 }}>{discovery.polymarket.note}</div>}
+    </div>
+  );
+}
+
+// ---- POLYMARKET TRACKING HEALTH ----------------------------------------------------------------
+// report.polymarketTracking — capture accrual + resolution health + the cross-venue vig divergence
+// summary for the Poly instrument. A data-health + divergence MONITOR (same doctrine as the venue-vig
+// heatmap below) — topDivergences is never a bet list.
+const _divCols = [
+  { key:"cell", label:"Cell" },
+  { key:"deltaVig", label:"Δ (K−P)", align:"right", render: r => `${r.deltaVig > 0 ? "+" : ""}${r.deltaVig}` },
+  { key:"kalshiVig", label:"Kalshi", align:"right" },
+  { key:"polyVig", label:"Poly", align:"right" },
+  { key:"reliable", label:"Sample", render: r => r.reliable ? "clears bar" : "thin" },
+];
+
+function PolymarketTrackingHealth({ data }) {
+  if (!data) return null;
+  const { capture, resolution, vig, note } = data;
+  return (
+    <div>
+      <_StatRow>
+        <_StatTile label="Captured (total)" value={capture?.total} />
+        <_StatTile label="Capture days" value={capture?.captureDays} />
+        <_StatTile label="Last capture" value={capture?.lastCapture} />
+        <_StatTile label="Last capture rows" value={capture?.lastCaptureRows} color={capture?.lastCaptureRows ? C.green : C.red} />
+        <_StatTile label="Graded" value={resolution?.graded} color={C.green} />
+        <_StatTile label="Pending" value={resolution?.pending} color={C.amber} />
+        <_StatTile label="Voided" value={resolution?.voided} />
+      </_StatRow>
+      {capture?.recentBySport?.length > 0 && (
+        <div style={{ fontSize:9, color:C.dim, marginBottom:10 }}>
+          {capture.recentBySport.map(s => `${s.sport} n=${s.n} graded=${s.graded}`).join(" · ")}
+        </div>
+      )}
+      <div style={{ fontSize:9, color:C.dim, marginBottom:8 }}>
+        both-venue cells {vig?.bothVenueCells ?? 0} · reliable {vig?.reliableCells ?? 0} · kalshi rows {vig?.venuesPresent?.kalshi ?? 0} · poly rows {vig?.venuesPresent?.poly ?? 0}
+      </div>
+      {vig?.topDivergences?.length > 0 && (
+        <>
+          <div style={{ fontSize:9, color:C.gray, marginBottom:4 }}>Top divergences (monitor only)</div>
+          <_Table columns={_divCols} rows={vig.topDivergences} keyFn={r => r.cell} />
+        </>
+      )}
+      {note && <div style={{ fontSize:9, color:C.dim, lineHeight:1.5 }}>{note}</div>}
+    </div>
+  );
+}
 
 // ---- CATEGORY × BAND HEATMAP -----------------------------------------------------------------
 // Category rows × band columns, cell = ¢/contract (graded). The grain that LOCALISES what band- or
@@ -232,9 +468,34 @@ function VenueVigHeatmap({ venueVig }) {
   );
 }
 
-// Landing page — single element by design (see top-of-file note). The read-only Kalshi balance +
-// committed-maker-capital chip (relocated here 2026-07-30 from the removed taker picks drawer)
-// rides in the header when logged in; `kalshiBalance`/`makerCommitted` come from /api/kalshi-balance.
+// ---- REPORT FOOTER ------------------------------------------------------------------------------
+// report.reportDate/generatedAt/since/durationMs (run metadata) + report.uiHealth (a render
+// self-check the report computes for this exact page — cell/row counts, prereg card count, any
+// render warnings). Low-key by design: this is a diagnostic strip, not board content.
+function ReportFooter({ report }) {
+  if (!report) return null;
+  const ui = report.uiHealth;
+  return (
+    <div style={{ display:"flex", flexWrap:"wrap", gap:12, marginTop:24, paddingTop:10, borderTop:`1px solid ${C.border}`, fontSize:9, color:C.dim, fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace" }}>
+      <span>report {report.reportDate}</span>
+      <span>generated {report.generatedAt}</span>
+      <span>since {report.since}</span>
+      {report.durationMs != null && <span>{(report.durationMs / 1000).toFixed(1)}s</span>}
+      {ui && (
+        <span style={{ color: ui.ok && !ui.warnings?.length ? C.dim : C.amber }}>
+          uiHealth {ui.ok ? "ok" : "warn"} · heatmap {ui.heatmap?.cells}c/{ui.heatmap?.rows}r (shown {ui.heatmap?.rowsShown}, reliable {ui.heatmap?.reliableCells}, anomaly {ui.heatmap?.anomalyCells}) · prereg cards {ui.preregTracker?.cards}
+          {ui.warnings?.length ? ` · ${ui.warnings.join("; ")}` : ""}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Landing page — now a full render of the daily /api/shadow-report run, in the same priority order
+// the report workflow itself uses: robust candidates -> preregistrations -> heatmap -> discovery ->
+// polymarket coverage parity -> venue-vig -> report meta. The read-only Kalshi balance + committed-
+// maker-capital chip (relocated here 2026-07-30 from the removed taker picks drawer) rides in the
+// header when logged in; `kalshiBalance`/`makerCommitted` come from /api/kalshi-balance.
 export default function MakerBoardPage({ shadowReportData, shadowReportLoading, fetchShadowReport,
   isLoggedIn, kalshiBalance, makerCommitted = 0, onLoginClick, onLogout }) {
   React.useEffect(() => {
@@ -278,6 +539,15 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
         <div style={{ color:C.dim, fontSize:12, padding:12 }}>Generating report…</div>
       ) : (
         <>
+          <DataFreshnessBanner df={shadowReportData?.dataFreshness} />
+
+          {shadowReportData?.robustCandidates && (
+            <>
+              <_SectionLabel>Robust candidates — structural tripwire over the heatmap</_SectionLabel>
+              <div style={{ marginBottom:22 }}><RobustCandidatesTripwire data={shadowReportData.robustCandidates} /></div>
+            </>
+          )}
+
           {(() => {
             const list = shadowReportData?.preregistrations || [];
             if (!list.length) return null;
@@ -299,17 +569,31 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
               </div>
             );
           })()}
-          <div style={{ color:C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, marginBottom:6 }}>
-            Category × band · ¢/contract (graded) — where PnL actually comes from
-          </div>
+          <_SectionLabel>Category × band · ¢/contract (graded) — where PnL actually comes from</_SectionLabel>
           {mb ? <CategoryBandHeatmap cells={mb.categoryBands} preregs={shadowReportData?.preregistrations} />
               : <div style={{ color:C.dim, fontSize:12, padding:12 }}>Maker board not in this report yet — Refresh regenerates it.</div>}
 
+          {shadowReportData?.discovery && (
+            <>
+              <div style={{ margin:"22px 0 6px" }}><_SectionLabel>Discovery — Kalshi + Polymarket series-vet queue</_SectionLabel></div>
+              <DiscoveryOverview discovery={shadowReportData.discovery} />
+            </>
+          )}
+
+          {shadowReportData?.polymarketTracking && (
+            <>
+              <div style={{ margin:"22px 0 6px" }}><_SectionLabel>Polymarket coverage — capture + resolution health</_SectionLabel></div>
+              <PolymarketTrackingHealth data={shadowReportData.polymarketTracking} />
+            </>
+          )}
+
           {/* Cross-venue vig — Kalshi vs Polymarket, same category × band grid, VIG (not PnL). */}
-          <div style={{ color:C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, margin:"22px 0 6px" }}>
-            Cross-venue vig · Kalshi vs Polymarket — do the two venues price the same category × band differently?
+          <div style={{ margin:"22px 0 6px" }}>
+            <_SectionLabel>Cross-venue vig · Kalshi vs Polymarket — do the two venues price the same category × band differently?</_SectionLabel>
           </div>
           <VenueVigHeatmap venueVig={shadowReportData?.venueVig} />
+
+          <ReportFooter report={shadowReportData} />
         </>
       )}
     </div>
