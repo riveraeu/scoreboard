@@ -122,6 +122,18 @@ export const POLY_MARKETS = {
   // markets") that the strict 2-segment regex rejects, same as any other suffixed ticker — minor,
   // ~7% of the slate, not worth a regex carve-out for.
   dota2: { series: "10309", slug: "dota2", categories: { moneyline: "ml" } },
+  // Soccer (Phase 2, 2026-08-14 — first two leagues of ~20). `winnerShape: "3wayYesNo"` routes
+  // these through polymarket-capture.js's soccer-specific branch: the bare game ticker carries
+  // THREE separate "moneyline"-typed markets ("Will X win?" / "…end in a draw?" / "Will Y win?"),
+  // not one 2-outcome market — see the long comment on `_soccerMlSide` there for the full shape and
+  // why it needed real code, not just a registry row. Both catalog ids verified live (mls: 96
+  // upcoming bare-ticker events; epl: 6). No `teams.js` polymarket aliases added — Poly's own
+  // ticker abbrs happen to already match several Kalshi canonical codes 1:1 (e.g. mls "sea"/"rsl"),
+  // so `game` resolves for free where they agree and stays null (tolerated) where they don't; never
+  // worth guessing wrong. Sport keys match Kalshi's own (`mls`/`epl`) — no tennis-style sport-label
+  // mismatch here, so no venueVig normalization needed.
+  mls: { series: "10189", slug: "mls", categories: { moneyline: "ml" }, winnerShape: "3wayYesNo" },
+  epl: { series: "10188", slug: "epl", categories: { moneyline: "ml" }, winnerShape: "3wayYesNo" },
 };
 
 // Sports we capture, as a regex alternation — derived so a new POLY_MARKETS row is admitted by both

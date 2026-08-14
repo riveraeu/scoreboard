@@ -119,6 +119,30 @@ function _side(category, outcome, idx, nameToSide) {
   return o.toLowerCase();
 }
 
+// Soccer's 3-way winner shape (Phase 2, 2026-08-14): unlike every other league here, a soccer game
+// event carries THREE separate "moneyline"-typed markets — "Will X win?", "Will X vs Y end in a
+// draw?", "Will Y win?" — each with generic outcomes ["Yes","No"], not one market with two
+// team-named outcomes. Structurally isomorphic to Kalshi's own soccer capture (three separate YES
+// markets per game, model-free-ml.js) — the only new work is parsing team/draw identity out of
+// `question` text and capturing ONLY the YES token per market (the No side is a redundant
+// complement, same reasoning as the YES-only Dota2/UFC captures). Verified live against MLS + EPL
+// only — a new soccer league needs its own phrasing check before flipping on `winnerShape`.
+const _SOCCER_DRAW_RE = /end in a draw\??$/i;
+const _SOCCER_WIN_RE = /^Will\s+(.+?)\s+win\s+on\s+\d{4}-\d{2}-\d{2}\??$/i;
+
+// question -> {side, outcome} or null (unrecognized phrasing — dropped, never guessed). No team
+// registry backs soccer capture (game stays null, see buildCaptureCandidates below), so the name
+// is stored verbatim rather than resolved to a canonical code — same fallback doctrine as
+// _NAME_SIDED when there's no moneyline reference to resolve against.
+function _soccerMlSide(question) {
+  const q = String(question || "");
+  if (_SOCCER_DRAW_RE.test(q)) return { side: "tie", outcome: "Draw" };
+  const m = _SOCCER_WIN_RE.exec(q);
+  if (!m) return null;
+  const name = m[1].trim();
+  return { side: name.toLowerCase(), outcome: name };
+}
+
 // Display-name → 'away'/'home', read off the event's OWN moneyline market (the one market whose
 // order is reliably [away, home]). Empty when the event has no live moneyline — the F5-winner event,
 // or the occasional game event without one — in which case name-sided rows keep the verbatim name.
@@ -156,6 +180,22 @@ export function buildCaptureCandidates(event, nowMs = Date.now()) {
     const tokens = _parseArr(m.clobTokenIds).map(String);
     const prices = _parseArr(m.outcomePrices).map(Number);
     if (tokens.length !== 2 || outcomes.length !== 2) continue; // binary markets only
+
+    // Soccer 3-way: one row per market (the YES token only), not two — see _soccerMlSide above.
+    if (category === "ml" && POLY_MARKETS[tk.sport]?.winnerShape === "3wayYesNo") {
+      const yesIdx = outcomes.findIndex((o) => /^yes$/i.test(o));
+      if (yesIdx === -1) continue; // not actually Yes/No — shouldn't happen for this shape
+      const parsed = _soccerMlSide(m.question);
+      if (!parsed) continue; // unrecognized question phrasing — drop rather than guess
+      const gammaPriceC = isFinite(prices[yesIdx]) ? +(prices[yesIdx] * 100).toFixed(1) : null;
+      out.push({
+        sport: tk.sport, category, event_ticker: event.ticker, market_id: String(m.id),
+        game, game_date: gameDate, token_id: tokens[yesIdx], outcome: parsed.outcome,
+        side: parsed.side, line: null, gammaPriceC,
+      });
+      continue;
+    }
+
     const line = _LINED.has(category) && isFinite(Number(m.line)) ? Number(m.line) : null;
     for (let i = 0; i < 2; i++) {
       const gammaPriceC = isFinite(prices[i]) ? +(prices[i] * 100).toFixed(1) : null;

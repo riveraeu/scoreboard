@@ -20,11 +20,14 @@ test("parseCaptureTicker: base game + F5 parse; props/futures reject", () => {
   assert.equal(parseCaptureTicker("mlb-bos-col-2026-06-24-player-props"), null);
   assert.equal(parseCaptureTicker("new-mlb-cba-by-dec-1"), null);
   // A sport absent from POLY_MARKETS must not parse — the regex is derived from the registry, so
-  // this is the tripwire that adding a league is a one-row change and not a two-place one. mls
-  // (soccer) is still unbuilt as of this test — needs its own design pass (Poly models a 3-way
-  // result as three separate Yes/No markets, not a 2-outcome ML) — while nfl/kbo/ufc/atp/wta were,
-  // until Phase 2 2026-08-14 (see the positive cases below).
-  assert.equal(parseCaptureTicker("mls-atl-nyc-2026-08-15"), null);
+  // this is the tripwire that adding a league is a one-row change and not a two-place one.
+  // brasileirao is still unbuilt as of this test (mls/epl were, until Phase 2 2026-08-14 — the
+  // first two soccer leagues, see the positive cases below and the 3-way tests further down).
+  assert.equal(parseCaptureTicker("brasileirao-fla-pal-2026-08-15"), null);
+  assert.deepEqual(parseCaptureTicker("mls-sea-rsl-2026-04-12"),
+    { sport: "mls", awayPoly: "sea", homePoly: "rsl", dateStr: "2026-04-12", segment: null });
+  assert.deepEqual(parseCaptureTicker("epl-ars-cov-2026-08-21"),
+    { sport: "epl", awayPoly: "ars", homePoly: "cov", dateStr: "2026-08-21", segment: null });
   assert.deepEqual(parseCaptureTicker("nfl-car-buf-2026-08-15"),
     { sport: "nfl", awayPoly: "car", homePoly: "buf", dateStr: "2026-08-15", segment: null });
   assert.deepEqual(parseCaptureTicker("kbo-doo-kia-2026-08-15"),
@@ -324,6 +327,62 @@ test("buildCaptureCandidates: dota2 ml-only, child_moneyline (per-map) and props
   assert.deepEqual(cands.map((c) => c.category), ["ml", "ml"]);
   assert.equal(cands.find((c) => c.side === "away").outcome, "OG");
   assert.equal(cands[0].game, null);
+});
+
+test("buildCaptureCandidates: soccer 3-way (mls) — one YES row per market, No side dropped, draw parsed", () => {
+  const nowMs = Date.parse("2026-04-10T12:00:00Z");
+  const future = "2026-04-12 20:00:00+00";
+  const mkt = (question, id, outcomes = ["Yes", "No"], prices = ["0.29", "0.71"]) => ({
+    sportsMarketType: "moneyline", question, gameStartTime: future, bestBid: 0.28, bestAsk: 0.3,
+    outcomes: JSON.stringify(outcomes), outcomePrices: JSON.stringify(prices),
+    clobTokenIds: `["${id}yes","${id}no"]`, id,
+  });
+  const ev = {
+    ticker: "mls-sea-rsl-2026-04-12",
+    markets: [
+      mkt("Will Seattle Sounders FC win on 2026-04-12?", 700, ["Yes", "No"], ["0.29", "0.71"]),
+      mkt("Will Seattle Sounders FC vs. Real Salt Lake end in a draw?", 701, ["Yes", "No"], ["0.20", "0.80"]),
+      mkt("Will Real Salt Lake win on 2026-04-12?", 702, ["Yes", "No"], ["0.51", "0.49"]),
+    ],
+  };
+  const cands = buildCaptureCandidates(ev, nowMs);
+  // Three rows, ONE per market (the YES token only) — not six.
+  assert.equal(cands.length, 3);
+  assert.ok(cands.every((c) => c.category === "ml"));
+  assert.ok(cands.every((c) => c.line === null));
+
+  const seattle = cands.find((c) => c.market_id === "700");
+  assert.equal(seattle.outcome, "Seattle Sounders FC");
+  assert.equal(seattle.side, "seattle sounders fc");
+  assert.equal(seattle.token_id, "700yes"); // the YES token, never the No complement
+  assert.equal(seattle.gammaPriceC, 29);
+
+  const draw = cands.find((c) => c.market_id === "701");
+  assert.equal(draw.outcome, "Draw");
+  assert.equal(draw.side, "tie");
+
+  const rsl = cands.find((c) => c.market_id === "702");
+  assert.equal(rsl.outcome, "Real Salt Lake");
+  assert.equal(rsl.side, "real salt lake");
+
+  // Poly's own "sea"/"rsl" abbrs happen to match Kalshi's canonical mls codes 1:1 — team
+  // resolution works with no polymarket alias added, a bonus this doctrine doesn't require.
+  assert.equal(cands[0].game, "SEA@RSL");
+});
+
+test("buildCaptureCandidates: soccer 3-way — unrecognized question phrasing is dropped, not guessed", () => {
+  const nowMs = Date.parse("2026-08-20T12:00:00Z");
+  const future = "2026-08-21 19:00:00+00";
+  const ev = {
+    ticker: "epl-ars-cov-2026-08-21",
+    markets: [{
+      sportsMarketType: "moneyline", question: "Will there be a red card in the match?",
+      gameStartTime: future, bestBid: 0.1, bestAsk: 0.12,
+      outcomes: '["Yes","No"]', outcomePrices: '["0.11","0.89"]',
+      clobTokenIds: '["r1","r2"]', id: 800,
+    }],
+  };
+  assert.equal(buildCaptureCandidates(ev, nowMs).length, 0);
 });
 
 test("gradePolyMarket: resolved names winner token; pending; void on non-binary", () => {
