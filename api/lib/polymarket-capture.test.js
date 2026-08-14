@@ -21,13 +21,22 @@ test("parseCaptureTicker: base game + F5 parse; props/futures reject", () => {
   assert.equal(parseCaptureTicker("new-mlb-cba-by-dec-1"), null);
   // A sport absent from POLY_MARKETS must not parse — the regex is derived from the registry, so
   // this is the tripwire that adding a league is a one-row change and not a two-place one.
-  // brasileirao is still unbuilt as of this test (mls/epl were, until Phase 2 2026-08-14 — the
-  // first two soccer leagues, see the positive cases below and the 3-way tests further down).
+  // "brasileirao" (our internal Kalshi sport name) is a PERMANENT negative case now, not a
+  // temporary one — Poly's real ticker slug is the short "bra" (see the positive case below), and
+  // the registry key must equal Poly's slug exactly or nothing parses; the long form will never
+  // be a valid prefix no matter how many leagues get added.
   assert.equal(parseCaptureTicker("brasileirao-fla-pal-2026-08-15"), null);
   assert.deepEqual(parseCaptureTicker("mls-sea-rsl-2026-04-12"),
     { sport: "mls", awayPoly: "sea", homePoly: "rsl", dateStr: "2026-04-12", segment: null });
   assert.deepEqual(parseCaptureTicker("epl-ars-cov-2026-08-21"),
     { sport: "epl", awayPoly: "ars", homePoly: "cov", dateStr: "2026-08-21", segment: null });
+  // Remaining soccer batch (2026-08-14) — spot-check a few of the 17: the short real slugs parse,
+  // "arg" included even though its Gamma CATALOG id (10285) is the same known-wrong trap as
+  // before (0 events; the real one, 10312, was verified live and is what's in the registry).
+  assert.deepEqual(parseCaptureTicker("bra-fla-pal-2026-08-15"),
+    { sport: "bra", awayPoly: "fla", homePoly: "pal", dateStr: "2026-08-15", segment: null });
+  assert.deepEqual(parseCaptureTicker("arg-rac-ban-2026-08-14"),
+    { sport: "arg", awayPoly: "rac", homePoly: "ban", dateStr: "2026-08-14", segment: null });
   assert.deepEqual(parseCaptureTicker("nfl-car-buf-2026-08-15"),
     { sport: "nfl", awayPoly: "car", homePoly: "buf", dateStr: "2026-08-15", segment: null });
   assert.deepEqual(parseCaptureTicker("kbo-doo-kia-2026-08-15"),

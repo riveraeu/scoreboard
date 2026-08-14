@@ -106,10 +106,12 @@ export const POLY_MARKETS = {
   // on. Keeping the registry key + captured row's `sport` column as "atp"/"wta" (truthful, and
   // matches every other Poly discovery/dedup path that keys off the real Gamma slug) means
   // venueVig's cross-venue join would otherwise NEVER match — two Poly buckets against Kalshi's
-  // one. `report.js`'s venueVig Poly-side query normalizes sport IN ('atp','wta') -> 'tennis' at
-  // aggregation time only (mirrors the category-CASE pattern, doesn't touch the stored column).
-  atp:  { series: "10365", slug: "atp", categories: { moneyline: "ml" } },
-  wta:  { series: "10366", slug: "wta", categories: { moneyline: "ml" } },
+  // one. `vigSport: "tennis"` below drives `report.js`'s `pVigSportCaseSql` — a Poly-side sport
+  // normalization CASE at aggregation time only (mirrors the category-CASE pattern, never touches
+  // the stored column) — DERIVED from every `vigSport` in this registry, not a hand-written list,
+  // because the soccer batch below hits this same mismatch on almost every league.
+  atp:  { series: "10365", slug: "atp", categories: { moneyline: "ml" }, vigSport: "tennis" },
+  wta:  { series: "10366", slug: "wta", categories: { moneyline: "ml" }, vigSport: "tennis" },
   // Dota 2 (Phase 2, 2026-08-14) — catalog id (10309) verified live, 29 events. ml-ONLY via the
   // "moneyline" sportsMarketType (overall SERIES/match winner), matching Kalshi's KXDOTA2GAME
   // (one YES per team per MATCH, not per map). Poly's Bo3/Bo5 events ALSO carry a same-named-
@@ -134,6 +136,35 @@ export const POLY_MARKETS = {
   // mismatch here, so no venueVig normalization needed.
   mls: { series: "10189", slug: "mls", categories: { moneyline: "ml" }, winnerShape: "3wayYesNo" },
   epl: { series: "10188", slug: "epl", categories: { moneyline: "ml" }, winnerShape: "3wayYesNo" },
+  // Remaining 17 model-free soccer leagues (Phase 2, 2026-08-14). Same winnerShape:"3wayYesNo"
+  // path as mls/epl — verified live for EVERY row below (question phrasing "Will X win on DATE?" /
+  // "…end in a draw?", exactly 3 moneyline markets per bare-ticker event). `vigSport` is REQUIRED
+  // on every one of these — Poly's own ticker slug is a short/different code from our internal
+  // Kalshi sport key in all but nwsl (e.g. 'bra' -> 'brasileirao', 'arg' -> 'argprem'), the exact
+  // mismatch tennis hit first; the registry key MUST equal Poly's real ticker slug (parsing) while
+  // `vigSport` carries the Kalshi-side name (comparison) — conflating them silently breaks one or
+  // the other. No teams.js aliases added for any of these (same as mls/epl — `game` resolves for
+  // free where abbrs already agree, stays null and tolerated otherwise). `argprem`'s catalog id
+  // (10285) is the SAME known-wrong trap as before (0 events) — the real one is 10312.
+  bra:    { series: "10359", slug: "bra",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "brasileirao" },
+  nwsl:   { series: "11462", slug: "nwsl",   categories: { moneyline: "ml" }, winnerShape: "3wayYesNo" },
+  chi:    { series: "10439", slug: "chi",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "chnsl" },
+  mex:    { series: "10290", slug: "mex",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "ligamx" },
+  col1:   { series: "10964", slug: "col1",   categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "dimayor" },
+  brco:   { series: "11460", slug: "brco",   categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "copadobrasil" },
+  arg:    { series: "10312", slug: "arg",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "argprem" },
+  ere:    { series: "10286", slug: "ere",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "eredivisie" },
+  jap:    { series: "10360", slug: "jap",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "jleague" },
+  lal:    { series: "10193", slug: "lal",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "laliga" },
+  sea:    { series: "10203", slug: "sea",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "seriea" },
+  fl1:    { series: "10195", slug: "fl1",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "ligue1" },
+  es2:    { series: "10672", slug: "es2",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "laliga2" },
+  // uslc was in POLY_DISMISSED_SPORTS (see below) — dismissed 2026-07-21 as "no overlap", before
+  // KXUSLGAME existed; removed from that list in this same commit (never auto-revived otherwise).
+  uslc:   { series: "12318", slug: "uslc",   categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "usl" },
+  lib:    { series: "10289", slug: "lib",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "copalib" },
+  por:    { series: "10330", slug: "por",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "ligaportugal" },
+  ned2:   { series: "12353", slug: "ned2",   categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "eerstediv" },
 };
 
 // Sports we capture, as a regex alternation — derived so a new POLY_MARKETS row is admitted by both
@@ -152,11 +183,12 @@ export const POLY_SERIES = Object.fromEntries(
 // instead of a manual ?dismiss= curl (mirror of series-config.js DISMISSED_SERIES).
 export const POLY_DISMISSED_SPORTS = [
   // 7/21 triage (13 detected, all 0 live except ttelite=1): niche low-signal leagues (Czech/
-  // Moldova/Ukraine "Setka Cup" table-tennis family, USL Championship, a handful of unclear thin
-  // slugs) — none overlap sports/leagues we model, and Polymarket has been observatory-only since
-  // the 7/04 kill (no active build target). DISMISS all.
+  // Moldova/Ukraine "Setka Cup" table-tennis family, a handful of unclear thin slugs) — none
+  // overlap sports/leagues we model, and Polymarket has been observatory-only since the 7/04 kill
+  // (no active build target). DISMISS all. (`uslc` — USL Championship — was dismissed here too;
+  // removed 2026-08-14 when KXUSLGAME made it buildable, see POLY_MARKETS.uslc above.)
   "chfa", "czechligapro", "pol", "sclc", "setkamecz", "setkamemd", "setkameua", "setkawoua",
-  "sui", "ttchallenger", "ttcup", "ttelite", "uslc",
+  "sui", "ttchallenger", "ttcup", "ttelite",
   // 7/22 triage (3 detected): cricket (The Hundred, men's + women's) and cycling (Tour de France
   // margin of victory) — no rating/model source in our stack (same class as the Kalshi-side
   // KXCLUBFGAME/cycling dismissals), and Polymarket is observatory-only since the 7/04 kill

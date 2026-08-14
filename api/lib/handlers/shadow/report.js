@@ -28,6 +28,7 @@
 import { neonQuery } from "../../neon.js";
 import { errorResponse, jsonResponse } from "../../utils.js";
 import { CAPTURE_MAX_SPREAD } from "../../config.js";
+import { POLY_MARKETS } from "../../polymarket.js";
 import { verifyJWT } from "../../auth-utils.js";
 import { isArmed as isMakerV2Armed } from "../../maker-live.js";
 import { fetchKalshiSettlements, resolveTickerSideViaKalshi } from "../../kalshi-settlement.js";
@@ -78,7 +79,12 @@ const _makerBandCase = (col) => `CASE
 // (`totalRuns`, `teamRuns`) and KXMLBGAME/KXMLBF5 have no SERIES_CONFIG row at all, so deriving it
 // would be a chokepoint on paper and a silent-drift generator in practice.
 export const KALSHI_VENUE_CATEGORY_PREFIXES = {
-  ml:       ["KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME", "KXNFLGAME", "KXKBOGAME", "KXUFCFIGHT", "KXATPMATCH", "KXWTAMATCH", "KXDOTA2GAME", "KXMLSGAME", "KXEPLGAME"],
+  ml:       ["KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME", "KXNFLGAME", "KXKBOGAME", "KXUFCFIGHT",
+             "KXATPMATCH", "KXWTAMATCH", "KXDOTA2GAME", "KXMLSGAME", "KXEPLGAME",
+             "KXBRASILEIROGAME", "KXNWSLGAME", "KXCHNSLGAME", "KXLIGAMXGAME", "KXDIMAYORGAME",
+             "KXCOPADOBRASILGAME", "KXARGPREMDIVGAME", "KXEREDIVISIEGAME", "KXJLEAGUEGAME",
+             "KXLALIGAGAME", "KXSERIEAGAME", "KXLIGUE1GAME", "KXLALIGA2GAME", "KXUSLGAME",
+             "KXCONMEBOLLIBGAME", "KXLIGAPORTUGALGAME", "KXEERSTEDIVGAME"],
   total:    ["KXMLBTOTAL", "KXWNBATOTAL", "KXNBATOTAL", "KXNHLTOTAL", "KXNFLTOTAL"],
   spread:   ["KXMLBSPREAD", "KXWNBASPREAD", "KXNBASPREAD", "KXNHLSPREAD"],
   f5:       ["KXMLBF5"],
@@ -103,12 +109,21 @@ const _kalshiTickerFilterSql = Object.values(KALSHI_VENUE_CATEGORY_PREFIXES).fla
 // drift out of sync the way 'spread'/'f5total'/'f5spread' did on 2026-08-13 (added to the prefix map
 // and the Kalshi-side classifier, but the Poly-side query's hand-written IN-list was never updated).
 const _venueVigCategoriesSql = Object.keys(KALSHI_VENUE_CATEGORY_PREFIXES).map((c) => `'${c}'`).join(", ");
-// Poly-side sport normalization: Kalshi collapses ATP+WTA into ONE shadow_plays.sport = 'tennis'
-// (tour is a separate feature field), but Poly's own ticker/registry key IS the tour ('atp'/'wta')
-// — left that way in polymarket_plays because it's the truthful, discovery-matching value. Without
-// this the venueVig join never fires (two Poly sport buckets vs Kalshi's one, same "silently always
-// empty" trap the category IN-list drift caused on 2026-08-14). Add here, never on the stored column.
-const _pVigSportSql = `CASE WHEN sport IN ('atp', 'wta') THEN 'tennis' ELSE sport END`;
+// Poly-side sport normalization: Poly's own ticker/registry key is often a short or different code
+// from our internal Kalshi sport name (tennis's 'atp'/'wta' -> 'tennis', soccer's 'bra' ->
+// 'brasileirao', 'arg' -> 'argprem', …) — left that way in polymarket_plays because it's the
+// truthful, discovery-matching value (matches every other Poly path keying off the real Gamma
+// slug). Without normalizing at aggregation time the venueVig join never fires (N Poly sport
+// buckets vs Kalshi's one). DERIVED from POLY_MARKETS' `vigSport` field, not a hand-written list —
+// that hand-written-list drift is exactly what broke the category IN-list on 2026-08-14, and this
+// mapping is now large enough (soccer alone added ~15 entries) that a hand-copy would drift fast.
+export function pVigSportCaseSql(polyMarkets) {
+  const whens = Object.entries(polyMarkets || {})
+    .filter(([, cfg]) => cfg?.vigSport)
+    .map(([slug, cfg]) => `WHEN sport = '${slug}' THEN '${cfg.vigSport}'`);
+  return whens.length ? `CASE ${whens.join(" ")} ELSE sport END` : "sport";
+}
+const _pVigSportSql = pVigSportCaseSql(POLY_MARKETS);
 
 // Pure: assemble the venueVig cells from the two aggregation result sets. Each row: {sport, category,
 // band, n, days, avg_ask, win_pct}. vig = avg_ask − win_pct (¢). deltaVig = kalshiVig − polyVig, only

@@ -1,7 +1,7 @@
 // node --test api/lib/handlers/shadow/report.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { computeRobustCandidates, ROBUST_BAR, ROBUST_ONE_SIDED_RATE, computeVenueVig, venueCategoryFromKalshiTicker, computePolymarketTracking } from "./report.js";
+import { computeRobustCandidates, ROBUST_BAR, ROBUST_ONE_SIDED_RATE, computeVenueVig, venueCategoryFromKalshiTicker, computePolymarketTracking, pVigSportCaseSql } from "./report.js";
 
 // computeRobustCandidates is the heatmap-robustness TRIPWIRE, not a shortlist. A cell must clear a
 // strict STRUCTURAL bar — day-clustered CI already excludes zero (`reliable`), >= 8 days, >= 50 fills,
@@ -153,6 +153,22 @@ test("computeVenueVig: vig = ask − win; Δ only when both venues present; reli
   assert.equal(tot.reliable, false);  // thin + one-sided
   assert.deepEqual(r.venuesPresent, { kalshi: 210, poly: 120 });
   assert.match(r.note, /never a bet/);
+});
+
+test("pVigSportCaseSql: derived from vigSport, never a hand-maintained list", () => {
+  assert.equal(pVigSportCaseSql({}), "sport");
+  assert.equal(pVigSportCaseSql({ mlb: { series: "3" } }), "sport"); // no vigSport anywhere -> no CASE
+  const sql = pVigSportCaseSql({
+    atp: { vigSport: "tennis" }, wta: { vigSport: "tennis" },
+    bra: { vigSport: "brasileirao" }, nwsl: {}, mlb: { series: "3" },
+  });
+  assert.match(sql, /^CASE .* ELSE sport END$/);
+  assert.match(sql, /WHEN sport = 'atp' THEN 'tennis'/);
+  assert.match(sql, /WHEN sport = 'wta' THEN 'tennis'/);
+  assert.match(sql, /WHEN sport = 'bra' THEN 'brasileirao'/);
+  // no vigSport -> no WHEN clause for that slug (falls through to the ELSE, passthrough unchanged)
+  assert.doesNotMatch(sql, /WHEN sport = 'nwsl'/);
+  assert.doesNotMatch(sql, /WHEN sport = 'mlb'/);
 });
 
 test("computePolymarketTracking: capture/resolution rollup + venueVig divergence summary", () => {
