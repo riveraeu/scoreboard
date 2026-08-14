@@ -78,8 +78,8 @@ const _makerBandCase = (col) => `CASE
 // (`totalRuns`, `teamRuns`) and KXMLBGAME/KXMLBF5 have no SERIES_CONFIG row at all, so deriving it
 // would be a chokepoint on paper and a silent-drift generator in practice.
 export const KALSHI_VENUE_CATEGORY_PREFIXES = {
-  ml:       ["KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME"],
-  total:    ["KXMLBTOTAL", "KXWNBATOTAL", "KXNBATOTAL", "KXNHLTOTAL"],
+  ml:       ["KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME", "KXNFLGAME"],
+  total:    ["KXMLBTOTAL", "KXWNBATOTAL", "KXNBATOTAL", "KXNHLTOTAL", "KXNFLTOTAL"],
   spread:   ["KXMLBSPREAD", "KXWNBASPREAD", "KXNBASPREAD", "KXNHLSPREAD"],
   f5:       ["KXMLBF5"],
   f5total:  ["KXMLBF5TOTAL"],

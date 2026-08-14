@@ -145,11 +145,14 @@ export const TEAMS = {
     // and their markets vanished with no drop row. The once-per-league abbr collision, on schedule.
     { abbr: "JAX", kalshi: ["JAC"] }, { abbr: "KC" },
     { abbr: "LAC" },
-    { abbr: "LAR", kalshi: ["LA"] },
+    // Polymarket happens to reuse the same "la"/"was" abbrs as Kalshi's own aliases here (verified
+    // live 2026-08-14 against all 32 team codes in the current preseason slate — every other code
+    // matches canonical lowercase exactly).
+    { abbr: "LAR", kalshi: ["LA"], polymarket: ["la"] },
     { abbr: "LV" }, { abbr: "MIA" }, { abbr: "MIN" }, { abbr: "NE" },
     { abbr: "NO" }, { abbr: "NYG" }, { abbr: "NYJ" }, { abbr: "PHI" },
     { abbr: "PIT" }, { abbr: "SEA" }, { abbr: "SF" }, { abbr: "TB" },
-    { abbr: "TEN" }, { abbr: "WSH", kalshi: ["WAS"] },
+    { abbr: "TEN" }, { abbr: "WSH", kalshi: ["WAS"], polymarket: ["was"] },
   ],
   // Liga Mexicana de Béisbol (KXLMBGAME, adopted 2026-07-15). Canonical = Kalshi's 3-char
   // ticker abbrs (all exactly 3 chars → parseGameTeams' validated 3+3 split works untouched).

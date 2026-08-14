@@ -63,6 +63,13 @@ export const POLY_MARKETS = {
   wnba: { series: "10105", slug: "wnba", categories: { moneyline: "ml", totals: "total", spreads: "spread" } },
   nba:  { series: "10345", slug: "nba",  categories: { moneyline: "ml", totals: "total", spreads: "spread" } },
   nhl:  { series: "10346", slug: "nhl",  categories: { moneyline: "ml", totals: "total", spreads: "spread" } },
+  // NFL (Phase 2, 2026-08-14) — the catalog's own `series:10187` returns ZERO events (same trap as
+  // Argentina); the real id was read off a live event via `tag_slug=nfl`. ml+totals ONLY: Kalshi has
+  // no NFL spread/team-total book at all (KXNFLGAME+KXNFLTOTAL only), and Poly's NFL spread outcomes
+  // are 3-letter abbrevs ("BUF"/"CAR") that don't match the moneyline's full names ("Panthers"/
+  // "Bills") — `_nameToSide` can't resolve them, and team_totals need a per-team field the schema
+  // doesn't carry. Both deferred to their own design pass rather than shipped half-built.
+  nfl:  { series: "12185", slug: "nfl", categories: { moneyline: "ml", totals: "total" } },
 };
 
 // Sports we capture, as a regex alternation — derived so a new POLY_MARKETS row is admitted by both
