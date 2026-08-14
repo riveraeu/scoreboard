@@ -75,6 +75,23 @@ export const POLY_MARKETS = {
   // right this time). Moneyline ONLY — matches Kalshi (KXKBOGAME is 2-way ML, no totals/spread
   // book at all) and Poly itself lists no other family for this league.
   kbo:  { series: "10370", slug: "kbo", categories: { moneyline: "ml" } },
+  // UFC (Phase 2, 2026-08-14) — the catalog's own `series:10500` returns ONE unrelated event
+  // (an nflx-price futures market), same trap as Argentina/NFL. `tag_slug=ufc` also fails (62
+  // events, all season-long futures/props — "who will X fight next" — no per-fight events at all).
+  // The real series id (38) was found via `GET /public-search?q=UFC`, which surfaces per-fight
+  // events (`ufc-isl-ian1-2026-08-15`) that neither the catalog nor tag_slug listing returns;
+  // confirmed all 30 events under series 38 are genuine per-fight tickers. ml-ONLY, matching
+  // KXUFCFIGHT (Kalshi's model-free maker book, per-fighter YES markets). Poly's `totals` here is
+  // ROUND totals (0.5/1.5/2.5… — how many rounds the fight lasts) which maps conceptually to
+  // KXUFCROUNDS, but that series is model-BASED shadow-only (`fight.js`), not part of the
+  // model-free capture-all system venueVig compares (`model_free = TRUE` is a hard filter in its
+  // Kalshi-side query) — so a totals row would never surface a Δ regardless of registry wiring.
+  // `ufc_go_the_distance`/`ufc_method_of_victory` are genuine props, out of scope entirely. No
+  // teams.js registry — fighters are an unbounded roster, not a fixed set like a team league;
+  // `buildCaptureCandidates` tolerates `game: null` by design (see the registry-driven comment
+  // above), so `game` is null for every UFC row and venueVig aggregates by sport×category×band
+  // with no team join anyway.
+  ufc:  { series: "38", slug: "ufc", categories: { moneyline: "ml" } },
 };
 
 // Sports we capture, as a regex alternation — derived so a new POLY_MARKETS row is admitted by both

@@ -20,14 +20,18 @@ test("parseCaptureTicker: base game + F5 parse; props/futures reject", () => {
   assert.equal(parseCaptureTicker("mlb-bos-col-2026-06-24-player-props"), null);
   assert.equal(parseCaptureTicker("new-mlb-cba-by-dec-1"), null);
   // A sport absent from POLY_MARKETS must not parse — the regex is derived from the registry, so
-  // this is the tripwire that adding a league is a one-row change and not a two-place one. ufc is
-  // still unbuilt as of this test (nfl and kbo were, until Phase 2 2026-08-14 — see the positive
-  // cases below).
-  assert.equal(parseCaptureTicker("ufc-jones-miocic-2026-08-15"), null);
+  // this is the tripwire that adding a league is a one-row change and not a two-place one. atp is
+  // still unbuilt as of this test (nfl, kbo, and ufc were, until Phase 2 2026-08-14 — see the
+  // positive cases below).
+  assert.equal(parseCaptureTicker("atp-alcaraz-sinner-2026-08-15"), null);
   assert.deepEqual(parseCaptureTicker("nfl-car-buf-2026-08-15"),
     { sport: "nfl", awayPoly: "car", homePoly: "buf", dateStr: "2026-08-15", segment: null });
   assert.deepEqual(parseCaptureTicker("kbo-doo-kia-2026-08-15"),
     { sport: "kbo", awayPoly: "doo", homePoly: "kia", dateStr: "2026-08-15", segment: null });
+  // Fighter slugs are single alphanumeric tokens (verified live against all 30 UFC series-38
+  // events), so the same 2-segment shape parses fine with no team registry behind it.
+  assert.deepEqual(parseCaptureTicker("ufc-isl-ian1-2026-08-15"),
+    { sport: "ufc", awayPoly: "isl", homePoly: "ian1", dateStr: "2026-08-15", segment: null });
 });
 
 test("POLY_MARKETS: derived POLY_SERIES matches, and every category has a Kalshi vig counterpart", () => {
@@ -233,6 +237,32 @@ test("buildCaptureCandidates: kbo ml-only, KTW/NCD aliases resolve", () => {
   assert.deepEqual(cands.map((c) => c.category), ["ml", "ml"]);
   assert.equal(cands.find((c) => c.side === "away").outcome, "KT Wiz");
   assert.equal(cands[0].game, "KTW@NCD");
+});
+
+test("buildCaptureCandidates: ufc ml-only, no team registry -> game null, totals/props skipped", () => {
+  const nowMs = Date.parse("2026-08-14T12:00:00Z");
+  const future = "2026-08-15 22:00:00+00";
+  const mkt = (sportsMarketType, line, outcomes, id) => ({
+    sportsMarketType, line, gameStartTime: future, bestBid: 0.4, bestAsk: 0.6,
+    outcomes: JSON.stringify(outcomes), outcomePrices: '["0.76","0.24"]',
+    clobTokenIds: `["${id}a","${id}b"]`, id,
+  });
+  const ev = {
+    ticker: "ufc-isl-ian1-2026-08-15",
+    markets: [
+      mkt("moneyline", null, ["Islam Makhachev", "Ian Machado Garry"], 970),
+      mkt("ufc_go_the_distance", null, ["Yes", "No"], 971),
+      mkt("ufc_method_of_victory", null, ["Yes", "No"], 972),
+      // round totals map conceptually to KXUFCROUNDS, which is model-based shadow-only (not part
+      // of the model-free capture-all venueVig compares) — out of registry scope, must be skipped.
+      mkt("totals", 2.5, ["Over", "Under"], 973),
+    ],
+  };
+  const cands = buildCaptureCandidates(ev, nowMs);
+  assert.deepEqual(cands.map((c) => c.category), ["ml", "ml"]);
+  assert.equal(cands.find((c) => c.side === "away").outcome, "Islam Makhachev");
+  // No teams.js registry for an unbounded fighter roster — game is null by design, not a bug.
+  assert.equal(cands[0].game, null);
 });
 
 test("gradePolyMarket: resolved names winner token; pending; void on non-binary", () => {
