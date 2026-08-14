@@ -330,14 +330,25 @@ export async function handleKalshiRoutes(ctx) {
     // PRIOR days, so a V2 position whose game finished TODAY would otherwise sit ungraded (and
     // the PnL tile wrong) until the next 2am/3:05am/5:50am PT run. Independent of the staging
     // gate above — this only touches already-placed maker_orders_v2 rows, no staging needed.
+    // **Cadence-gated to every 10 min (2026-08-14)**: unlike V1's quote-pass, this pass is
+    // unconditional every cycle — no staging/snap gate — so with V2 SHELVED (maker-live.js,
+    // no real orders ever placed) it was pinging Neon with an always-empty query every 2 min,
+    // 24/7, which alone is enough to keep Neon's compute from ever autosuspending (fixed 5-min
+    // idle timeout on Free/Launch). Gating to :00/:10/:20/:30/:40/:50 past the hour cuts this
+    // pass's Neon traffic 5x while still landing well inside "same day" for the PnL tile if V2
+    // is ever unshelved. Safe to widen further or re-tighten — V2 places no real orders today.
     let _makerResolveMeta = null;
-    try {
-      const _resolveRes = await resolveOpenMakerPositions({ env, request });
-      const _gradeRes = await gradeResolvedMakerPositions({ env });
-      _makerResolveMeta = { ..._resolveRes, graded: _gradeRes.graded, gradeHeld: _gradeRes.held, gradeError: _gradeRes.error };
-    } catch (e) {
-      _makerResolveMeta = { error: String(e?.message || e) };
-      console.error(`[kalshi-snapshot] maker-live resolve/grade pass failed: ${_makerResolveMeta.error}`);
+    if (new Date().getMinutes() % 10 === 0) {
+      try {
+        const _resolveRes = await resolveOpenMakerPositions({ env, request });
+        const _gradeRes = await gradeResolvedMakerPositions({ env });
+        _makerResolveMeta = { ..._resolveRes, graded: _gradeRes.graded, gradeHeld: _gradeRes.held, gradeError: _gradeRes.error };
+      } catch (e) {
+        _makerResolveMeta = { error: String(e?.message || e) };
+        console.error(`[kalshi-snapshot] maker-live resolve/grade pass failed: ${_makerResolveMeta.error}`);
+      }
+    } else {
+      _makerResolveMeta = { skipped: "cadence" };
     }
 
     return jsonResponse({
