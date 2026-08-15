@@ -617,20 +617,28 @@ async function handleShadowResolver({ path, request, env, cache }) {
   // ── Shadow maker: replay last night's trade tape → maker_fills, then grade the whole ungraded
   // backlog (api/lib/maker.js; TAPE_REPLAY_ENABLED, re-enabled 2026-07-29). The tape walk fetches
   // one page per ticker at ~16 req/s and Kalshi 429s partway once a day carries enough tickers
-  // (~1,166/night crossed the limit early Aug 2026, 429ing at ~868). A 429 makes detectAndGrade
-  // return reachedEnd=false → graded=0 for the ENTIRE ungraded set, so a single offset-0 pass would
-  // silently stall the whole book on a busy night — grading only runs when the walk reaches the end.
-  // So resume on `nextOffset` (non-null iff the pass 429'd) until the walk completes: the terminal
-  // pass grades 08-02, 08-03, everything. Bounded by MAX_PASSES, a wall-clock budget (resolver
-  // maxDuration 300s, this runs near the end) and the first null. If the cap is hit still behind,
-  // that is the pre-fix behavior (next night / ?makerDetectDay= finishes it) — never worse.
-  // Failure-closed — must never break resolution.
+  // (429 ceiling is a stable ~870-890 requests, confirmed unchanged 08-04 → 08-15). A 429 makes
+  // detectAndGrade return reachedEnd=false → graded=0 for the ENTIRE ungraded set, so a single
+  // offset-0 pass would silently stall the whole book on a busy night — grading only runs when the
+  // walk reaches the end. So resume on `nextOffset` (non-null iff the pass 429'd) within a run,
+  // bounded by MAX_PASSES and a wall-clock budget (resolver maxDuration 300s, this runs near the
+  // end). Ticker volume grew ~1,166 → ~4,145/day between 08-04 and 08-15 (new model-free leagues),
+  // so one run's budget now covers only ~35% of a day's walk — restarting every run at offset 0
+  // meant the three daily cron fires each re-walked the same rate-limited prefix and NEVER reached
+  // the tail, rather than accumulating toward it. `maker:tapewalk:{dayPT}` (48h TTL) persists
+  // `nextOffset` across runs so same-day cron fires resume where the last one stopped instead of
+  // restarting; cleared on the terminal pass (offset===null) so the next calendar day starts clean.
+  // If the backlog is still behind after all three fires, `?makerDetectDay=` remains the manual
+  // catch-up path. Failure-closed — a KV hiccup degrades to the old restart-at-0 behavior, never
+  // breaks resolution.
   let makerMeta = null;
   try {
     const _yd = new Date(new Date(today).getTime() - 86400_000).toISOString().slice(0, 10);
     const MAX_PASSES = 8, PASS_BUDGET_MS = 120_000, BACKOFF_MS = 5_000;
+    const TAPEWALK_KEY = `maker:tapewalk:${_yd}`, TAPEWALK_TTL_S = 172800;
     const started = Date.now();
-    let offset = 0, passes = 0, totalNew = 0;
+    const saved = cache ? await cache.get(TAPEWALK_KEY, "json").catch(() => null) : null;
+    let offset = saved?.offset ?? 0, passes = 0, totalNew = 0;
     do {
       makerMeta = await detectAndGradeMakerFills({ env, dayPT: _yd, offset });
       totalNew += makerMeta.newFills || 0;
@@ -639,7 +647,13 @@ async function handleShadowResolver({ path, request, env, cache }) {
       if (offset == null || passes >= MAX_PASSES || Date.now() - started >= PASS_BUDGET_MS) break;
       await new Promise(r => setTimeout(r, BACKOFF_MS)); // let the 429 window clear before resuming
     } while (true);
+    if (cache) {
+      if (offset == null) await cache.delete(TAPEWALK_KEY).catch(() => {});
+      else await cache.put(TAPEWALK_KEY, { offset, updatedAt: new Date().toISOString() },
+        { expirationTtl: TAPEWALK_TTL_S }).catch(() => {});
+    }
     console.log(`[shadow-resolver] maker graded=${makerMeta.graded} passes=${passes} newFills=${totalNew}`
+      + ` startOffset=${saved?.offset ?? 0}`
       + (makerMeta.skipped ? ` skipped=${makerMeta.skipped}`
         : ` tickers=${makerMeta.tickers} tapeFails=${makerMeta.tapeFails} rateLimited=${makerMeta.rateLimited} complete=${offset == null}`));
   } catch (e) {
