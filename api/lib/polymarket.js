@@ -212,6 +212,15 @@ export const POLY_DISMISSED_SPORTS = [
   // friendlies bucket) and the 25 live events are a transient preseason cluster, not a recurring
   // series — same class as KXFIFALEAVE (real volume, resolves once, not worth building against).
   "usl1", "tur2", "uae1", "saf1", "clf",
+  // 8/15 parity check: both DO overlap a Kalshi model-free build (KXKLEAGUEGAME, PGA H2H) but fail
+  // the like-for-like shape test CLAUDE.md warns about. kor (K League 1, 10 live events) carries
+  // ONLY corner-prop market types (soccer_first_corner/total_corners/…) across every checked
+  // event — no moneyline market exists at all, same shape gap as usl1 above. pga (5 live events)
+  // is tournament-outright ("Will X win the 2026 FedEx St. Jude Championship?"), not Kalshi's
+  // single-round H2H pairing — the exact PGA/NASCAR trap the doctrine already names. boxing (new
+  // 2026-08-08, series 12578) currently has zero live markets — nothing to capture today; revisit
+  // if it lists real fights. DISMISS kor/pga on shape, not liquidity; boxing on emptiness.
+  "kor", "pga", "boxing",
 ];
 
 // Gamma league catalog (GET /sports): ~300 rows of { sport: slug, series: id, tags, ... }. The
