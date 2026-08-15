@@ -205,9 +205,13 @@ export const POLY_DISMISSED_SPORTS = [
   "cricjclt10", "crickerala", "cricmaharani", "cricmukono", "cricodc", "cricodcl2w", "cricppl",
   // 8/10 triage (4 of 5 detected): usl1 (USL Championship corner props only — 1 live event, no
   // ML; niche shape), tur2 (Turkish 2nd division — 0 live events), uae1 (UAE top flight — 0 live),
-  // saf1 (South African top flight — 0 live). clf (La Liga 1, 25 live events, moneyline) left
-  // undismissed — useful observatory even without a Kalshi La Liga 1 counterpart currently.
-  "usl1", "tur2", "uae1", "saf1",
+  // saf1 (South African top flight — 0 live). clf left undismissed at the time, mislabeled "La
+  // Liga 1" from its sample event ("Real Madrid vs. CD Leganes") — actually confirmed 2026-08-15
+  // against the live Gamma /sports catalog: sport="clf" is **"Club Friendlies"**, not a league.
+  // No stable Kalshi counterpart exists (Kalshi lists specific competitions, not a generic
+  // friendlies bucket) and the 25 live events are a transient preseason cluster, not a recurring
+  // series — same class as KXFIFALEAVE (real volume, resolves once, not worth building against).
+  "usl1", "tur2", "uae1", "saf1", "clf",
 ];
 
 // Gamma league catalog (GET /sports): ~300 rows of { sport: slug, series: id, tags, ... }. The
