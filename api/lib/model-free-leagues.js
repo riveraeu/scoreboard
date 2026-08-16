@@ -53,6 +53,18 @@
 // slug ("Finnish 1. Division") but returns ZERO teams and ZERO events for the entire month, so
 // there's no schedule to match Kalshi tickers against even though the league object exists. Also
 // PARKED; same kleague/kbo ticker-parse escape hatch applies.
+// Israeli Premier League Cup (KXISRPLCUPGAME) vetted 2026-08-16, real book (12/12 live, 9c median
+// spread, overround 1.105) — PARKED, same class as CANPL: ESPN's own 216-league soccer directory
+// has NO Israel entry at all (checked directly, not guessed). Ticker is date-only (no HHMM), so
+// the kleague/kbo ticker-parse workaround is available if revisited — not attempted here.
+// Italian Serie C Cup (KXSERIECCUPGAME/BTTS) vetted 2026-08-16, real book (GAME 36 live, BTTS 12
+// live) — PARKED, same blocker: ESPN's Italy entries are ita.1 (Serie A)/ita.2 (Serie B)/
+// ita.coppa_italia/ita.super_cup only, no Serie C and no Serie C Cup at any tier. Ticker is
+// date-only; same ticker-parse escape hatch available, not attempted here.
+// Serbian SuperLiga (KXSRBSLSPREAD) vetted 2026-08-16 — DIFFERENT reason, not an ESPN blocker: its
+// moneyline sibling KXSRBSLGAME is DEAD_BOOK (prices pinned near-flat, no real two-sided market).
+// The spread ticker's own REAL_BOOK read was a false signal off one thin match; the league's actual
+// liquidity is dead. Not revisited via any workaround — there's no real market underneath it.
 // And cross-check team abbrs on BOTH sides: collisions have hit ~1 per non-US league, in
 // Kalshi-vs-ESPN (chnsl "SHE", ligamx "ATL") and ESPN-internal (argprem "RIV") flavors.
 
