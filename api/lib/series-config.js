@@ -31,6 +31,12 @@ export const SERIES_CONFIG = {
   // of parseGameTeams. Shadow-only: `tennis|match` is intentionally NOT in the category gate.
   KXATPMATCH:  { sport: "tennis", league: "atp", tour: "atp", stat: "match", col: "ML", gameType: "tennisMatch" },
   KXWTAMATCH:  { sport: "tennis", league: "wta", tour: "wta", stat: "match", col: "ML", gameType: "tennisMatch" },
+  // ATP total games in a match (KXATPGTOTAL, adopted 2026-08-16) — threshold market, model-free.
+  // No player identity on the series itself (yes_sub_title is just "Over 18.5 games"); the
+  // `atpGameTotal` gameType routes these to tonight/atp-total.js, which joins identity + gameTime
+  // onto the already-parsed KXATPMATCH rows via their shared event segment. Threshold reads off
+  // floor_strike, not a subtitle regex. No WTA equivalent built — not yet vetted.
+  KXATPGTOTAL: { sport: "tennis", league: "atp", tour: "atp", stat: "totalGames", col: "G", gameType: "atpGameTotal" },
   // World Cup soccer (KXWC* — `soccer` + `soccerAdvance` gameTypes) REMOVED 2026-08-04 with the
   // model teardown: the Dixon–Coles model was deleted and the tournament is off-season (0 live
   // markets). Historical `soccer|*` rows keep grading off Kalshi settlement (still in

@@ -18,6 +18,7 @@ import { emitAllMlAndSpread } from "../tonight/ml-spread.js";
 import { emitGameTotalPlays } from "../tonight/game-totals.js";
 import { emitPropPlays } from "../tonight/props.js";
 import { emitTennisMatchPlays } from "../tonight/tennis-match.js";
+import { emitAtpTotalPlays } from "../tonight/atp-total.js";
 import { emitFightPlays } from "../tonight/fight.js";
 import { emitNascarPlays } from "../tonight/nascar.js";
 import { emitLmbPlays } from "../tonight/lmb-ml.js";
@@ -116,6 +117,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         const teamTotalMarkets = []; // single-team score markets (KXMLBTEAMTOTAL, KXNBATEAMTOTAL)
         const spreadMarkets = []; // MLB run-line / spread markets (KXMLBSPREAD) — line = strike, marginTeam = win-by side
         const tennisMatchMarkets = []; // ATP/WTA match-winner — every priced side (favorite + dog), grouped by event in emit
+        const atpTotalMarkets = []; // ATP total games in a match (KXATPGTOTAL) — no player identity on the series itself; joined onto tennisMatchMarkets by shared event segment in emit
         const fightMarkets = []; // UFC rounds O/U — every priced threshold, grouped by event in emit
         const nascarMarkets = []; // NASCAR Cup H2H + Top-10 — each priced side carries its own driver(s)
         const lmbMarkets = []; // LMB (Mexican League) game winner — each priced side carries its own pick + opponent
@@ -175,6 +177,39 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
               }
               const _tAO = _tPct >= 50 ? Math.round(-(_tPct / (100 - _tPct)) * 100) : Math.round((100 - _tPct) / _tPct * 100);
               tennisMatchMarkets.push({ gameType: "tennisMatch", sport, tour: cfg.tour, eventTicker: m.event_ticker, player: _tPick, opponentRaw: _tOpp, matchup: _tMatchup, kalshiPct: _tPct, americanOdds: _tAO, kalshiVolume: _tVol, gameDate: _tGameDate, _ticker: m.ticker, _yesAsk: _tYesAsk });
+              continue;
+            }
+            // ── ATP total games in a match (KXATPGTOTAL) branch ── threshold market, no player
+            // identity on the series (yes_sub_title is just "Over 18.5 games", subtitle is null).
+            // Threshold reads straight off floor_strike (no regex needed). Identity + gameTime are
+            // resolved in emit by joining onto tennisMatchMarkets via the shared event segment.
+            if (cfg.gameType === "atpGameTotal") {
+              const _agYesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _agNoAsk = parseFloat(m.no_ask_dollars) || 0;
+              const _agLast = parseFloat(m.last_price_dollars) || 0;
+              const _agYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _agNoBid = parseFloat(m.no_bid_dollars) || 0;
+              const _agStale = _agYesAsk >= 0.98 && _agYesBid === 0 && _agLast > 0;
+              const _agPrice = _agStale ? _agLast : (_agYesAsk > 0 ? _agYesAsk : _agLast);
+              if (_agPrice === 0) continue; // no live book — skip (books fill near match time)
+              const _agYesSpreadC = _agYesAsk > 0 ? Math.round((_agYesAsk - _agYesBid) * 100) : 999;
+              const _agNoSpreadC = _agNoAsk > 0 ? Math.round((_agNoAsk - _agNoBid) * 100) : 999;
+              if (!_agStale && !capturableSpread(Math.min(_agYesSpreadC, _agNoSpreadC))) continue;
+              const _agThreshold = parseFloat(m.floor_strike);
+              if (isNaN(_agThreshold)) continue;
+              const _agYesPct = Math.round(_agPrice * 100);
+              const _agNoPct = _agNoAsk > 0 ? Math.round(_agNoAsk * 100) : (100 - _agYesPct);
+              const _agVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+              const _agSegment = (m.event_ticker || "").split("-")[1] || "";
+              if (!_agSegment) continue;
+              let _agGameDate = null;
+              if (_agSegment.length >= 7) {
+                const _KMONT = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
+                const _agMo = _KMONT[_agSegment.slice(2, 5).toUpperCase()];
+                if (_agMo) _agGameDate = `20${_agSegment.slice(0, 2)}-${_agMo}-${_agSegment.slice(5, 7)}`;
+              }
+              const _agAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              atpTotalMarkets.push({ eventTicker: m.event_ticker, segment: _agSegment, gameDate: _agGameDate, threshold: _agThreshold, kalshiPct: _agYesPct, noKalshiPct: _agNoPct, americanOdds: _agAO(_agYesPct), noAmericanOdds: _agAO(_agNoPct), kalshiVolume: _agVol, _ticker: m.ticker });
               continue;
             }
             // ── Golf PGA H2H branch ── binary "A beats B in the Nth Round" markets (KXPGAH2H).
@@ -1207,6 +1242,14 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           tennisMatchMarkets, tennisPlays, dropped, isDebug, cutoffStr,
           cache: CACHE2, isBustCache,
         });
+        // ── ATP total games in a match (KXATPGTOTAL) — model-free maker. No player identity on
+        // the series itself; joined onto tennisMatchMarkets by shared event segment (see
+        // tonight/atp-total.js). Own array, merged into shadow:staging only.
+        const atpTotalPlays = [];
+        await emitAtpTotalPlays({
+          atpTotalMarkets, tennisMatchMarkets, atpTotalPlays, dropped, isDebug, cutoffStr,
+          cache: CACHE2, isBustCache,
+        });
         // ── Fighting (UFC rounds O/U) — Phase 1, shadow-only. Like tennis/soccer, emits into its
         // own array (NOT `plays`) so fight rows bypass dedup/gameTime-filter/card-builder; merged
         // into shadow:staging only. One weight-class finish-rate CDF per bout feeds all thresholds.
@@ -1420,7 +1463,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...fightPlays, ...nascarPlays, ...lmbPlays, ...golfPlays, ...dota2Plays, ...kleaguePlays, ...kboPlays, ...fightMlPlays, ...modelFreeAllPlays, ...clubSoccerThresholdPlays, ...scocupPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...atpTotalPlays, ...fightPlays, ...nascarPlays, ...lmbPlays, ...golfPlays, ...dota2Plays, ...kleaguePlays, ...kboPlays, ...fightMlPlays, ...modelFreeAllPlays, ...clubSoccerThresholdPlays, ...scocupPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const sf = reportSportFilter;
@@ -1435,7 +1478,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           // discovery. Counts only — nothing is gated on it, and a league whose ticker is date-only
           // by design (kleague) is expected to sit at 100%, so read it as a DELTA over time.
           const _gtNull = {};
-          for (const _arr of [plays, tennisPlays, fightPlays, nascarPlays, lmbPlays, golfPlays,
+          for (const _arr of [plays, tennisPlays, atpTotalPlays, fightPlays, nascarPlays, lmbPlays, golfPlays,
                               dota2Plays, kleaguePlays, kboPlays, fightMlPlays, modelFreeAllPlays,
                               clubSoccerThresholdPlays, scocupPlays, outsPlays]) {
             for (const p of _arr || []) {
@@ -1454,7 +1497,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, golfPlays, golfMarketCount: golfH2hMarkets.length, dota2Plays, dota2MarketCount: dota2Markets.length, kleaguePlays, kleagueMarketCount: kleagueMarkets.length, kboPlays, kboMarketCount: kboMarkets.length, fightMlPlays, fightMlMarketCount: fightMlMarkets.length, clubSoccerPlays: modelFreePlays.mls, clubSoccerMarketCount: (modelFreeMarkets.mls || []).length, brasileiraoPlays: modelFreePlays.brasileirao, brasileiraoMarketCount: (modelFreeMarkets.brasileirao || []).length, nwslPlays: modelFreePlays.nwsl, nwslMarketCount: (modelFreeMarkets.nwsl || []).length, chnslPlays: modelFreePlays.chnsl, chnslMarketCount: (modelFreeMarkets.chnsl || []).length, ligamxPlays: modelFreePlays.ligamx, ligamxMarketCount: (modelFreeMarkets.ligamx || []).length, argPremPlays: modelFreePlays.argprem, argPremMarketCount: (modelFreeMarkets.argprem || []).length, modelFreePlays, modelFreeMarketCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreeMarkets[k] || []).length])), modelFreePlayCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreePlays[k] || []).length])), clubSoccerThresholdPlays, clubSoccerThresholdMarketCount: clubSoccerThresholdMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gameTimeNullBySport, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length }, true);
+          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, atpTotalPlays, atpTotalMarketCount: atpTotalMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, golfPlays, golfMarketCount: golfH2hMarkets.length, dota2Plays, dota2MarketCount: dota2Markets.length, kleaguePlays, kleagueMarketCount: kleagueMarkets.length, kboPlays, kboMarketCount: kboMarkets.length, fightMlPlays, fightMlMarketCount: fightMlMarkets.length, clubSoccerPlays: modelFreePlays.mls, clubSoccerMarketCount: (modelFreeMarkets.mls || []).length, brasileiraoPlays: modelFreePlays.brasileirao, brasileiraoMarketCount: (modelFreeMarkets.brasileirao || []).length, nwslPlays: modelFreePlays.nwsl, nwslMarketCount: (modelFreeMarkets.nwsl || []).length, chnslPlays: modelFreePlays.chnsl, chnslMarketCount: (modelFreeMarkets.chnsl || []).length, ligamxPlays: modelFreePlays.ligamx, ligamxMarketCount: (modelFreeMarkets.ligamx || []).length, argPremPlays: modelFreePlays.argprem, argPremMarketCount: (modelFreeMarkets.argprem || []).length, modelFreePlays, modelFreeMarketCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreeMarkets[k] || []).length])), modelFreePlayCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreePlays[k] || []).length])), clubSoccerThresholdPlays, clubSoccerThresholdMarketCount: clubSoccerThresholdMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gameTimeNullBySport, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length }, true);
         }
         // mlbMeta/nbaMeta/wnbaMeta/nhlMeta were deleted 2026-08-04 (Tier 3b) — the frontend no
         // longer fetches this response (shadow reads KV staging / the ?debug path, both of which
