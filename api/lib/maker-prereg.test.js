@@ -24,28 +24,13 @@ test("every PREREG_CELLS entry carries its render-critical + doc fields", () => 
 // id + a NEW doc. Re-adding one of these ids would silently resurrect a pre-registration whose bar was
 // already failed on real forward data, which is precisely the re-opening the doctrine forbids.
 // `f5total-5054` killed 2026-08-03 (day 3/8, mechanism inverted); `hrr-7074` killed 2026-08-11
-// (day 6/8, sideWon 0.801 vs the < 0.60 bar — mechanism inverted the same way).
+// (day 6/8, sideWon 0.801 vs the < 0.60 bar — mechanism inverted the same way); `ks-1519` killed
+// 2026-08-16 (day 9/8, sample floor already met, sideWon 0.2004 vs the < 0.14 bar — same inversion).
 test("killed cells are never re-added to PREREG_CELLS", () => {
-  for (const dead of ["f5total-5054", "hrr-7074"]) {
+  for (const dead of ["f5total-5054", "hrr-7074", "ks-1519"]) {
     assert.equal(PREREG_CELLS.find((s) => s.id === dead), undefined,
       `${dead} was KILLED on forward data — a new test is a new id + a new doc, never a re-open`);
   }
-});
-
-// Exact-value pin for ks-1519 (the "new id + new doc re-adds its own pin" rule). Fixed by
-// docs/MAKER_KS_PREREG.md before the 2026-08-06 forward window — a diff here is a tripwire.
-test("ks-1519 pins the pre-registered criteria fixed on 2026-08-06", () => {
-  const spec = PREREG_CELLS.find((s) => s.id === "ks-1519");
-  assert.ok(spec, "ks-1519 must be present");
-  assert.equal(spec.doc, "docs/MAKER_KS_PREREG.md");
-  assert.equal(spec.sport, "mlb");
-  assert.equal(spec.category, "strikeouts");
-  assert.equal(spec.band, "15-19");
-  assert.equal(spec.forwardStart, "2026-08-06");
-  assert.equal(spec.checkpoint, "2026-08-20");
-  assert.deepEqual(spec.criteria, {
-    ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.14, minDays: 8, minFills: 50,
-  });
 });
 
 // Exact-value pin for totalruns-1519 (the "new id + new doc re-adds its own pin" rule). Fixed by

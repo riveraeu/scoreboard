@@ -134,3 +134,45 @@ last confirmation, not a formality.**
 Criteria, window, and green-light action are fixed as of 2026-08-06. This cell got here by being one
 of two cells of ~555 to clear a structural bar; the forward test is the only thing standing between
 "looks green" and "is real," so the rule that evaluates it must not be adjustable after the fact.
+
+## RESULT — KILLED EARLY 2026-08-16 (day 9 of the 8-day floor)
+
+**Forward** (`game_date >= 2026-08-06`, 9 days / 284 fills — sample floor already met) — 3 of 4
+substantive criteria failed: mean **−2.76¢/ct** (bar ≥+5) · day-clustered CI **[−9.98, +4.47]** (bar
+lo>0) · 3 of 9 days positive (bar ≥60%) · **sideWon 0.2004** (bar <0.14). Criterion 3 (positive-day
+fraction) was the only one of the four to pass (33% — also below the 60% bar, so it failed too; all
+four substantive criteria failed).
+
+Per-day (fills / contracts / avgAsk¢ / sideWon / ¢-per-contract):
+
+| day | fills | contracts | avgAsk | sideWon | ¢/ct |
+|---|---|---|---|---|---|
+| 2026-08-06 | 9 | 29.7 | 18.2 | 0.321 | −13.71 |
+| 2026-08-07 | 23 | 120.0 | 17.3 | 0.333 | −16.58 |
+| 2026-08-08 | 13 | 94.2 | 16.2 | 0.013 | +14.89 |
+| 2026-08-09 | 8 | 56.2 | 16.6 | 0.356 | −18.83 |
+| 2026-08-10 | 48 | 276.8 | 17.4 | 0.072 | +10.34 |
+| 2026-08-11 | 23 | 91.6 | 16.7 | 0.197 | −2.63 |
+| 2026-08-13 | 47 | 215.0 | 17.2 | 0.315 | −14.16 |
+| 2026-08-14 | 67 | 371.2 | 17.3 | 0.167 | +0.75 |
+| 2026-08-15 | 46 | 290.6 | 17.3 | 0.245 | −7.09 |
+
+### The kill is on DIRECTION, not power — third worked example of the pattern
+
+The hypothesis staked that the sold longshot side (15-19¢) is overpriced and should win materially
+LESS than its price. In-sample it won **0.114 vs ~0.165 priced** (5.1pp favorable). Forward,
+contract-weighted, it won **0.2004 vs ~0.172 priced** — **2.9pp UNFAVORABLE**, the opposite sign.
+6 of 9 forward days ran hot (sideWon above the day's own priced ask), including four days
+(08-06/07/09/13) at 32-36% against a ~17¢ ask — roughly double the priced rate — with no shared bad
+ticker or settlement anomaly behind them (checked: the two largest single-position losses, both
+sideWon=1.0 outlier props, land on 08-14 and 08-15, days that were NOT among the four worst by rate;
+the inversion is broad-based across the window, not a couple of outlier settlements dragging the mean).
+
+Killed on day 9 of an 8-day floor — after the pre-registered minimum sample was already met, ahead of
+the 2026-08-20 calendar checkpoint. A discretionary stop-risk kill under the early-kill bar set at the
+`hrr-7074` kill ("an early kill needs a DIRECTION across multiple days, not one bad slate") — this one
+clears that bar with room: multiple non-adjacent days independently show the same-sign inversion, and
+three of four substantive criteria fail, not just one.
+
+Third mechanism inversion after `f5total-5054` and `hrr-7074`. Re-entry record now **0-for-8**
+across all pre-registered cells that have reached a terminal PASS/KILL verdict.

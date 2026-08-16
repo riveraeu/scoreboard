@@ -28,10 +28,14 @@
 // robustness is necessary and not sufficient — it was the ONLY cell of ~555 to clear the structural
 // bar on 8/05 and it still inverted.
 //
-// `ks-1519` (docs/MAKER_KS_PREREG.md) added 2026-08-06 — second cell on the 8/06 tripwire (in-sample
-// +5.47¢/ct, 221 fills / 8 days, day-clustered CI [+0.08, +10.86], weighted sideWon ~0.114 vs ~0.165
-// priced). Longshot-side mechanism (whichever of YES/NO on KXMLBKS is in the 15-19¢ range).
-// sideWonBelow is 0.14 — materially below the ~16.5¢ avg ask, room for forward variance.
+// `ks-1519` (docs/MAKER_KS_PREREG.md) added 2026-08-06, KILLED EARLY on 2026-08-16 — day 9 of the
+// 8-day floor (sample floor was already met: 284 forward fills), failing 3 of 4 substantive criteria
+// (mean −2.76¢, day-clustered CI [−9.98, +4.47], sideWon 0.2004 vs the < 0.14 bar). Third mechanism
+// inversion after f5total-5054 and hrr-7074: in-sample the longshot side won ~0.114 against ~0.165
+// priced (favorable, 5.1pp below price); forward it won 0.2004 against ~0.172 priced (unfavorable,
+// 2.9pp ABOVE price) — 6 of 9 forward days ran hot (sideWon > priced ask), not one bad slate. Per the
+// KILL rule it is NOT in this registry and is NOT re-sliced: a new forward test on KXMLBKS longshots
+// is a new id + a new doc.
 //
 // `totalruns-1519` (docs/MAKER_TOTALRUNS_PREREG.md) added 2026-08-10 — 8/09 tripwire hit (in-sample
 // +9.37¢/ct, 333 fills / 11 days, day-clustered CI [+5.03, +13.72], weighted sideWon ~0.077 vs ~0.17
@@ -88,12 +92,6 @@
 // Weighted sideWon ≈ 0.150 vs ~27¢ priced; bad days 8/05 (0.409) and 8/06 (0.588) are a structural risk.
 // Same ML-anchor mechanism as mlbsp cluster, applied to F5 half-game. sideWonBelow 0.22.
 export const PREREG_CELLS = [
-  {
-    id: "ks-1519", sport: "mlb", category: "strikeouts", band: "15-19",
-    doc: "docs/MAKER_KS_PREREG.md", label: "MLB strikeouts longshot 15-19¢",
-    forwardStart: "2026-08-06", checkpoint: "2026-08-20",
-    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.14, minDays: 8, minFills: 50 },
-  },
   {
     id: "totalruns-1519", sport: "mlb", category: "totalRuns", band: "15-19",
     doc: "docs/MAKER_TOTALRUNS_PREREG.md", label: "MLB total runs tail 15-19¢",
