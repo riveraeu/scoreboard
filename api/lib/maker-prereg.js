@@ -91,6 +91,28 @@
 // days 8/5-8/6); now cleared bar on 8/10 with 72 fills / 10 days, CI-lo +2.88¢ (wide: +2.88 to +21.71).
 // Weighted sideWon ≈ 0.150 vs ~27¢ priced; bad days 8/05 (0.409) and 8/06 (0.588) are a structural risk.
 // Same ML-anchor mechanism as mlbsp cluster, applied to F5 half-game. sideWonBelow 0.22.
+//
+// `wnbapts-2529` (docs/MAKER_WNBA_PTS_PREREG.md) added 2026-08-16 — new category (individual player
+// points, first tripwire hit for this market). In-sample sideWon ~0.172 vs ~26.4¢ priced, +9.28¢/ct,
+// CI [+1.37, +17.19], 11/13 positive, topDayShare 0.13 (lowest in its category). Netting screen: both
+// halves of wnba|points are positive (+1.81/+3.81, whole +2.97) — not the mirrored price-ladder
+// artifact. Same season-average-anchor mechanism as wnba3p/wnbatp, applied to individual scoring.
+// sideWonBelow 0.22.
+//
+// `wnba3p-5559` (docs/MAKER_WNBA_3P5559_PREREG.md) added 2026-08-16 — direct sibling of wnba3p-6064,
+// one band below. In-sample sideWon ~0.406 vs ~56.9¢ priced, +16.34¢/ct, CI [+1.25, +31.43], only
+// 8/16 positive days (50% — its weakest point, named explicitly in the doc). Netting screen: same
+// inverted shape that let wnba3p-6064 survive (sub-50 −6.92, 50+ +7.53, whole +2.18). Same mechanism
+// as wnba3p-6064, one tier closer to the mean. sideWonBelow 0.48.
+//
+// `wnbatp-4044` (docs/MAKER_WNBA_TP4044_PREREG.md) added 2026-08-16 — extends the wnbatp longshot
+// mechanism to a less-extreme tier. In-sample sideWon ~0.272 vs ~41.7¢ priced, +14.54¢/ct, CI
+// [+1.46, +27.62], 12/15 positive. Netting screen: mirrored book, same shape as the registered
+// cluster (sub-50 +15.0, 50+ −13.0, whole +1.66); the sub-50 band sequence decays coherently toward
+// zero approaching 50¢ (15-19 +16.83 → … → 40-44 +14.54 → 45-49 +2.15), which is why 45-49 was NOT
+// registered (near-pick'em price, no mechanism story — same reasoning that rejected mlb|f5total|45-49
+// the same day). Separate registration from the wnbatp cluster/wnbatp-1519 (post-hoc cluster edits
+// change the existing all-must-pass verdict). sideWonBelow 0.35.
 export const PREREG_CELLS = [
   {
     id: "totalruns-1519", sport: "mlb", category: "totalRuns", band: "15-19",
@@ -169,6 +191,24 @@ export const PREREG_CELLS = [
     doc: "docs/MAKER_MLB_F5SP_PREREG.md", label: "MLB F5 spread underdog 25-29¢",
     forwardStart: "2026-08-10", checkpoint: "2026-08-24",
     criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.22, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "wnbapts-2529", sport: "wnba", category: "points", band: "25-29",
+    doc: "docs/MAKER_WNBA_PTS_PREREG.md", label: "WNBA points longshot 25-29¢",
+    forwardStart: "2026-08-16", checkpoint: "2026-08-30",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.22, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "wnba3p-5559", sport: "wnba", category: "threePointers", band: "55-59",
+    doc: "docs/MAKER_WNBA_3P5559_PREREG.md", label: "WNBA threePointers moderate-favorite 55-59¢",
+    forwardStart: "2026-08-16", checkpoint: "2026-08-30",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.48, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "wnbatp-4044", sport: "wnba", category: "totalPoints", band: "40-44",
+    doc: "docs/MAKER_WNBA_TP4044_PREREG.md", label: "WNBA total points longshot 40-44¢",
+    forwardStart: "2026-08-16", checkpoint: "2026-08-30",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.35, minDays: 8, minFills: 50 },
   },
 ];
 

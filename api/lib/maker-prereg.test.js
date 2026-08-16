@@ -227,6 +227,50 @@ test("mlbf5sp-2529 pins the pre-registered criteria fixed on 2026-08-10", () => 
   });
 });
 
+// Exact-value pins for wnbapts-2529, wnba3p-5559, wnbatp-4044 (2026-08-16 tripwire registrations).
+// Fixed by their respective docs/MAKER_*_PREREG.md before the 2026-08-16 forward window.
+test("wnbapts-2529 pins the pre-registered criteria fixed on 2026-08-16", () => {
+  const spec = PREREG_CELLS.find((s) => s.id === "wnbapts-2529");
+  assert.ok(spec, "wnbapts-2529 must be present");
+  assert.equal(spec.doc, "docs/MAKER_WNBA_PTS_PREREG.md");
+  assert.equal(spec.sport, "wnba");
+  assert.equal(spec.category, "points");
+  assert.equal(spec.band, "25-29");
+  assert.equal(spec.forwardStart, "2026-08-16");
+  assert.equal(spec.checkpoint, "2026-08-30");
+  assert.deepEqual(spec.criteria, {
+    ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.22, minDays: 8, minFills: 50,
+  });
+});
+
+test("wnba3p-5559 pins the pre-registered criteria fixed on 2026-08-16", () => {
+  const spec = PREREG_CELLS.find((s) => s.id === "wnba3p-5559");
+  assert.ok(spec, "wnba3p-5559 must be present");
+  assert.equal(spec.doc, "docs/MAKER_WNBA_3P5559_PREREG.md");
+  assert.equal(spec.sport, "wnba");
+  assert.equal(spec.category, "threePointers");
+  assert.equal(spec.band, "55-59");
+  assert.equal(spec.forwardStart, "2026-08-16");
+  assert.equal(spec.checkpoint, "2026-08-30");
+  assert.deepEqual(spec.criteria, {
+    ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.48, minDays: 8, minFills: 50,
+  });
+});
+
+test("wnbatp-4044 pins the pre-registered criteria fixed on 2026-08-16", () => {
+  const spec = PREREG_CELLS.find((s) => s.id === "wnbatp-4044");
+  assert.ok(spec, "wnbatp-4044 must be present");
+  assert.equal(spec.doc, "docs/MAKER_WNBA_TP4044_PREREG.md");
+  assert.equal(spec.sport, "wnba");
+  assert.equal(spec.category, "totalPoints");
+  assert.equal(spec.band, "40-44");
+  assert.equal(spec.forwardStart, "2026-08-16");
+  assert.equal(spec.checkpoint, "2026-08-30");
+  assert.deepEqual(spec.criteria, {
+    ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.35, minDays: 8, minFills: 50,
+  });
+});
+
 // evaluatePrereg is pure; exercise it against a synthetic spec so these tests stand independent of
 // what is (or isn't) in PREREG_CELLS. checkpoint mirrors the killed f5total cell's so the dated
 // PASS/KILL cases below read naturally.
