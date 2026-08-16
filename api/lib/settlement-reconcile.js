@@ -42,7 +42,7 @@ export const SETTLEMENT_AUTHORITATIVE_SPORTS = new Set([
   "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem", "dimayor",
   "copadobrasil", "eredivisie", "eerstediv",
   "epl", "laliga", "seriea", "ligue1", "jleague",
-  "laliga2", "usl", "copalib", "ligaportugal", "leaguescup",
+  "laliga2", "usl", "copalib", "ligaportugal", "leaguescup", "bolpd",
   "mlb", "wnba",
   "dota2", "kleague", "kbo",
   "ufc", "boxing",

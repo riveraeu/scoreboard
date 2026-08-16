@@ -632,6 +632,23 @@ export const TEAMS = {
     { abbr: "UTR", espnScore: "JUT" },  // Jong FC Utrecht
     { abbr: "VIT" },                    // Vitesse Arnhem
   ],
+  // Bolivian Primera División — model-free maker (KXBOLPDIVGAME, built 2026-08-16). ESPN slug
+  // bol.1 verified live: exact same-date fixture match against 2026-08-16's full 3-game Kalshi
+  // slate (INDCLU, CNPABB, AREPOT — all three confirmed against bol.1's scoreboard for that date).
+  // Registry is every team observed across that slate (6 teams) — add the rest only as first seen
+  // in a live ticker, same doctrine as NWSL/LigaMX's partial rosters.
+  // TWO-SIDED "POT" COLLISION — the reason this registry is dangerous to eyeball: Kalshi's own
+  // "POT" is Real Potosi, but ESPN's own "POT" abbr is a DIFFERENT club, Nacional Potosi (Kalshi
+  // calls that one "CNP"). Get this backwards and Real Potosi's games silently resolve as Nacional
+  // Potosi's. All 4 remaps below verified by same-date fixture cross-reference, not name similarity.
+  bolpd: [
+    { abbr: "IND", espnScore: "CIP" },  // Independiente Petrolero
+    { abbr: "CLU", espnScore: "GVSJ" }, // GV Club Deportivo San Jose de Oruro
+    { abbr: "CNP", espnScore: "POT" },  // Nacional Potosi -- see collision note above
+    { abbr: "ABB" },                    // Academia del Balompie Boliviano
+    { abbr: "ARE", espnScore: "CAR" },  // Always Ready
+    { abbr: "POT", espnScore: "RPO" },  // Real Potosi -- see collision note above
+  ],
   // English Premier League — model-free maker (KXEPLGAME, built 2026-08-10). ESPN slug eng.1
   // verified live. All 20 teams confirmed from KXPREMIERLEAGUE season-futures tickers 2026-08-10.
   // 5 ESPN-side mismatches: BRI→BHA, CFC→CHE, LFC→LIV, MCI→MNC, MUN→MAN.

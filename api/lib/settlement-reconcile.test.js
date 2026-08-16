@@ -29,14 +29,15 @@ test("authoritative set covers the shadow-only sports + mlb/wnba/nfl; nba/nhl st
   // +1 2026-08-11: leaguescup (KXLEAGUESCUPGAME), the MLS × Liga MX summer tournament and the
   // first CROSS-LEAGUE competition here — its team registry is DERIVED as mls ∪ ligamx in teams.js.
   // +1 2026-08-14: eerstediv (KXEERSTEDIVGAME), Dutch 2nd tier, 19th model-free soccer league.
-  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 36);
+  // +1 2026-08-16: bolpd (KXBOLPDIVGAME), Bolivian Primera Division, 20th model-free soccer league.
+  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 37);
   for (const s of ["tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb",
                    "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem", "dimayor",
                    "copadobrasil", "eredivisie", "eerstediv",
                    "epl", "laliga", "seriea", "ligue1", "jleague",
                    "laliga2", "usl", "copalib", "ligaportugal",
                    "mlb", "wnba", "dota2", "kleague", "kbo",
-                   "ufc", "boxing", "nfl", "leaguescup"]) {
+                   "ufc", "boxing", "nfl", "leaguescup", "bolpd"]) {
     assert.ok(isSettlementAuthoritative(s), `${s} should be authoritative`);
   }
   // nba/nhl stay ESPN-graded FOR NOW — off-season, no Poly overlap. Fold the same way when they

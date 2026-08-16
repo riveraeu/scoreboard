@@ -56,6 +56,8 @@ const LEGACY_TEAM_NORM = {
   // has any; its espnScore remaps come from ligamx via CANONICAL_TO_ESPN.
   eerstediv: {}, // canonical = Kalshi abbrs, no aliases; the 10 espnScore remaps (incl. the four
   // "Jong" reserve-team abbrs) live in CANONICAL_TO_ESPN, not TEAM_NORM.
+  bolpd: {}, // canonical = Kalshi abbrs, no aliases; the 4 espnScore remaps (incl. the two-sided
+  // "POT" collision) live in CANONICAL_TO_ESPN, not TEAM_NORM.
 };
 
 const LEGACY_VALID_TEAMS = {
@@ -85,6 +87,7 @@ const LEGACY_VALID_TEAMS = {
   copalib: ["CARC","COQ","COR","CPO","CRU","ELP","FLA","FLU","IND","LDU","MIR","PAL","PLA","RIV","TOL","UC"],
   ligaportugal: ["ACV","ALV","ARO","BEN","BRA","CAS","CDN","CSM","ESA","EST","FAM","FCP","GIL","MOR","RAV","SCL","SPO","VIT"],
   eerstediv: ["ALM","PSV","EIN","MAA","HER","DBO","BRE","VEN","WAA","DOR","ROD","HEL","VOL","OSS","GRA","AZ","AJA","EMM","UTR","VIT"],
+  bolpd: ["IND","CLU","CNP","ABB","ARE","POT"],
 };
 
 const LEGACY_CANONICAL_TO_ESPN = {
@@ -110,6 +113,7 @@ const LEGACY_CANONICAL_TO_ESPN = {
   copalib: { CARC: "ROS", CPO: "CPT", ELP: "EST", IND: "IDV", UC: "CDUC" },
   ligaportugal: { ARO: "FCA", BEN: "SLB", BRA: "SCB", CAS: "CPAC", CSM: "MAR", ESA: "EST", EST: "EPF", FAM: "FCF", GIL: "GVFC", MOR: "MFC", RAV: "RAFC", SCL: "CDSC", SPO: "SCP", VIT: "VSC" },
   eerstediv: { PSV: "JPS", MAA: "MVV", BRE: "NAC", VEN: "VVV", WAA: "RKC", ROD: "RJC", OSS: "TOP", AZ: "JAZ", AJA: "JAJ", UTR: "JUT" },
+  bolpd: { IND: "CIP", CLU: "GVSJ", CNP: "POT", ARE: "CAR", POT: "RPO" },
 };
 
 const LEGACY_WNBA_TEAM_IDS = {

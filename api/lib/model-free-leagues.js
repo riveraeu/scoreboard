@@ -160,6 +160,13 @@ export const MODEL_FREE_LEAGUES = {
   // eerstediv in parseGameTeams' variable-length allowlist (this commit). See the teams.js block for
   // the unusually high (10/20) mismatch rate and why.
   eerstediv: { espnSlug: "ned.2" },
+  // 20th league, adopted 2026-08-16 — Bolivian Primera Division (KXBOLPDIVGAME). ESPN slug bol.1
+  // verified live: exact same-date fixture match, all 3 of 2026-08-16's Kalshi games (INDCLU,
+  // CNPABB, AREPOT) matched bol.1's scoreboard for that date. Default canonTeam suffices (no
+  // ESPN-internal abbr collision requiring wrapCanonTeam — the Kalshi/ESPN "POT" cross-venue
+  // collision is a plain per-team espnScore remap, see the teams.js block). No Polymarket
+  // counterpart (not in POLY_MARKETS, not in their discovery queue either) — recorded, not a blocker.
+  bolpd: { espnSlug: "bol.1" },
 };
 
 export const MODEL_FREE_LEAGUE_KEYS = Object.keys(MODEL_FREE_LEAGUES);

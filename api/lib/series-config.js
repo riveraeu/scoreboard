@@ -181,6 +181,10 @@ export const SERIES_CONFIG = {
   // BTTS is also a real book (6/7) but deliberately not adopted here, matching Eredivisie's own
   // scope choice — a discovery candidate for later, not dismissed.
   KXEERSTEDIVGAME:      { sport: "eerstediv", league: "eerstediv", stat: "game",   col: "ML", gameType: "modelFreeMl" },
+  // Bolivian Primera Division (KXBOLPDIVGAME, adopted 2026-08-16) — 9/9 real books live, 1c median
+  // spread, real volume. ESPN slug bol.1, exact same-date fixture match. See model-free-leagues.js
+  // + teams.js for the collision note (Kalshi/ESPN both use "POT" for different clubs).
+  KXBOLPDIVGAME:        { sport: "bolpd", league: "bolpd", stat: "game",   col: "ML", gameType: "modelFreeMl" },
   KXEERSTEDIVSPREAD:    { sport: "eerstediv", league: "eerstediv", stat: "spread", col: "G",  gameType: "clubSoccerThreshold", subtype: "spread" },
   KXEERSTEDIVTOTAL:     { sport: "eerstediv", league: "eerstediv", stat: "total",  col: "G",  gameType: "clubSoccerThreshold", subtype: "total" },
   KXCOPADOBRASILTOTAL:  { sport: "copadobrasil", league: "copadobrasil", stat: "total",  col: "G", gameType: "clubSoccerThreshold", subtype: "total" },
