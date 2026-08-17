@@ -50,8 +50,11 @@ export function parseGameTeams(eventTicker, sport) {
   // the tournament's 36, which is what keeps every split unique.
   // eerstediv joined 2026-08-14: "AZ" (Jong AZ Alkmaar) is a 2-char Kalshi code, everything else
   // 3-char — GRAAZ (5 chars) needs the validated 2+3 fallback here, not the unvalidated one below.
+  // belgianpl joined 2026-08-17: "RAFC" (Antwerp) and "RAAL" (La Louvière) are 4-char, everything
+  // else 3-char — RAFCGEN/STARAAL etc (7 chars) need this path the same reason mls/leaguescup need
+  // it for LAFC/NYRB. No 2-char codes in this registry.
   if ((sport === "wnba" || sport === "mls" || sport === "brasileirao" || sport === "nwsl" || sport === "argprem" || sport === "copadobrasil" || sport === "ligue1" || sport === "usl" || sport === "copalib" || sport === "nfl" || sport === "kbo"
-       || sport === "dimayor" || sport === "leaguescup" || sport === "eerstediv") && valid) {
+       || sport === "dimayor" || sport === "leaguescup" || sport === "eerstediv" || sport === "belgianpl") && valid) {
     for (let i = Math.min(4, rest.length - 2); i >= 2; i--) {
       const a = normTeam(sport, rest.slice(0, i));
       for (let j = Math.min(4, rest.length - i); j >= 2; j--) {

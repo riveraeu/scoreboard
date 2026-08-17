@@ -201,6 +201,10 @@ export const SERIES_CONFIG = {
   // spread, real volume. ESPN slug bol.1, exact same-date fixture match. See model-free-leagues.js
   // + teams.js for the collision note (Kalshi/ESPN both use "POT" for different clubs).
   KXBOLPDIVGAME:        { sport: "bolpd", league: "bolpd", stat: "game",   col: "ML", gameType: "modelFreeMl" },
+  // Belgian Pro League (KXBELGIANPLGAME, adopted 2026-08-17) — 18/18 real books, 4c median spread.
+  // ESPN slug bel.1, exact same-date fixture match. See model-free-leagues.js + teams.js for the
+  // team-code mapping (mostly Kalshi-vs-ESPN naming-convention drift, no collision).
+  KXBELGIANPLGAME:      { sport: "belgianpl", league: "belgianpl", stat: "game", col: "ML", gameType: "modelFreeMl" },
   KXEERSTEDIVSPREAD:    { sport: "eerstediv", league: "eerstediv", stat: "spread", col: "G",  gameType: "clubSoccerThreshold", subtype: "spread" },
   KXEERSTEDIVTOTAL:     { sport: "eerstediv", league: "eerstediv", stat: "total",  col: "G",  gameType: "clubSoccerThreshold", subtype: "total" },
   KXCOPADOBRASILTOTAL:  { sport: "copadobrasil", league: "copadobrasil", stat: "total",  col: "G", gameType: "clubSoccerThreshold", subtype: "total" },

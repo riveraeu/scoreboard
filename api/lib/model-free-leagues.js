@@ -179,6 +179,13 @@ export const MODEL_FREE_LEAGUES = {
   // collision is a plain per-team espnScore remap, see the teams.js block). No Polymarket
   // counterpart (not in POLY_MARKETS, not in their discovery queue either) — recorded, not a blocker.
   bolpd: { espnSlug: "bol.1" },
+  // 21st league, adopted 2026-08-17 — Belgian Pro League (KXBELGIANPLGAME). ESPN slug bel.1
+  // verified live: exact same-date fixture match (Club Brugge vs Cercle Brugge + Lommel vs
+  // Westerlo, both 2026-08-23) against Kalshi's own slate. 18/18 real books, 4¢ median spread.
+  // Default canonTeam suffices (no ESPN-internal abbr collision — every mismatch below is a
+  // straight 1:1 naming-convention remap, not a shared abbr needing wrapCanonTeam). RAFC/RAAL
+  // (4-char) → belgianpl in parseGameTeams' variable-length allowlist (this commit).
+  belgianpl: { espnSlug: "bel.1" },
 };
 
 export const MODEL_FREE_LEAGUE_KEYS = Object.keys(MODEL_FREE_LEAGUES);

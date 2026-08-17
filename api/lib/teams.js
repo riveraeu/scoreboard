@@ -649,6 +649,34 @@ export const TEAMS = {
     { abbr: "ARE", espnScore: "CAR" },  // Always Ready
     { abbr: "POT", espnScore: "RPO" },  // Real Potosi -- see collision note above
   ],
+  // Belgian Pro League — model-free maker (KXBELGIANPLGAME, built 2026-08-17). ESPN slug bel.1
+  // verified live: same-date fixture match (Club Brugge vs Cercle Brugge + Lommel vs Westerlo,
+  // both 2026-08-23) against Kalshi's own slate. All 18 codes come from Kalshi's event `sub_title`
+  // field ("BRU vs CER"), not guessed from team names. No ESPN-internal collision (all 18 ESPN
+  // abbrs are mutually distinct) — the high mismatch rate below is just naming-convention drift
+  // (Kalshi favors historical/short codes, ESPN favors its own abbreviation scheme), not a
+  // collision requiring wrapCanonTeam. RAFC (4-char) needs the parseGameTeams variable-length
+  // allowlist, same reason mls/leaguescup need it for LAFC/NYRB.
+  belgianpl: [
+    { abbr: "BRU" },                    // Club Brugge
+    { abbr: "CER", espnScore: "CBK" },  // Cercle Brugge
+    { abbr: "LOM" },                    // Lommel SK
+    { abbr: "WES", espnScore: "KVCW" }, // KVC Westerlo
+    { abbr: "RAFC", espnScore: "ANT" }, // Antwerp (Kalshi: Royal Antwerp FC)
+    { abbr: "GEN", espnScore: "GENK" }, // Racing Genk
+    { abbr: "KAA", espnScore: "GENT" }, // KAA Gent
+    { abbr: "OHL" },                    // OH Leuven
+    { abbr: "RCH", espnScore: "CHA" },  // Royal Charleroi SC
+    { abbr: "YRM", espnScore: "KVM" },  // KV Mechelen (Kalshi code from "Yellow-Red Mechelen")
+    { abbr: "ZUL" },                    // Zulte-Waregem
+    { abbr: "BEV", espnScore: "WAA" },  // Waasland-Beveren
+    { abbr: "STA", espnScore: "STL" },  // Standard Liège
+    { abbr: "RAAL", espnScore: "RLL" }, // RAAL La Louvière
+    { abbr: "STT", espnScore: "STVV" }, // Sint-Truidense
+    { abbr: "KOR", espnScore: "KVK" },  // KV Kortrijk
+    { abbr: "USG" },                    // Union St.-Gilloise
+    { abbr: "RSC", espnScore: "AND" },  // Anderlecht (Kalshi: Royal Sporting Club Anderlecht)
+  ],
   // English Premier League — model-free maker (KXEPLGAME, built 2026-08-10). ESPN slug eng.1
   // verified live. All 20 teams confirmed from KXPREMIERLEAGUE season-futures tickers 2026-08-10.
   // 5 ESPN-side mismatches: BRI→BHA, CFC→CHE, LFC→LIV, MCI→MNC, MUN→MAN.
