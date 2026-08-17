@@ -100,3 +100,41 @@ the last confirmation, not a formality.**
 Criteria, window, and green-light action are fixed as of 2026-08-10. The forward test is the only
 thing standing between "looks green" and "is real," so the rule that evaluates it must not be
 adjustable after the fact.
+
+## RESULT — KILLED EARLY 2026-08-17 (day 5 of the 8-day floor, fill floor already met)
+
+**Forward** (`game_date >= 2026-08-10`, 5 days / 69 fills — fill floor cleared, day floor is not)
+— 0 of 5 substantive criteria met: mean **−16.67¢/ct** (bar ≥+5) · day-clustered CI **[−46.25,
++12.91]** (bar lo>0) · 2 of 5 days positive (bar ≥60%) · **sideWon 0.4369** (bar <0.22).
+
+Per-day:
+
+| day | fills | contracts | avgAsk | sideWon | ¢/ct |
+|---|---|---|---|---|---|
+| 2026-08-10 | 14 | 110.0 | 27.3 | 0.455 | −18.18 |
+| 2026-08-13 | 10 | 80.0 | 27.3 | 0.500 | −22.88 |
+| 2026-08-14 | 20 | 125.3 | 26.8 | **0.840** | −57.13 |
+| 2026-08-15 | 4 | 40.0 | 27.0 | 0.250 | +2.00 |
+| 2026-08-16 | 21 | 175.9 | 26.9 | 0.152 | +11.69 |
+
+### Direction, not power — fourth worked example
+
+The hypothesis staked that the sold longshot side (25-29¢) is overpriced and should win materially
+**less** than its price. In-sample it won **0.166 vs ~27¢ priced** (10.4pp favorable). Forward,
+contract-weighted, it won **0.4369 vs ~27¢ priced** — **16.7pp UNFAVORABLE**, the opposite sign and
+the largest single-cell inversion of the four kills to date. Three of the five forward days
+(08-10, 08-13, 08-14) ran the sold side at 0.455-0.840 — well above even the in-sample tail event
+(7/31, sideWon=1.0 on 1 fill) that was already named as a structural risk in the original doc.
+08-14 alone (125 contracts, sideWon 0.84) is the single largest-volume day in the window and it is
+the worst one — this is not a thin outlier riding on a tiny fill, the way the in-sample 7/31 event
+was.
+
+Killed on day 5 of an 8-day floor, but the 50-fill sample floor was already cleared (69 fills) two
+days in. Per the early-kill bar set at the `hrr-7074` kill ("a DIRECTION across multiple days, not
+one bad slate"): 3 of 5 days independently show the same-sign inversion, including the two
+highest-volume days in the window, and all 5 of 5 substantive criteria fail — the clearest case of
+the two killed today.
+
+Fourth mechanism inversion after `f5total-5054`, `hrr-7074`, and `ks-1519` — and the second one
+(after `f5total-5054`) to invert on the SAME hypothesis family (F5 markets, ML-anchor longshot
+overpricing) that the `mlbsp`/`mlbf5sp` cluster still shares. Re-entry record now **0-for-10**.

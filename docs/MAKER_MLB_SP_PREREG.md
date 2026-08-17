@@ -134,3 +134,52 @@ Criteria, window, and green-light action are fixed as of 2026-08-10. Both bands 
 structural bar and share an articulable mechanism; the forward test is the only thing standing
 between "looks green" and "is real," so the rule that evaluates it must not be adjustable after
 the fact.
+
+## RESULT — KILLED EARLY 2026-08-17 (day 6 of the 8-day floor)
+
+**Forward** (`game_date >= 2026-08-10`) — neither band clears its bar, and the cluster rule
+(BOTH must pass) means one failing band is enough regardless of the other:
+
+| band | days | fills | mean | bar | CI-lo | bar | sideWon | bar |
+|---|---|---|---|---|---|---|---|---|
+| 25-29 | 6 | 129 | **+3.88** | ≥+5 fail | **−0.88** | >0 fail | **0.2292** | <0.22 fail |
+| 35-39 | 6 | 97 | +6.56 pass | **−10.68** | >0 fail | **0.301** | <0.30 fail |
+
+Per-day sideWon (25-29 / 35-39):
+
+| day | 25-29 sideWon | 25-29 ¢/ct | 35-39 sideWon | 35-39 ¢/ct |
+|---|---|---|---|---|
+| 2026-08-10 | 0.119 | +15.68 | 0.308 | +6.23 |
+| 2026-08-11 | 0.000 | +25.88 | 0.333 | +4.00 |
+| 2026-08-13 | 0.295 | −2.61 | 0.250 | +13.25 |
+| 2026-08-14 | 0.295 | −3.57 | 0.156 | +20.15 |
+| 2026-08-15 | 0.229 | +3.84 | 0.145 | +22.10 |
+| 2026-08-16 | 0.237 | +3.48 | 0.539 | −16.96 |
+
+### Weaker signature than the prior three kills — recorded honestly
+
+This is the fourth discretionary early kill, and the weakest one on magnitude. `f5total-5054`,
+`hrr-7074`, and `ks-1519` all showed the sold side winning by a wide, unambiguous margin above its
+priced ask across most of the window. Here the two bands fail differently:
+
+- **25-29** shows a genuine multi-day drift, not one bad slate: the last 4 of 6 days
+  (0.295/0.295/0.229/0.237) all sit at or above the 0.22 bar, with only the first two days running
+  cool. Mean is still positive (+3.88) but under the +5 floor, and CI-lo is barely negative
+  (−0.88) — this is a real but small effect, or no effect, not an inversion.
+- **35-39** is closer to a single-day story: 08-16 alone (24 fills, 204 contracts, sideWon 0.539,
+  −16.96¢/ct) drives the sideWon-bar failure and most of the CI width. Days 1-2 (0.308, 0.333)
+  were already at/above the 0.30 bar even before that spike, so it isn't purely one outlier
+  either, but it's a thinner case than 25-29's.
+
+### Why kill now rather than extend to the sample floor
+
+The extend rule is reserved for "**only** criterion 5 (sample) unmet, with 1-4/6 otherwise
+trending pass." That does not describe this cluster: 25-29 already fails 3 of 4 substantive
+criteria (ciLo, mean, sideWon) with its fill floor (129 > 50) already cleared — only the day-count
+gate is short. A cluster is all-must-pass, so 25-29's failure alone is sufficient regardless of
+35-39's thinner case. Per the KILL rule, a failed forward test is the answer; this is not re-sliced
+and neither band is re-registered independently.
+
+Fourth discretionary stop-risk kill after `f5total-5054`, `hrr-7074`, and `ks-1519` — first one
+where the forward read is thin/mixed rather than a clean inversion, recorded as such rather than
+rounded up to match the earlier three. Re-entry record now **0-for-9**.

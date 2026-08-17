@@ -59,18 +59,25 @@
 // losing day for 10-14 and 15-19 (same upset game); 20-24 had fills that day and still didn't cover.
 // sideWonBelow 0.08/0.12/0.12. All three must pass GREEN; partial cluster pass does not authorize capital.
 //
-// `mlbsp-2529/3539` (docs/MAKER_MLB_SP_PREREG.md) added 2026-08-10 — 2-band cluster from the same 8/09
-// tripwire (mlb|spread); in-sample sideWon ~0.149/0.227 vs ~27/37¢ priced. Different character from
-// WNBA spread: sideWon genuinely fluctuates (0–0.305 non-outlier), not near-zero — underdogs cover
-// sometimes, just less than priced. Shared bad day: 8/8 (sideWon 0.565/0.580). Same ML-anchor mechanism
-// as WNBA spread, now cross-sport. 25-29 CI-lo is thin (+4.92¢, close to the +5¢ meanFloor).
-// sideWonBelow 0.22/0.30. Both must pass GREEN; partial cluster pass does not authorize capital.
+// `mlbsp-2529/3539` (docs/MAKER_MLB_SP_PREREG.md) added 2026-08-10, KILLED EARLY on 2026-08-17 — day 6
+// of the 8-day floor (fill floors already cleared: 129/97). 25-29 failed 3 of 4 substantive criteria
+// (mean +3.88 vs ≥+5, CI [−0.88, +8.63], sideWon 0.2292 vs the <0.22 bar); 35-39 failed 2 (CI [−10.68,
+// +23.80], sideWon 0.301 vs the <0.30 bar, largely driven by a single 08-16 spike day). Cluster is
+// all-must-pass, so 25-29 alone kills it. Weakest-magnitude kill of the four to date — a real but
+// small/mixed multi-day drift for 25-29, closer to one bad slate for 35-39 — recorded as such rather
+// than rounded up to a clean inversion. Per the KILL rule it is NOT in this registry and is NOT
+// re-sliced: a new forward test on MLB spread underdogs is a new id + a new doc.
 //
-// `mlbf5t-2529` (docs/MAKER_MLB_F5T_PREREG.md) added 2026-08-10 — single cell from the 8/09 tripwire
-// (mlb|f5total|25-29); in-sample sideWon ~0.166 vs ~27¢ priced, +12.07¢/ct, CI [+3.65, +20.48],
-// 9/10 positive. Tail event: 7/31 sideWon=1.0 on 1 fill (3 contracts; named structural risk). ML-anchor
-// mechanism applied to F5 half-game slice. Companion f5spread|25-29 NOT registered (CI-lo +1.16¢, two
-// consecutive bad days 8/5-8/6). sideWonBelow 0.22.
+// `mlbf5t-2529` (docs/MAKER_MLB_F5T_PREREG.md) added 2026-08-10, KILLED EARLY on 2026-08-17 — day 5
+// of the 8-day floor (fill floor already met: 69 forward fills), failing all 5 substantive criteria
+// (mean −16.67¢, day-clustered CI [−46.25, +12.91], 2/5 days positive, sideWon 0.4369 vs the <0.22
+// bar). Fourth mechanism inversion after f5total-5054, hrr-7074, and ks-1519, and the largest single
+// inversion of the four: in-sample the longshot side won ~0.166 against ~27¢ priced (favorable);
+// forward it won 0.4369 (unfavorable, opposite sign). 3 of 5 forward days ran the sold side at
+// 0.455-0.840, including the two highest-volume days in the window. Second inversion (after
+// f5total-5054) in the F5-markets/ML-anchor-longshot family the mlbsp/mlbf5sp cluster still shares.
+// Per the KILL rule it is NOT in this registry and is NOT re-sliced: a new forward test on MLB F5
+// totals is a new id + a new doc.
 //
 // `wnba3p-6064` (docs/MAKER_WNBA_3P_PREREG.md) added 2026-08-10 — first threePointers hit on the 8/10
 // tripwire (19 total hits, 9 already registered); in-sample sideWon ~0.327 vs ~62¢ priced, +29.20¢/ct,
@@ -155,24 +162,6 @@ export const PREREG_CELLS = [
     doc: "docs/MAKER_WNBA_SP_PREREG.md", label: "WNBA spread underdog 20-24¢",
     forwardStart: "2026-08-10", checkpoint: "2026-08-24",
     criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.12, minDays: 8, minFills: 50 },
-  },
-  {
-    id: "mlbsp-2529", sport: "mlb", category: "spread", band: "25-29",
-    doc: "docs/MAKER_MLB_SP_PREREG.md", label: "MLB spread underdog 25-29¢",
-    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
-    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.22, minDays: 8, minFills: 50 },
-  },
-  {
-    id: "mlbsp-3539", sport: "mlb", category: "spread", band: "35-39",
-    doc: "docs/MAKER_MLB_SP_PREREG.md", label: "MLB spread underdog 35-39¢",
-    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
-    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.30, minDays: 8, minFills: 50 },
-  },
-  {
-    id: "mlbf5t-2529", sport: "mlb", category: "f5total", band: "25-29",
-    doc: "docs/MAKER_MLB_F5T_PREREG.md", label: "MLB F5 total longshot 25-29¢",
-    forwardStart: "2026-08-10", checkpoint: "2026-08-24",
-    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.22, minDays: 8, minFills: 50 },
   },
   {
     id: "wnba3p-6064", sport: "wnba", category: "threePointers", band: "60-64",

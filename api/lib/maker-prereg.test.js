@@ -26,8 +26,12 @@ test("every PREREG_CELLS entry carries its render-critical + doc fields", () => 
 // `f5total-5054` killed 2026-08-03 (day 3/8, mechanism inverted); `hrr-7074` killed 2026-08-11
 // (day 6/8, sideWon 0.801 vs the < 0.60 bar — mechanism inverted the same way); `ks-1519` killed
 // 2026-08-16 (day 9/8, sample floor already met, sideWon 0.2004 vs the < 0.14 bar — same inversion).
+// `mlbsp-2529`/`mlbsp-3539` killed 2026-08-17 (day 6/8, cluster all-must-pass — 25-29 failed
+// mean/ciLo/sideWon, 35-39 failed ciLo/sideWon largely off one bad day; weakest-magnitude kill of
+// the five). `mlbf5t-2529` killed 2026-08-17 (day 5/8, fill floor already met, sideWon 0.4369 vs
+// the < 0.22 bar — largest single-cell inversion to date, second in the F5/ML-anchor family).
 test("killed cells are never re-added to PREREG_CELLS", () => {
-  for (const dead of ["f5total-5054", "hrr-7074", "ks-1519"]) {
+  for (const dead of ["f5total-5054", "hrr-7074", "ks-1519", "mlbsp-2529", "mlbsp-3539", "mlbf5t-2529"]) {
     assert.equal(PREREG_CELLS.find((s) => s.id === dead), undefined,
       `${dead} was KILLED on forward data — a new test is a new id + a new doc, never a re-open`);
   }
@@ -134,52 +138,6 @@ test("wnbasp-2024 pins the pre-registered criteria fixed on 2026-08-10", () => {
   assert.equal(spec.checkpoint, "2026-08-24");
   assert.deepEqual(spec.criteria, {
     ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.12, minDays: 8, minFills: 50,
-  });
-});
-
-// Exact-value pins for mlbsp-2529/3539 (the "new id + new doc re-adds its own pin" rule).
-// Fixed by docs/MAKER_MLB_SP_PREREG.md before the 2026-08-10 forward window — a diff here is a tripwire.
-test("mlbsp-2529 pins the pre-registered criteria fixed on 2026-08-10", () => {
-  const spec = PREREG_CELLS.find((s) => s.id === "mlbsp-2529");
-  assert.ok(spec, "mlbsp-2529 must be present");
-  assert.equal(spec.doc, "docs/MAKER_MLB_SP_PREREG.md");
-  assert.equal(spec.sport, "mlb");
-  assert.equal(spec.category, "spread");
-  assert.equal(spec.band, "25-29");
-  assert.equal(spec.forwardStart, "2026-08-10");
-  assert.equal(spec.checkpoint, "2026-08-24");
-  assert.deepEqual(spec.criteria, {
-    ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.22, minDays: 8, minFills: 50,
-  });
-});
-
-test("mlbsp-3539 pins the pre-registered criteria fixed on 2026-08-10", () => {
-  const spec = PREREG_CELLS.find((s) => s.id === "mlbsp-3539");
-  assert.ok(spec, "mlbsp-3539 must be present");
-  assert.equal(spec.doc, "docs/MAKER_MLB_SP_PREREG.md");
-  assert.equal(spec.sport, "mlb");
-  assert.equal(spec.category, "spread");
-  assert.equal(spec.band, "35-39");
-  assert.equal(spec.forwardStart, "2026-08-10");
-  assert.equal(spec.checkpoint, "2026-08-24");
-  assert.deepEqual(spec.criteria, {
-    ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.30, minDays: 8, minFills: 50,
-  });
-});
-
-// Exact-value pin for mlbf5t-2529 (the "new id + new doc re-adds its own pin" rule).
-// Fixed by docs/MAKER_MLB_F5T_PREREG.md before the 2026-08-10 forward window — a diff here is a tripwire.
-test("mlbf5t-2529 pins the pre-registered criteria fixed on 2026-08-10", () => {
-  const spec = PREREG_CELLS.find((s) => s.id === "mlbf5t-2529");
-  assert.ok(spec, "mlbf5t-2529 must be present");
-  assert.equal(spec.doc, "docs/MAKER_MLB_F5T_PREREG.md");
-  assert.equal(spec.sport, "mlb");
-  assert.equal(spec.category, "f5total");
-  assert.equal(spec.band, "25-29");
-  assert.equal(spec.forwardStart, "2026-08-10");
-  assert.equal(spec.checkpoint, "2026-08-24");
-  assert.deepEqual(spec.criteria, {
-    ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.22, minDays: 8, minFills: 50,
   });
 });
 
