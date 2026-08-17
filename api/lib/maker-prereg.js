@@ -120,6 +120,20 @@
 // registered (near-pick'em price, no mechanism story — same reasoning that rejected mlb|f5total|45-49
 // the same day). Separate registration from the wnbatp cluster/wnbatp-1519 (post-hoc cluster edits
 // change the existing all-must-pass verdict). sideWonBelow 0.35.
+//
+// `wnbapts-2024` (docs/MAKER_WNBA_PTS2024_PREREG.md) added 2026-08-17 — sibling of wnbapts-2529,
+// one band closer to fair odds. In-sample sideWon ~0.136 vs ~22.3¢ priced, +8.67¢/ct, CI
+// [+0.06, +17.28] — the thinnest CI-lo of any cell registered to date, disclosed not softened.
+// Netting screen: both halves of wnba|points positive (+2.93/+3.14, whole +3.05) — not the mirrored
+// artifact. Same season-average-anchor mechanism as wnbapts-2529. sideWonBelow 0.20.
+//
+// `wnbatp-3539` (docs/MAKER_WNBA_TP3539_PREREG.md) added 2026-08-17 — fills the last unregistered
+// gap in the wnbatp ladder (15-19/20-34/40-44 already covered). In-sample sideWon ~0.246 vs ~36.9¢
+// priced, +12.40¢/ct, CI [+0.15, +24.65], 12/16 positive, topDayShare 0.12 (lowest in the family).
+// Netting screen: mirrored book, same shape as the registered cluster (sub-50 +15.11, 50+ −13.02,
+// whole +1.79). Two named bad days (07-29, 08-02) are real volume, not tiny-sample outliers — more
+// day-to-day variance than any other registered wnbatp cell. Separate registration (post-hoc cluster
+// edits change the existing all-must-pass verdict). sideWonBelow 0.32.
 export const PREREG_CELLS = [
   {
     id: "totalruns-1519", sport: "mlb", category: "totalRuns", band: "15-19",
@@ -198,6 +212,18 @@ export const PREREG_CELLS = [
     doc: "docs/MAKER_WNBA_TP4044_PREREG.md", label: "WNBA total points longshot 40-44¢",
     forwardStart: "2026-08-16", checkpoint: "2026-08-30",
     criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.35, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "wnbapts-2024", sport: "wnba", category: "points", band: "20-24",
+    doc: "docs/MAKER_WNBA_PTS2024_PREREG.md", label: "WNBA points longshot 20-24¢",
+    forwardStart: "2026-08-17", checkpoint: "2026-08-31",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.20, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "wnbatp-3539", sport: "wnba", category: "totalPoints", band: "35-39",
+    doc: "docs/MAKER_WNBA_TP3539_PREREG.md", label: "WNBA total points longshot 35-39¢",
+    forwardStart: "2026-08-17", checkpoint: "2026-08-31",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.32, minDays: 8, minFills: 50 },
   },
 ];
 

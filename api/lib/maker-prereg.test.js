@@ -229,6 +229,36 @@ test("wnbatp-4044 pins the pre-registered criteria fixed on 2026-08-16", () => {
   });
 });
 
+// Exact-value pins for wnbapts-2024, wnbatp-3539 (2026-08-17 tripwire registrations).
+// Fixed by their respective docs/MAKER_*_PREREG.md before the 2026-08-17 forward window.
+test("wnbapts-2024 pins the pre-registered criteria fixed on 2026-08-17", () => {
+  const spec = PREREG_CELLS.find((s) => s.id === "wnbapts-2024");
+  assert.ok(spec, "wnbapts-2024 must be present");
+  assert.equal(spec.doc, "docs/MAKER_WNBA_PTS2024_PREREG.md");
+  assert.equal(spec.sport, "wnba");
+  assert.equal(spec.category, "points");
+  assert.equal(spec.band, "20-24");
+  assert.equal(spec.forwardStart, "2026-08-17");
+  assert.equal(spec.checkpoint, "2026-08-31");
+  assert.deepEqual(spec.criteria, {
+    ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.20, minDays: 8, minFills: 50,
+  });
+});
+
+test("wnbatp-3539 pins the pre-registered criteria fixed on 2026-08-17", () => {
+  const spec = PREREG_CELLS.find((s) => s.id === "wnbatp-3539");
+  assert.ok(spec, "wnbatp-3539 must be present");
+  assert.equal(spec.doc, "docs/MAKER_WNBA_TP3539_PREREG.md");
+  assert.equal(spec.sport, "wnba");
+  assert.equal(spec.category, "totalPoints");
+  assert.equal(spec.band, "35-39");
+  assert.equal(spec.forwardStart, "2026-08-17");
+  assert.equal(spec.checkpoint, "2026-08-31");
+  assert.deepEqual(spec.criteria, {
+    ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.32, minDays: 8, minFills: 50,
+  });
+});
+
 // evaluatePrereg is pure; exercise it against a synthetic spec so these tests stand independent of
 // what is (or isn't) in PREREG_CELLS. checkpoint mirrors the killed f5total cell's so the dated
 // PASS/KILL cases below read naturally.
