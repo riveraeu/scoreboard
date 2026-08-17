@@ -165,6 +165,15 @@ export const POLY_MARKETS = {
   lib:    { series: "10289", slug: "lib",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "copalib" },
   por:    { series: "10330", slug: "por",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "ligaportugal" },
   ned2:   { series: "12353", slug: "ned2",   categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "eerstediv" },
+  // bel1/lec added 2026-08-17, found while checking cross-venue parity for the same-session
+  // KXBELGIANPLGAME/KXLEAGUESCUP1HSPREAD builds. Both verified live via series_id (the /sports
+  // catalog id is unreliable per the standing trap — series_id was read off each catalog entry
+  // and confirmed to return real events): bel1 series 12351 (49 events, moneyline + full soccer
+  // family), lec series 11449 (31 events, same family). bel1 was sitting in POLY_DISMISSED_SPORTS
+  // since the 7/23 triage (before KXBELGIANPLGAME existed) — removed below, same class as uslc's
+  // stale dismissal. lec was never triaged at all (not in the dismissed list either).
+  bel1:   { series: "12351", slug: "bel1",   categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "belgianpl" },
+  lec:    { series: "11449", slug: "lec",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "leaguescup" },
 };
 
 // Sports we capture, as a regex alternation — derived so a new POLY_MARKETS row is admitted by both
@@ -200,7 +209,12 @@ export const POLY_DISMISSED_SPORTS = [
   // crickerala, cricmaharani, cricmukono, cricodc, cricodcl2w, cricppl) — none overlap sports/
   // leagues we model (no club Elo for the soccer leagues, no cricket model at all), and Polymarket
   // stays observatory-only since the 7/04 kill regardless of individual league quality. DISMISS all.
-  "afcl", "argcopa", "bel1", "bel2", "cafcl", "ecs", "frtc", "gre1", "ned2", "par1", "ptsc", "qat1",
+  "afcl", "argcopa", "bel2", "cafcl", "ecs", "frtc", "gre1", "par1", "ptsc", "qat1",
+  // (ned2 was also stale here — it's been active in POLY_MARKETS since the eerstediv build but was
+  // never removed from this list. Harmless in practice: the 'adopted' reconcile in deltas.js runs
+  // BEFORE the dismissed reconcile and the latter only touches status IN ('new','shortlisted'), so
+  // an already-adopted sport can never be re-dismissed by this list. Removed 2026-08-17 anyway,
+  // found while fixing bel1's live version of the same trap.)
   "cricecsch", "cricecseng", "cricfalcons", "cricgermant10", "cricgsl", "cricinterprov",
   "cricjclt10", "crickerala", "cricmaharani", "cricmukono", "cricodc", "cricodcl2w", "cricppl",
   // 8/10 triage (4 of 5 detected): usl1 (USL Championship corner props only — 1 live event, no

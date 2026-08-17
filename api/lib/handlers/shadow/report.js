@@ -84,7 +84,12 @@ export const KALSHI_VENUE_CATEGORY_PREFIXES = {
              "KXBRASILEIROGAME", "KXNWSLGAME", "KXCHNSLGAME", "KXLIGAMXGAME", "KXDIMAYORGAME",
              "KXCOPADOBRASILGAME", "KXARGPREMDIVGAME", "KXEREDIVISIEGAME", "KXJLEAGUEGAME",
              "KXLALIGAGAME", "KXSERIEAGAME", "KXLIGUE1GAME", "KXLALIGA2GAME", "KXUSLGAME",
-             "KXCONMEBOLLIBGAME", "KXLIGAPORTUGALGAME", "KXEERSTEDIVGAME"],
+             "KXCONMEBOLLIBGAME", "KXLIGAPORTUGALGAME", "KXEERSTEDIVGAME",
+             // Three leagues found missing from this list 2026-08-17 while checking cross-venue
+             // parity for the Belgian build — leaguescup (8/11) and bolpd (8/16) were never added
+             // when built, independent of whether a Poly counterpart exists. Their venueVig
+             // Kalshi-side rows were silently uncounted until now.
+             "KXLEAGUESCUPGAME", "KXBOLPDIVGAME", "KXBELGIANPLGAME"],
   total:    ["KXMLBTOTAL", "KXWNBATOTAL", "KXNBATOTAL", "KXNHLTOTAL", "KXNFLTOTAL"],
   spread:   ["KXMLBSPREAD", "KXWNBASPREAD", "KXNBASPREAD", "KXNHLSPREAD"],
   f5:       ["KXMLBF5"],
