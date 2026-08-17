@@ -142,7 +142,8 @@ export const SERIES_CONFIG = {
   // teams.js (ligamx wins the single ATL collision: Kalshi ATL = Atlas, not Atlanta United).
   // Thin window by design: ~17 group games plus ~8 knockout, then dormant until summer 2027.
   // All FOUR series in the vet queue are adopted — GAME first, then the three siblings below on
-  // the same day. No SPREAD or BTTS series exists for this competition.
+  // the same day. (BTTS and 1HSPREAD were believed absent at the time; both were added later —
+  // see their own comments below. Don't trust this line's original claim.)
   KXLEAGUESCUPGAME:   { sport: "leaguescup", league: "leaguescup", stat: "game", col: "ML", gameType: "modelFreeMl" },
   // The three siblings, adopted 2026-08-11 alongside GAME (initially deferred, then taken on the
   // same window). Shapes verified against the RAW Kalshi payload, not a diagnostic's projection:
@@ -160,6 +161,21 @@ export const SERIES_CONFIG = {
   // proven by KXMLS1HBTTS/KXLIGAMX1HBTTS/KXARGPREMDIVBTTS/KXLALIGABTTS. 12 live markets at
   // adoption, group-phase games (subtitle "1st Half: Both Teams To Score", no threshold digit).
   KXLEAGUESCUP1HBTTS:    { sport: "leaguescup", league: "leaguescup", stat: "1hbtts",    col: "G",  gameType: "clubSoccerThreshold", subtype: "btts", half: "1h" },
+  // 1H spread, added 2026-08-17 off the discovery vet queue (firstSeen 2026-07-28, missed by the
+  // 8/11-8/12 batch and its own "no SPREAD exists" note above — it does, just carries the 1H tag
+  // the earlier full-game-only check didn't think to look for). Pure config: subtype "spread" is
+  // the same generic clubSoccerThreshold path already proven by KXMLS1HSPREAD/KXLIGAMX1HSPREAD
+  // (identical shape: half:"1h" + subtype:"spread"). Verified against the RAW Kalshi payload
+  // (never `/api/kalshi-check`, whose sample omits `yes_sub_title`): subtitle "Tijuana de Caliente
+  // wins the 1H by more than 1.5 goals" matches the existing spread regex exactly; team code comes
+  // from the ticker suffix (`TIJ2` -> `TIJ`), same `/^([A-Z]+)/` capture as every other subtype.
+  // At adoption the entire group phase had already finalized (108/108 markets `finalized`, 0 open)
+  // and the tournament sits between phases — every OTHER leaguescup threshold/half series
+  // (1H/1HTOTAL/TEAMTOTAL/1HBTTS) was equally at 0 open markets the same moment, only the
+  // full-game GAME series had live knockout markets (12 open) — so this is not a defect unique to
+  // 1HSPREAD, just the same between-phases gap the whole family sits in. Expect it to relist
+  // alongside its siblings once knockout fixtures (or next year's group phase) are listed.
+  KXLEAGUESCUP1HSPREAD: { sport: "leaguescup", league: "leaguescup", stat: "1hspread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread", half: "1h" },
   // Dutch Eredivisie game winner — 9th model-free maker league, pure config (adopted 2026-08-07).
   // 30/30 real books, 1¢ median spread, overround 1.01. ESPN slug ned.1.
   KXEREDIVISIEGAME:     { sport: "eredivisie", league: "eredivisie", stat: "game",   col: "ML", gameType: "modelFreeMl" },
