@@ -1142,12 +1142,16 @@ async function handleShadowReport({ path, request, env, cache }) {
     const daysBehind = latestGraded
       ? Math.round((Date.parse(`${expectedThrough}T00:00:00Z`) - Date.parse(`${latestGraded}T00:00:00Z`)) / 86400000)
       : null;
-    // Quote-pass telemetry for the day in question (api/lib/maker.js). Read BEFORE composing
-    // `diagnosis`, because without it the no-fills branch has to name three possible causes it
-    // cannot distinguish — which is exactly how 2026-08-12 stayed unexplained. Absent (key expired,
-    // or a cache with no hgetall) → the old wording, which is still the honest answer then.
+    // Quote-pass telemetry (api/lib/maker.js) is keyed by the CALENDAR day the cron fired on
+    // (kalshi.js writes it via the same `reportDate`-style PT-today expression at write time), not
+    // by the game-day being graded — so it must be read with `reportDate`, not `expectedThrough`.
+    // Reading `expectedThrough` here previously froze this block on yesterday's snapshot all day
+    // (found 2026-08-18: `lastAt` never moved past yesterday's last cycle even hours into today).
+    // Read BEFORE composing `diagnosis`, because without it the no-fills branch has to name three
+    // possible causes it cannot distinguish — which is exactly how 2026-08-12 stayed unexplained.
+    // Absent (key expired, or a cache with no hgetall) → the old wording, still the honest answer.
     const qp = cache?.hgetall
-      ? await cache.hgetall(`${QUOTEPASS_KEY_PREFIX}${expectedThrough}`).catch(() => null)
+      ? await cache.hgetall(`${QUOTEPASS_KEY_PREFIX}${reportDate}`).catch(() => null)
       : null;
     const _n = (v) => (v == null ? null : Number(v));
     const quotePass = qp ? {
