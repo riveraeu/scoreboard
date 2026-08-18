@@ -98,7 +98,7 @@ These bite during *any* change. Each links to detail in `docs/*.md` or memory.
 
 **Traded volume ≠ resting liquidity** — a `volume_fp:0` market can have a deep book, so volume is not a liquidity proxy. Slippage is measured by walking the live full book (`/api/kalshi-orderbook` → `walkFill`, `api/lib/kalshi-book.js`) for real VWAP. The snapshot cron's cached top-3 `_depth` + `blend-fill.js` were deleted 2026-08-13: the depth phase had never once run, and its blend silently **rewrote captured prices**, so repairing it would have moved the measured quantity under live pre-registrations.
 
-**Kalshi snap-first read chain (`/api/tonight`)** — 2-tier (`api/lib/tonight/kalshi-pipeline.js`): `kalshi:snap:{ticker}` (cron every 2 min, all-or-nothing 180s freshness) → REST + `kalshi:stale:{ticker}` (30-min fallback). `KXMLBGAME` uses the same chain. Diagnose `usedSnaps:false` via `kalshiSnap.meta` in `?debug=1`.
+**Kalshi snap-first read chain (`/api/tonight`)** — 2-tier (`api/lib/tonight/kalshi-pipeline.js`): `kalshi:snap:{ticker}` (cron every 10 min since 2026-08-17, all-or-nothing 900s freshness) → REST + `kalshi:stale:{ticker}` (30-min fallback). `KXMLBGAME` uses the same chain. Diagnose `usedSnaps:false` via `kalshiSnap.meta` in `?debug=1`.
 
 **Server self-fetches: `selfOrigin(request)`, never `new URL(request.url).origin`** — cron URLs 302 to the SSO page. `selfOrigin` (`api/lib/utils.js`) pins `PROD_ORIGIN` except on localhost. Symptom: `noData≈all, games=0` on cron but manual trigger works.
 
@@ -111,6 +111,8 @@ These bite during *any* change. Each links to detail in `docs/*.md` or memory.
 **Shadow-snapshot KV staging** — tonight handler writes `shadow:staging:{date}` (TTL 6h) after DC computation; shadow-snapshot/pregame-snap read it first (~100ms) instead of re-fetching `/api/tonight?debug=1`. `dropped > 0` confirms the dropped-capture path is live.
 
 **Bulk INSERTs must go through `neonBatchInsert` (`api/lib/neon.js`)** — never hand-roll one; the row count is usually the slate, and the slate only grows. `maker_quotes` sent one statement per cycle and **deadlocked quoting for two days** (2026-08-12/13): the insert threw, so no segments existed, so every later cycle rebuilt the same oversized batch. **The binding limit is Neon's HTTP request SIZE, not Postgres' 65535 bind parameters** — measured, after a first fix chunked to 60000 params and failed identically; `PARAM_BUDGET` is 8000 for that reason and a test pins it there. Neon reports all of this as a bare `Database request failed` with no PG error fields, so **label your DB round-trips** — localizing this took three deploys without labels.
+
+**`kalshi-snapshot` cron cadence is `*/10 * * * *` (widened from `*/2` on 2026-08-17)** — Neon's fixed 5-min autosuspend never fires below that interval, so anything pinging faster than 5 min keeps compute continuously awake at the 0.25 CU floor (~$20/mo). Widened after the account actually hit its monthly compute+storage allowance (not just the 80% warning from 8/14) — accepted knowingly mid-collection for the live V1 preregistration wave (checkpoints 8/20-8/24): quote lag and fill-detection lag both widen from ~2 min to ~10 min, an asterisk on that wave's data, not a bug. `SNAP_FRESHNESS_MS` in `kalshi-pipeline.js` must stay ≥ the cron interval × 1.5 or `usedSnaps` false-flags as stale.
 
 **Neon HTTP SQL API (`api/lib/neon.js`):**
 1. Uses `@neondatabase/serverless` — raw fetch fails with "missing authentication credentials".

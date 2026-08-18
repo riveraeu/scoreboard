@@ -68,9 +68,10 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
     if (cache) cache.put(_preSchemaKey, "1", { expirationTtl: 86400 * 30 }).catch(() => {});
   }
 
-  // KV staging first — written on every tonight recompute from ≤2-min-old Kalshi snaps, so
-  // fresh staging carries current prices. Staleness gate matters here (unlike shadow-snapshot):
-  // CLV prices stamped now must reflect now, not whenever tonight last ran.
+  // KV staging first — written on every tonight recompute from ≤10-min-old Kalshi snaps (was
+  // ≤2-min before the 2026-08-17 cron widening), so fresh staging carries current prices.
+  // Staleness gate matters here (unlike shadow-snapshot): CLV prices stamped now must reflect
+  // now, not whenever tonight last ran.
   let rawPlays = null;
   let source = "kv-staging";
   let stagingAgeMs = null;

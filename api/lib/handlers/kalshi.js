@@ -162,7 +162,8 @@ export async function handleKalshiRoutes(ctx) {
   if (path === "kalshi-snapshot") {
     // Vercel Cron-triggered snapshot of every Kalshi series we care about, written to
     // kalshi:snap:{ticker} so /api/tonight can read pre-warmed snaps instead of hammering
-    // Kalshi REST on each invocation. Cron schedule lives in vercel.json (*/2 * * * *).
+    // Kalshi REST on each invocation. Cron schedule lives in vercel.json (*/10 * * * *,
+    // widened from */2 2026-08-17 — Neon compute-cost, see CLAUDE.md).
     //
     // Auth: when CRON_SECRET is set in Vercel, the cron runner attaches
     // `Authorization: Bearer ${CRON_SECRET}`. Fail-closed if the env var is missing.
@@ -337,6 +338,9 @@ export async function handleKalshiRoutes(ctx) {
     // idle timeout on Free/Launch). Gating to :00/:10/:20/:30/:40/:50 past the hour cuts this
     // pass's Neon traffic 5x while still landing well inside "same day" for the PnL tile if V2
     // is ever unshelved. Safe to widen further or re-tighten — V2 places no real orders today.
+    // **2026-08-17**: the whole kalshi-snapshot cron widened to */10 (below), so this modulo
+    // check is now a no-op (every fire lands on :00/:10/:20/...) — left in place as a guard in
+    // case the cron cadence is ever tightened back below 10 min without revisiting this gate.
     let _makerResolveMeta = null;
     if (new Date().getMinutes() % 10 === 0) {
       try {

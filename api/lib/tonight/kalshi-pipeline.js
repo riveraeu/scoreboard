@@ -1,6 +1,6 @@
 // Kalshi market-fetch pipeline. 2-tier read chain:
 //   1. Snap-first read (single Upstash MGET, all-or-nothing freshness check) — preferred.
-//      The snapshot cron writes kalshi:snap:{ticker} every 2 min; this is the hot path.
+//      The snapshot cron writes kalshi:snap:{ticker} every 10 min; this is the hot path.
 //   2. REST fallback with throttled batches (3 parallel / 700ms delay, shuffled) + per-ticker
 //      stale fallback (kalshi:stale:{ticker}). Genuinely-fresh fetches are written back to the
 //      snap keys (chunked at 7MB) so the next request takes Tier 1 again. The old monolithic
@@ -16,7 +16,7 @@
 import { pipeWriteChunked } from "../kv-pipeline.js";
 import { gzipToString, gunzipFromString } from "../kv-compress.js";
 
-const SNAP_FRESHNESS_MS = 180_000;  // 1.5× the 2-min cron cycle
+const SNAP_FRESHNESS_MS = 900_000;  // 1.5× the 10-min cron cycle
 const KALSHI_BATCH = 3;
 const KALSHI_BATCH_DELAY_MS = 700;
 

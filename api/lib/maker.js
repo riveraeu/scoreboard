@@ -12,7 +12,8 @@
 // capture that richness, and maker fees are ZERO on every configured series except the four major
 // *GAME series (fee_type sweep 2026-07-19). The unknown was adverse selection: fills arrive
 // disproportionately when the quote is wrong. V1 measures exactly that with no capital:
-//   • QUOTE (kalshi-snapshot cron, every 2 min, books already in hand): for each eligible
+//   • QUOTE (kalshi-snapshot cron, every 10 min since 2026-08-17 — was 2 min, widened for a
+//     Neon compute-cost fix, see CLAUDE.md; books already in hand): for each eligible
 //     market, record a quote segment — sell {yes|no} at (prevailing ask − MAKER_INSIDE_C),
 //     size MAKER_SIZE. Segments open/close as price or eligibility changes (maker_quotes).
 //   • FILL (nightly resolver): replay the public trade tape — a taker trade at a price ≥ our ask
@@ -24,8 +25,9 @@
 //   • GRADE (2026-07-24 rewrite): look up each ticker's own settlement directly from Kalshi's
 //     public /markets endpoint (kalshi-settlement.js) — no shadow_plays join, no ESPN dependency.
 //     pnl_cents = fill_ask − 100·(sold side won).
-// Measurement bias, stated: the 2-min quote lag means stale quotes get hit when price moves
-// against them → shadow PnL UNDER-states a live engine with pull-on-news. Queue priority is ours
+// Measurement bias, stated: the quote lag (2 min through 2026-08-16, 10 min from 2026-08-17)
+// means stale quotes get hit when price moves against them → shadow PnL UNDER-states a live
+// engine with pull-on-news, more so post-widening. Queue priority is ours
 // by construction. The self-effect on taker behavior was called "the one unmeasurable optimism" —
 // that framing was wrong: the far larger error was measurable all along (the wrong-side matcher),
 // and V2 real fills (+$6.65 on 361, graded off settlement not replayFills) were the check that
@@ -161,7 +163,8 @@ export async function ensureMakerTables(env) {
     );
     CREATE INDEX IF NOT EXISTS maker_quotes_open_idx ON maker_quotes (ticker) WHERE valid_to IS NULL;
     CREATE INDEX IF NOT EXISTS maker_quotes_day_idx ON maker_quotes (game_date);
-    -- Where a segment came from: 'live' (the 2-min quoting cron) or 'backfill'/'validate' (the
+    -- Where a segment came from: 'live' (the quoting cron, 2 min through 2026-08-16, 10 min
+    -- from 2026-08-17) or 'backfill'/'validate' (the
     -- 2026-07-28 tape replay, api/lib/maker-backfill.js). Defaulted so every pre-existing row is
     -- correctly labelled 'live' without a data migration. The board must never mix two sources for
     -- one day — the backfill endpoint refuses a day that already holds live segments.

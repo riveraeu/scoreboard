@@ -22,8 +22,8 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) share this Redis. JWT ex
 | `byteam:wnba` / `:scoring` | 21600s | 2025 season. Same `buildSoftTeamAbbrs`/`buildTeamRankMap` helpers as NBA. |
 | `byteam:nhl` | 21600s | GAA + SA per team |
 | `byteam:nfl` | 1800s | |
-| `kalshi:snap:{ticker}` | 300s | Per-ticker snapshot from `/api/kalshi-snapshot` cron (every 2 min). Value `{markets, writtenAt}`. `/api/tonight` reads via MGET, uses snaps only if all within 180s (all-or-nothing). Bypassed by `?bust=1`. (Carried a top-3 `_depth` orderbook snapshot until 2026-08-13 — deleted, see below.) |
-| `kalshi:snap:_meta` | 600s | `{lastRunAt, successCount, failedTickers[], durationMs, snapWriteFailed}`. Surfaced as `kalshiSnap` in `?debug=1`. **`null` meta = no cron in 10 min → cron-side failure.** Overwritten every 2 min, so it can only ever answer "is the cron alive now" — anything that must survive the night needs its own key (see `maker:quotepass:{ptDate}`). |
+| `kalshi:snap:{ticker}` | 300s | Per-ticker snapshot from `/api/kalshi-snapshot` cron (every 10 min since 2026-08-17, was every 2 min). Value `{markets, writtenAt}`. `/api/tonight` reads via MGET, uses snaps only if all within 900s (all-or-nothing). Bypassed by `?bust=1`. (Carried a top-3 `_depth` orderbook snapshot until 2026-08-13 — deleted, see below.) |
+| `kalshi:snap:_meta` | 600s | `{lastRunAt, successCount, failedTickers[], durationMs, snapWriteFailed}`. Surfaced as `kalshiSnap` in `?debug=1`. **`null` meta = no cron in ~20 min → cron-side failure** (was 10 min at the old 2-min cadence). Overwritten every 10 min, so it can only ever answer "is the cron alive now" — anything that must survive the night needs its own key (see `maker:quotepass:{ptDate}`). |
 | `maker:quotepass:{ptDate}` | 48h | Redis **HASH**, the maker quote pass's durable per-day record (`quotePassTelemetryCommands`, `api/lib/maker.js`). Counters `cycles`/`ran`/`skippedNoStaging`/`skippedNoSnaps`/`errors`/`sumEligible`/`sumOpened`/`sumClosed` + `last*` fields. Written every cron cycle via `HINCRBY` (**never GET/SET** — overlapping cycles must not clobber each other). Read by `/api/shadow-report` into `dataFreshness.quotePass`. **48h, not 600s like `_meta`**: the whole point is to survive the night so the 6am report can explain an overnight collapse. |
 | `kalshi:bundle:{date}` | 600s | Legacy all-series bundle; second-tier fallback below snaps. Bypassed by `?bust=1`. |
 | `kalshi:stale:{ticker}` | 1800s | Stale-while-revalidate per-ticker fallback for 429/empty. Series disappears rather than serving 30+ min old prices. |
@@ -68,7 +68,7 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) share this Redis. JWT ex
 
 Full schedule with pairing constraints below. Handlers:
 - `/api/keepalive` — daily noon UTC; keeps Upstash from idle-suspending. DST-exempt.
-- `/api/kalshi-snapshot` — `*/2 * * * *`; pre-warms `kalshi:snap:{ticker}` (~29s for 120 series at 3/700ms), then runs the maker quote pass. Chunked pipeline (7MB). Bearer `CRON_SECRET`. DST-exempt.
+- `/api/kalshi-snapshot` — `*/10 * * * *` (widened from `*/2` 2026-08-17 — see Neon compute-cost note below); pre-warms `kalshi:snap:{ticker}` (~29s for 120 series at 3/700ms), then runs the maker quote pass. Chunked pipeline (7MB). Bearer `CRON_SECRET`. DST-exempt.
 - `/api/kalshi-series-scan` — `45 12` (5:45am PT, 15 min before the report). Diffs Kalshi's `series?category=Sports` catalog against `SERIES_CONFIG`∪`CRON_ONLY_TICKERS`; records unknowns in Neon `kalshi_series_seen` (status funnel new→shortlisted→adopted/dismissed/baseline). Screens + auto-dismisses dead books; sweeps baseline backlog. `?dry=1`, `?dismiss=`/`?promote=`. Detail → `api-routes` skill.
 - `/api/polymarket-scan` — **no cron** (schedule dropped 2026-07-28); endpoint still reachable with `ADMIN_KEY`. Polymarket capture (`polymarket_plays`) runs inline in `shadow-snapshot`, not here.
 
@@ -94,7 +94,7 @@ Vercel crons are **UTC-pinned**; all timing intent is **Pacific wall-clock**. Wh
 | `55 2` | 7:55pm | `/api/tonight` | — |
 | `0 3` | 8:00pm | `/api/shadow-pregame-snap` | trails the `55 2` tonight |
 | `0 9` / `5 10` / `50 12` | 2am / 3:05am / 5:50am | `/api/shadow-resolver` | after games final; `50 12` is the final sweep, 10 min before the report |
-| `0 12` keepalive · `*/2` kalshi-snapshot | — | | DST-exempt, never shift |
+| `0 12` keepalive · `*/10` kalshi-snapshot | — | | DST-exempt, never shift |
 
 **November 1, 2026 checklist (DST ends):** add +1h UTC to every row except the DST-exempt line, keeping minute offsets identical so pairings hold. Reverse (−1h) when DST returns 2027-03-14. Update this table's UTC column in the same commit.
 
@@ -134,6 +134,8 @@ Main play generation. `?debug=1` returns `plays[]`/`dropped[]` + per-league mark
 
 ### `/api/kalshi-snapshot`
 Cron-only. Fetches all series (3 parallel / 700ms, ~29s for 120) → writes snaps + `_meta` → runs the V1 maker quote pass and its telemetry. Ticker list from `[...Object.keys(SERIES_CONFIG), ...CRON_ONLY_TICKERS]`.
+
+**Neon compute-cost note (2026-08-14, widened 2026-08-17):** Neon's autosuspend timeout (5 min, fixed on Free/Launch) never fires while anything pings faster than that, so this cron running at `*/2` kept compute continuously awake at the 0.25 CU floor (~$20/mo). The V1 quote pass here is the dominant ping (V2's resolve/grade pass was cadence-gated to `getMinutes() % 10 === 0` on 8/14, which alone didn't cross the 5-min threshold). Widened to `*/10` on 8/17 after the account hit its actual monthly compute+storage allowance — this crosses the autosuspend threshold (should collapse the floor toward single dollars) but widens V1 quote/fill-detection lag from ~2 min to ~10 min for the live prereg wave (checkpoints 8/20-8/24), accepted knowingly rather than left to run the account out of compute.
 
 **Orderbook-depth phase DELETED 2026-08-13.** It attached a cached top-3 `_depth` per in-window market for `blend-fill.js` to re-price against. It had **never executed a single fetch**: `DEPTH_DEADLINE_MS` (21s) was measured from a clock the series walk had already spent ~29s of, so the loop broke on iteration 0 every cycle — `depthFail: 0` proved no fetch was even attempted. Deleted rather than repaired, because `blendMarketPrice` **mutated the captured price** (`m.kalshiPct = blended.pct`) at the parse site: making depth work again would have silently shifted every `shadow_plays` price mid-window, under 14 live pre-registrations. Slippage is still measurable via the live full-book walk (`/api/kalshi-orderbook` → `walkFill`), which is the honest version.
 
