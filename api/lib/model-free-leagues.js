@@ -65,6 +65,16 @@
 // moneyline sibling KXSRBSLGAME is DEAD_BOOK (prices pinned near-flat, no real two-sided market).
 // The spread ticker's own REAL_BOOK read was a false signal off one thin match; the league's actual
 // liquidity is dead. Not revisited via any workaround — there's no real market underneath it.
+// Slovenian Prva Liga (KXSVNPLGAME) vetted 2026-08-18, real book (15/15 live, 7c median spread,
+// overround 1.07, 10-team roster all uniform 3-char codes) — PARKED, same class as CANPL: ESPN's
+// soccer competitions directory (espn.com/soccer/competitions) has no Slovenia entry, and every
+// slug guess (svn.1/slo.1/sle.1/sva.1/svn.pl/slovenia.1/svn.prva) 404s. Ticker is date-only
+// (`26AUG23NKMBRA`, no HHMM segment — confirmed `kalshiTickerGameTime` requires two digit pairs
+// right after the date and returns null here), so unlike lmb/leaguescup there is no ticker-HHMM
+// fallback either — this is a genuine no-gameTime-source league, not merely no-ESPN. The
+// kleague/kbo ticker-parse workaround (gameDate + team identity off the ticker, gameTime stays
+// null forever, capture+grade only, never maker-quotable) is still available if this is ever
+// revisited — not attempted here since it wasn't asked for.
 // And cross-check team abbrs on BOTH sides: collisions have hit ~1 per non-US league, in
 // Kalshi-vs-ESPN (chnsl "SHE", ligamx "ATL") and ESPN-internal (argprem "RIV") flavors.
 
