@@ -511,6 +511,14 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
                 const _ctTm = ((m.ticker || "").split("-").pop() || "").match(/^([A-Z]+)/);
                 if (!_ctTm) continue;
                 _ctPickTeam = normTeam(sport, _ctTm[1]);
+              } else if (cfg.subtype === "corners") {
+                // No subtitle regex — the ticker suffix carries both fields directly
+                // (`-VIL5` = team VIL, threshold 5). Inclusive integer floor ("5+" = 5 or more),
+                // NOT a half-integer "over N.5" line like every other subtype here.
+                const _ctTm = ((m.ticker || "").split("-").pop() || "").match(/^([A-Z]+)(\d+)$/);
+                if (!_ctTm) continue;
+                _ctPickTeam = normTeam(sport, _ctTm[1]);
+                _ctThreshold = parseInt(_ctTm[2], 10);
               } else if (cfg.subtype !== "btts") {
                 continue;
               }

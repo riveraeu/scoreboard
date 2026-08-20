@@ -282,16 +282,17 @@ export const SERIES_CONFIG = {
   // the book develops, which is the failure-closed outcome, not a silent one.
   KXLALIGATOTAL:  { sport: "laliga", league: "laliga", stat: "total",  col: "G", gameType: "clubSoccerThreshold", subtype: "total" },
   KXLALIGABTTS:   { sport: "laliga", league: "laliga", stat: "btts",   col: "G", gameType: "clubSoccerThreshold", subtype: "btts" },
-  // KXLALIGATCORNERS ("Team Corners", surfaced in discovery 8/20, NOT built): per-team corner-
-  // count thresholds, one per side per game (14 markets = the full 7-game round, 11/14 real book,
-  // 6c median). Not a config drop-in like TOTAL/BTTS above — corners is a NEW stat category, no
-  // existing fetch carries it. Confirmed buildable though: ESPN's summary?event= boxscore DOES
-  // carry it (`boxscore.teams[].statistics[].wonCorners`, verified live off a completed esp.1
-  // match), fetched the same one-extra-call-per-finished-game pattern soccer-modelfree.js's
-  // fetchHalfResults already uses for 1H scores. Needs a new resolver stat (not a game-totals
-  // reuse — corners aren't goals) and a new subtype/threshold parse off the "Team: N+" subtitle
-  // shape. Left un-built pending a decision to add it; not attempted here since it wasn't asked
-  // for.
+  // KXLALIGATCORNERS ("Team Corners", surfaced in discovery 8/20) — BUILT 2026-08-20. Per-team
+  // corner-count thresholds, one per side per game (14 markets = the full 7-game round, 11/14 real
+  // book, 6c median). Needs NO new resolver: laliga is already settlement-authoritative, so Kalshi's
+  // own settlement grades these rows exactly like spread/total/btts — the ESPN `wonCorners` boxscore
+  // field (confirmed live to exist) is not required, only useful as an optional spot-check.
+  // Threshold + pick-team come straight off the ticker suffix (`-VIL5` = team VIL, 5+), NOT the
+  // subtitle text like the other subtypes — no half-integer "over N.5" line here, the market is an
+  // inclusive integer floor ("5+" = 5 or more), parsed and stored as such (do not treat as "over
+  // 4.5"). Confirmed no Polymarket counterpart (`lal` only captures moneyline) — recorded per
+  // CLAUDE.md step 4, not a blocker.
+  KXLALIGATCORNERS: { sport: "laliga", league: "laliga", stat: "corners", col: "CK", gameType: "clubSoccerThreshold", subtype: "corners" },
   // Serie A game winner — 3-way, model-free maker (built 2026-08-10). KXSERIEA bare prefix = season
   // champion futures; KXSERIEAGAME is per-game: 30/30 real books, 3.5¢ median spread. ESPN slug ita.1.
   KXSERIEAGAME: { sport: "seriea", league: "seriea", stat: "game", col: "ML", gameType: "modelFreeMl" },
