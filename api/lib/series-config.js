@@ -282,6 +282,16 @@ export const SERIES_CONFIG = {
   // the book develops, which is the failure-closed outcome, not a silent one.
   KXLALIGATOTAL:  { sport: "laliga", league: "laliga", stat: "total",  col: "G", gameType: "clubSoccerThreshold", subtype: "total" },
   KXLALIGABTTS:   { sport: "laliga", league: "laliga", stat: "btts",   col: "G", gameType: "clubSoccerThreshold", subtype: "btts" },
+  // KXLALIGATCORNERS ("Team Corners", surfaced in discovery 8/20, NOT built): per-team corner-
+  // count thresholds, one per side per game (14 markets = the full 7-game round, 11/14 real book,
+  // 6c median). Not a config drop-in like TOTAL/BTTS above — corners is a NEW stat category, no
+  // existing fetch carries it. Confirmed buildable though: ESPN's summary?event= boxscore DOES
+  // carry it (`boxscore.teams[].statistics[].wonCorners`, verified live off a completed esp.1
+  // match), fetched the same one-extra-call-per-finished-game pattern soccer-modelfree.js's
+  // fetchHalfResults already uses for 1H scores. Needs a new resolver stat (not a game-totals
+  // reuse — corners aren't goals) and a new subtype/threshold parse off the "Team: N+" subtitle
+  // shape. Left un-built pending a decision to add it; not attempted here since it wasn't asked
+  // for.
   // Serie A game winner — 3-way, model-free maker (built 2026-08-10). KXSERIEA bare prefix = season
   // champion futures; KXSERIEAGAME is per-game: 30/30 real books, 3.5¢ median spread. ESPN slug ita.1.
   KXSERIEAGAME: { sport: "seriea", league: "seriea", stat: "game", col: "ML", gameType: "modelFreeMl" },
@@ -679,7 +689,11 @@ export const DISMISSED_SERIES = [
   // clubs under a temporary slug is max build cost for minimal data. Re-check alongside UCL's
   // ~2026-09-01 recheck, on the stable league-phase field. If UCL's build happens first, the
   // multi-slug support it would need generalizes directly to this and to KXUEL (Europa League
-  // proper, same `_qual` pattern — not vetted yet, worth checking in the same pass).
+  // proper — CONFIRMED same pattern 2026-08-20: KXUELGAME/SPREAD/TOTAL/1HTOTAL all REAL_BOOK
+  // (36/49/72/36 markets, 1c spreads), ESPN main `uefa.europa` empty, real coverage under
+  // `uefa.europa_qual` — and a live abbr spot-check already shows mismatches, Kalshi
+  // THU/CSK/EGR/KAZ vs ESPN THUN/CSKA/EGN/no-match. All three (UCL/UECL/UEL) should be built
+  // together once the multi-slug support exists — same registry shape, same blocker, same fix.
   "KXUECLFTTS", "KXUECLSCORE", // Conference League first-to-score + correct score — STAYS
   // dismissed, exact-cell trap (poor maker fit too, see the Liga MX/MLS note above).
   "KXUELFTTS", "KXUELSCORE", // Europa League first-to-score + correct score — same, STAYS dismissed.
