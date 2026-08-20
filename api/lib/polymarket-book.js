@@ -11,9 +11,6 @@
 
 const CLOB = "https://clob.polymarket.com";
 
-export const POLY_SLIP_OK_CENTS = 2;
-export const POLY_SLIP_WARN_CENTS = 3;
-
 export async function fetchPolyOrderbook(tokenId) {
   try {
     const res = await fetch(`${CLOB}/book?token_id=${tokenId}`, {

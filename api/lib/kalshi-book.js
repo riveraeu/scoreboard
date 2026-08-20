@@ -6,11 +6,6 @@
 // book. Cached `kalshiVolume`/`_depth` can't see that (top-3-only, often absent on fresh 0-vol
 // markets), so the only honest read of "does our size actually fill" is to walk the FULL live book.
 
-// ¢ over top-of-book that we treat as a clean fill (no warning, stays checked).
-export const SLIP_OK_CENTS = 2;
-// ¢ over top-of-book that escalates to a soft "fill may slip" warning.
-export const SLIP_WARN_CENTS = 3;
-
 // Fetch the FULL live book for one ticker directly from Kalshi (no self-HTTP round-trip).
 // Returns { ok, ticker, levels:{n,y}, yesAsk, noAsk, spread, volume } or { ok:false }.
 // `levels.n` = NO-side resting bids, `levels.y` = YES-side resting bids, integer cents,
