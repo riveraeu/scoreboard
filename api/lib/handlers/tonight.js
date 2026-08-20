@@ -1463,7 +1463,11 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...atpTotalPlays, ...fightPlays, ...nascarPlays, ...lmbPlays, ...golfPlays, ...dota2Plays, ...kleaguePlays, ...kboPlays, ...fightMlPlays, ...modelFreeAllPlays, ...clubSoccerThresholdPlays, ...scocupPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          // TTL 13.5h (not 6h): the 6 daily `tonight` crons cluster 08:00-19:55 PT, leaving a ~12h
+          // gap to the next day's first run — a 6h TTL expired mid-gap and left kalshi-snapshot's
+          // quote pass skipping "no_staging" for hours every night (found 2026-08-20 via
+          // dataFreshness.quotePass, previously masked by the pre-8/18 stale-KV-key report bug).
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...atpTotalPlays, ...fightPlays, ...nascarPlays, ...lmbPlays, ...golfPlays, ...dota2Plays, ...kleaguePlays, ...kboPlays, ...fightMlPlays, ...modelFreeAllPlays, ...clubSoccerThresholdPlays, ...scocupPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 48600 }).catch(() => {});
         }
         if (isDebug) {
           const sf = reportSportFilter;
