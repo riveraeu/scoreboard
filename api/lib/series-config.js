@@ -666,6 +666,20 @@ export const DISMISSED_SERIES = [
   // KXUECL1HBTTS/1HSPREAD/1HTOTAL + KXUEL1HBTTS/1HSPREAD/1HTOTAL RECLASSIFIED 2026-07-23 (same
   // reasoning as the Liga MX/MLS halves above — UEL/UECL base game markets confirmed real same
   // day). Removed from DISMISSED_SERIES, promoted to shortlisted. NOT built.
+  // KXUECLGAME/SPREAD/TOTAL/1HTOTAL vetted 2026-08-20 (discovery queue, KXUECL1HTOTAL firstSeen
+  // 2026-07-15): all four REAL_BOOK (72/72, 96/96, 100/100, 72/72; 1-2c median spreads). Same
+  // deferred class as KXUCLGAME (project_ucl_kxuclgame_vet_2026_07_30), NOT the CANPL/no-slug
+  // class: ESPN's main `uefa.europa.conf` slug exists but returns 0 events for the Aug qualifying
+  // window; the real coverage lives under a SEPARATE qualifying slug `uefa.europa.conf_qual`
+  // (verified live, 24 events 2026-08-20) that flips to the main slug once the league phase
+  // starts (~Sept/Oct, mirrors UCL's `uefa.champions_qual`→`uefa.champions` switch). Spot-checked
+  // team abbrs: at least one mismatch already visible (Kalshi ticker "SIO" for Sion vs ESPN
+  // abbr "SION") — expect the same double-digit mismatch rate UCL found (14/20) once the field is
+  // fully cross-checked. Not built now: same reasoning as UCL, thin/rotating qualifying-round
+  // clubs under a temporary slug is max build cost for minimal data. Re-check alongside UCL's
+  // ~2026-09-01 recheck, on the stable league-phase field. If UCL's build happens first, the
+  // multi-slug support it would need generalizes directly to this and to KXUEL (Europa League
+  // proper, same `_qual` pattern — not vetted yet, worth checking in the same pass).
   "KXUECLFTTS", "KXUECLSCORE", // Conference League first-to-score + correct score — STAYS
   // dismissed, exact-cell trap (poor maker fit too, see the Liga MX/MLS note above).
   "KXUELFTTS", "KXUELSCORE", // Europa League first-to-score + correct score — same, STAYS dismissed.
