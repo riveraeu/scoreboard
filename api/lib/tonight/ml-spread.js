@@ -279,6 +279,15 @@ export async function emitAllMlAndSpread({
   const _nflMlMarkets = await _build2WayMl("KXNFLGAME", "nfl");
   _emit2WayMl(_nflMlContext, "nfl", "ml", _nflMlMarkets);
 
+  // ── NFL 1st-quarter winner (KXNFL1Q, 3-way: home/away/tie, adopted 2026-08-21) ─────────
+  // Same _build3WayWinner/_emit3WayWinner machinery as MLB's F3/F5/F7 and WNBA's half/quarter
+  // winners — already handles a "TIE" ticker suffix generically. Reuses _nflMlContext (same
+  // ticker-derived home/away as the full-game ML above), so coverage is bounded to games that
+  // also carry a KXNFLTOTAL, the same coupling the full-game ML already has.
+  const _nfl1qWinner = await _build3WayWinner("KXNFL1Q", "nfl");
+  _emit3WayWinner(_nflMlContext, "nfl", "1qml", "1q", _nfl1qWinner,
+    (homeTeam, awayTeam, gameDate) => `${homeTeam}|${awayTeam}|${gameDate}`);
+
   void dropped; void isDebug; // model-free capture routes every row to `plays`.
 
   // ── 3-way winner helpers (home/away/tie). Defined here (hoisted) so the sport blocks above
