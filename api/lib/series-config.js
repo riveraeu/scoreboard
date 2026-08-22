@@ -366,6 +366,9 @@ export const CRON_ONLY_TICKERS = [
   "KXNBA1HWINNER", "KXNBA2HWINNER",
   "KXWNBA1HWINNER", "KXWNBA2HWINNER",
   "KXWNBA1QWINNER", "KXWNBA2QWINNER", "KXWNBA3QWINNER", "KXWNBA4QWINNER",
+  "KXNFL1Q", // adopted 2026-08-21 (ml-spread.js), missed from this list at build time — kept
+             // resurfacing in discovery.toVet since the scan's adopt-reconcile only matches
+             // SERIES_CONFIG∪CRON_ONLY_TICKERS keys.
 ];
 
 // Series we've vetted and decided NOT to build (the dismiss half of the funnel).
