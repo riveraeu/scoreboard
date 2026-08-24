@@ -564,13 +564,20 @@ export async function handleKalshiRoutes(ctx) {
   }
 
   if (path === "kalshi-balance" && method === "GET") {
-    if (!JWT_SECRET) return errorResponse("Auth not configured", 500);
     const _cookie = request.headers.get("Cookie") || "";
     const _cookieM = _cookie.match(/(?:^|;\s*)sb_token=([^;]+)/);
-    const jwtToken = _cookieM?.[1] || (request.headers.get("Authorization") || "").replace("Bearer ", "").trim();
-    if (!jwtToken) return errorResponse("Unauthorized", 401);
-    const _jwtPayload = await verifyJWT(jwtToken, JWT_SECRET);
-    if (!_jwtPayload) return errorResponse("Unauthorized", 401);
+    const _bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    // Admin-key bypass added 2026-08-24 (same pattern as maker-v2-board) — the daily report now
+    // records this balance alongside the sub-50 live trial recap, and report generation
+    // authenticates with ADMIN_KEY, not a logged-in user's session cookie/JWT.
+    const _adminOk = env?.ADMIN_KEY && _bearer === env.ADMIN_KEY;
+    if (!_adminOk) {
+      if (!JWT_SECRET) return errorResponse("Auth not configured", 500);
+      const jwtToken = _cookieM?.[1] || _bearer;
+      if (!jwtToken) return errorResponse("Unauthorized", 401);
+      const _jwtPayload = await verifyJWT(jwtToken, JWT_SECRET);
+      if (!_jwtPayload) return errorResponse("Unauthorized", 401);
+    }
     if (!env?.KALSHI_API_KEY_ID || !env?.KALSHI_PRIVATE_KEY) return errorResponse("Kalshi API not configured", 500);
     const kalshiPath = "/trade-api/v2/portfolio/balance";
     const timestamp = String(Date.now());
