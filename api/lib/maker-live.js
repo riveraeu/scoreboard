@@ -34,26 +34,30 @@ import { placeKalshiOrder, cancelKalshiOrder, fetchKalshiFills, fetchKalshiSettl
 
 const ARMED_KV_KEY = "maker:v2:armed";
 
-// ── SHELVED 2026-07-28 — third gate, and the one that actually holds ──────────────────────────
-// The maker measurement program concluded that there is no demonstrated fillable edge. Six
-// hypotheses, six dissolutions: ARM-MET 7/21 (grading bugs), "edge only in 80-84" (post-fix bands
-// alternate sign), adverse selection ~1.4¢ (→ +0.51¢, band-incoherent, and it inverted), the
-// aggregate fill CI (day-clustering widened it back across zero), 7/24's +8.05¢ (a tape replay of
-// the same markets gives −0.01¢), and the pre-registered lead-time test (rejected on all three
-// criteria — docs/MAKER_LEADTIME_PREREG.md). The one thing that HAS replicated every time is the
-// vig on the QUOTE (+1.5-1.6¢ across 100k+ segments); it has never been shown to survive to a fill.
+// ── SHELVED 2026-07-28 → UN-SHELVED 2026-08-24, scoped ONLY to the sub-50 trial ────────────────
+// The ORIGINAL maker measurement program (selling the favorite ask in MAKER_V2_BAND [80,84])
+// concluded there is no demonstrated fillable edge. Six hypotheses, six dissolutions: ARM-MET
+// 7/21 (grading bugs), "edge only in 80-84" (post-fix bands alternate sign), adverse selection
+// ~1.4¢ (→ +0.51¢, band-incoherent, and it inverted), the aggregate fill CI (day-clustering
+// widened it back across zero), 7/24's +8.05¢ (a tape replay of the same markets gives −0.01¢),
+// and the pre-registered lead-time test (rejected on all three criteria —
+// docs/MAKER_LEADTIME_PREREG.md). **That verdict is not reversed and MAKER_V2_BAND is not what
+// this un-shelving arms** — computeWantedMakerQuotes no longer even reads MAKER_V2_BAND; real
+// orders now target ONLY MAKER_V2_LIVE_CELLS (config.js), a different, later hypothesis (one-
+// sided sub-50 quoting on wnba|points + mlb|f5total|10-14) with its own immutable doc,
+// docs/MAKER_V2_SUBFIFTY_TRIAL.md, and its own per-group $30 cap / $15 stop-loss.
 //
-// Why this is a code constant rather than an env/KV change: `MAKER_V2_ARMED` was still "true" in
-// production from the 7/21 arming, so the entire shelving rested on one KV flag that a single POST
-// to /api/maker-v2-arm would flip back. A shelved system should not be one request from live. Here
-// the decision is in git, reviewable, and un-shelving is a deliberate one-line revert with the
-// verdict in front of whoever does it.
+// Why this was a code constant rather than an env/KV change while shelved: `MAKER_V2_ARMED` was
+// still "true" in production from the 7/21 arming, so the entire shelving rested on one KV flag
+// that a single POST to /api/maker-v2-arm would flip back. A shelved system should not be one
+// request from live — the decision needed to be in git, reviewable, so un-shelving is this
+// deliberate one-line revert (plus the tripwire test below, updated in the same commit) rather
+// than a silent env/KV toggle.
 //
-// The env+KV mechanism below is deliberately left intact so that revert is genuinely one line.
 // Exported so the board endpoint (and through it the UI) reports the shelved state from THIS
 // constant rather than restating it in a second place. The landing page renders the fact next to
-// the arm status; a hardcoded frontend copy would keep claiming SHELVED through the one-line revert.
-export const MAKER_V2_SHELVED = true;
+// the arm status; a hardcoded frontend copy would keep claiming SHELVED through this revert.
+export const MAKER_V2_SHELVED = false;
 const SHELVED = MAKER_V2_SHELVED;
 
 // All gates must be true — fail-closed on any being unset/false.

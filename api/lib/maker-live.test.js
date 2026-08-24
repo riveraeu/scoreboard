@@ -34,26 +34,29 @@ test("isArmed: fail-closed when no cache client at all", async () => {
   assert.equal(await isArmed({ MAKER_V2_ARMED: "true" }, null), false);
 });
 
-// SHELVED 2026-07-28 (no demonstrated fillable edge; see docs/MAKER_LEADTIME_PREREG.md). The two
-// tests below were "isArmed is true when both gates are true" and "setArmed round-trips" — both now
-// assert FALSE, because the SHELVED constant in maker-live.js short-circuits ahead of both gates.
-// Deliberately kept as inverted assertions rather than deleted: they are the tripwire that fails
-// loudly if anyone flips SHELVED without also making that an explicit, reviewed decision.
-test("isArmed: SHELVED overrides both gates being true", async () => {
+// SHELVED 2026-07-28 → UN-SHELVED 2026-08-24, scoped to the sub-50 trial only
+// (docs/MAKER_V2_SUBFIFTY_TRIAL.md — see maker-live.js's SHELVED comment for the full history).
+// Until 2026-08-24 these two tests asserted FALSE even with both gates true, because the SHELVED
+// constant short-circuited ahead of them — that was the deliberate tripwire: it failed loudly if
+// anyone flipped SHELVED without also updating this file, forcing the flip to be reviewed rather
+// than silent. Now that SHELVED is deliberately false, the same tests run the other direction and
+// serve the same purpose symmetrically: if SHELVED is ever reverted to true without updating
+// these assertions back, THIS pair fails loudly instead.
+test("isArmed: true when both gates are true and V2 is not shelved", async () => {
   const env = { MAKER_V2_ARMED: "true" };
   const cache = fakeCache({ armed: true });
-  assert.equal(await isArmed(env, cache), false,
-    "V2 is shelved — if this fails, SHELVED was flipped in maker-live.js; that must be a deliberate, reviewed change");
+  assert.equal(await isArmed(env, cache), true,
+    "V2 is un-shelved (2026-08-24, sub-50 trial) — if this fails, SHELVED was reverted to true without updating this test");
 });
 
-test("setArmed cannot re-arm a shelved engine", async () => {
+test("setArmed round-trips now that V2 is un-shelved", async () => {
   const env = { MAKER_V2_ARMED: "true" };
   const cache = fakeCache(null);
-  assert.equal(await isArmed(env, cache), false);
+  assert.equal(await isArmed(env, cache), false, "starts disarmed (KV flag not yet set)");
   await setArmed(cache, true);
-  assert.equal(await isArmed(env, cache), false, "KV round-trip still cannot arm while shelved");
+  assert.equal(await isArmed(env, cache), true, "KV round-trip arms it");
   await setArmed(cache, false);
-  assert.equal(await isArmed(env, cache), false);
+  assert.equal(await isArmed(env, cache), false, "KV round-trip disarms it again");
 });
 
 test("gameKeyFor: order-independent on home/away (ticker order != ESPN order)", () => {

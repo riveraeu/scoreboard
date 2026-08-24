@@ -382,14 +382,20 @@ export async function handleKalshiRoutes(ctx) {
     const bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
     if (!env?.ADMIN_KEY || bearer !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
     if (!CACHE2) return errorResponse("No KV", 500);
-    // SHELVED 2026-07-28. Refused here as well as in isArmed() so this returns an explanation
-    // rather than a silently-ineffective 200 — setting the KV flag on a shelved engine would look
-    // like it worked. Un-shelving is a code change (SHELVED in maker-live.js), by design.
-    return errorResponse(
-      "Maker V2 is SHELVED (2026-07-28): no demonstrated fillable edge across six measurements; "
-      + "the pre-registered lead-time test was rejected on all three criteria. See "
-      + "docs/MAKER_LEADTIME_PREREG.md and docs/INFRA.md. To un-shelve, flip SHELVED in "
-      + "api/lib/maker-live.js — deliberately a code change, not an API call.", 409);
+    // Checked explicitly (not just relying on isArmed()'s own SHELVED gate) so a shelved engine
+    // returns an explanation rather than a silently-ineffective 200 — setting the KV flag while
+    // shelved would look like it worked. Un-shelving is a code change (SHELVED in
+    // maker-live.js), by design, not something this endpoint can do on its own.
+    if (MAKER_V2_SHELVED) {
+      return errorResponse(
+        "Maker V2 is SHELVED: no demonstrated fillable edge across six measurements on the "
+        + "original 80-84 favorite-band hypothesis; the pre-registered lead-time test was "
+        + "rejected on all three criteria. See docs/MAKER_LEADTIME_PREREG.md and docs/INFRA.md. "
+        + "To un-shelve, flip SHELVED in api/lib/maker-live.js — deliberately a code change, "
+        + "not an API call.", 409);
+    }
+    await setArmed(CACHE2, true);
+    return jsonResponse({ ok: true, armed: true, shelved: false });
   }
   if (path === "maker-v2-kill" && method === "POST") {
     const bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
