@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { isArmed, setArmed, gameKeyFor, sellAsBuy } from "./maker-live.js";
+import { isArmed, setArmed, gameKeyFor, sellAsBuy, matchLiveCell, groupExposureCents,
+  groupRealizedCents, haltedGroups } from "./maker-live.js";
+
+const TEST_CELLS = [
+  { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 3000, stopLossCents: -1500 },
+  { group: "wnba-points", sport: "wnba", category: "points", band: [25, 29], sizeContracts: 25, capCents: 3000, stopLossCents: -1500 },
+  { group: "mlb-f5total", sport: "mlb", category: "f5total", band: [10, 14], sizeContracts: 40, capCents: 3000, stopLossCents: -1500 },
+];
 
 // Fake KV — just enough of the { get, put } contract used by isArmed/setArmed.
 function fakeCache(initial = null) {
@@ -83,4 +90,57 @@ test("sellAsBuy: settlement-equivalent to actually selling `side` at `askCents` 
     assert.equal(buyPnlIfBuySideWon, sellPnlIfSideLost, `${side}@${ask}: side loses <-> complementary buy wins`);
     assert.equal(buyPnlIfBuySideLost, sellPnlIfSideWon, `${side}@${ask}: side wins <-> complementary buy loses`);
   }
+});
+
+// ── Sub-50 one-sided live trial (2026-08-24, docs/MAKER_V2_SUBFIFTY_TRIAL.md) ──────────────────
+
+test("matchLiveCell: matches on sport + category (row.stat, falling back to row.gameType — same expression maker.js uses for the category column)", () => {
+  assert.deepEqual(matchLiveCell({ sport: "wnba", stat: "points" }, TEST_CELLS)?.band, [20, 24]);
+  assert.deepEqual(matchLiveCell({ sport: "mlb", gameType: "f5total" }, TEST_CELLS)?.band, [10, 14]);
+  assert.equal(matchLiveCell({ sport: "mlb", stat: "spread" }, TEST_CELLS), null, "no live cell for this category");
+  assert.equal(matchLiveCell({ sport: "wnba", stat: "spread" }, TEST_CELLS), null, "wrong category, same sport");
+});
+
+test("matchLiveCell: never throws on a missing/malformed row", () => {
+  assert.doesNotThrow(() => matchLiveCell(null, TEST_CELLS));
+  assert.doesNotThrow(() => matchLiveCell({}, TEST_CELLS));
+});
+
+test("groupExposureCents: sums cost basis (price × contracts) for not-yet-graded rows only, per group", () => {
+  const rows = [
+    { live_group: "wnba-points", status: "resting", price: 22, size: 25, filled_count: 0, graded_at: null },
+    { live_group: "wnba-points", status: "executed", price: 21, size: 25, filled_count: 25, graded_at: null },
+    { live_group: "wnba-points", status: "executed", price: 20, size: 25, filled_count: 25, graded_at: "2026-08-25" }, // graded — excluded
+    { live_group: "mlb-f5total", status: "resting", price: 12, size: 40, filled_count: 0, graded_at: null },
+    { live_group: "wnba-points", status: "canceled", price: 23, size: 25, filled_count: 0, graded_at: null }, // canceled — excluded
+  ];
+  assert.equal(groupExposureCents(rows, "wnba-points"), 22 * 25 + 21 * 25);
+  assert.equal(groupExposureCents(rows, "mlb-f5total"), 12 * 40);
+  assert.equal(groupExposureCents(rows, "nonexistent-group"), 0);
+});
+
+test("groupRealizedCents: sums pnl_cents × filled_count for graded rows only, per group", () => {
+  const rows = [
+    { live_group: "wnba-points", graded_at: "2026-08-25", pnl_cents: -20, filled_count: 25 },
+    { live_group: "wnba-points", graded_at: "2026-08-26", pnl_cents: 5, filled_count: 25 },
+    { live_group: "wnba-points", status: "resting", graded_at: null, pnl_cents: null, filled_count: 0 }, // ungraded — excluded
+    { live_group: "mlb-f5total", graded_at: "2026-08-25", pnl_cents: -10, filled_count: 40 },
+  ];
+  assert.equal(groupRealizedCents(rows, "wnba-points"), -20 * 25 + 5 * 25);
+  assert.equal(groupRealizedCents(rows, "mlb-f5total"), -10 * 40);
+});
+
+test("haltedGroups: a group's realized PnL at or below its own stopLossCents halts ONLY that group", () => {
+  // wnba-points stopLossCents is -1500; -20¢ x 100 contracts = -2000, breaches it.
+  const rows = [
+    { live_group: "wnba-points", graded_at: "2026-08-25", pnl_cents: -20, filled_count: 100 },
+    { live_group: "mlb-f5total", graded_at: "2026-08-25", pnl_cents: -5, filled_count: 40 }, // -200, does not breach
+  ];
+  const halted = haltedGroups(rows, TEST_CELLS);
+  assert.equal(halted.has("wnba-points"), true);
+  assert.equal(halted.has("mlb-f5total"), false);
+});
+
+test("haltedGroups: empty/no history halts nothing", () => {
+  assert.equal(haltedGroups([], TEST_CELLS).size, 0);
 });

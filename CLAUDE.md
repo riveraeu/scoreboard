@@ -41,7 +41,7 @@ Production: `https://scoreboard-ivory-xi.vercel.app`
 
 Key state flags (context in memory + `docs/REENTRY.md`):
 - **`AWAITING_VALIDATED_EDGE`** (`api/lib/config.js`) — no strategy family has cleared validation; suppresses the imperative mood only, never a measurement. Instruments (boards, quoting, fills, series scan) keep running.
-- **Maker V2 SHELVED** — `SHELVED = true` in `api/lib/maker-live.js`. V1 quoting, nightly tape replay, and grading stay ON.
+- **Maker V2 SHELVED** — `SHELVED = true` in `api/lib/maker-live.js`. V1 quoting, nightly tape replay, and grading stay ON. A scoped real-money trial (`docs/MAKER_V2_SUBFIFTY_TRIAL.md`, `wnba|points` + `mlb|f5total|10-14`, one-sided sub-50 quoting, per-group $30 caps + $15 stop-losses) is built and test-covered as of 2026-08-24 but **not armed** — the eligibility/cap/stop-loss mechanism (`MAKER_V2_LIVE_CELLS` in `config.js`) replaces the old single-band [80,84] approach for this trial, but arming still requires the explicit SHELVED-flip step the doc describes.
 - **Model + taker teardown COMPLETE** — all model/taker/push code deleted; capture-all is the only path.
 
 ## Capture doctrine
@@ -58,6 +58,7 @@ Two gates at collection, both quote-sanity (not price-preference): (1) **band** 
 | Common debugging recipes | `docs/DEBUGGING.md` |
 | What would justify betting again (re-entry conditions + required method) | `docs/REENTRY.md` — read before any work premised on a new edge |
 | Why a lit sub-50¢ maker cell is usually not an edge (band-ladder artifact, netting screen, prereg audit) | `docs/MAKER_LADDER_ARTIFACT.md` — read before promoting any `robustCandidates` hit |
+| Sub-50 one-sided live trial (`wnba\|points`, `mlb\|f5total\|10-14`) — mechanism, sizing, per-group caps/stop-losses, checkpoint | `docs/MAKER_V2_SUBFIFTY_TRIAL.md` — scoped 2026-08-24, NOT armed yet (`MAKER_V2_SHELVED` still `true`) |
 
 ## Architecture
 

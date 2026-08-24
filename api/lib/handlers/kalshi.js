@@ -21,9 +21,11 @@ import { resolveOpenMakerPositions } from "./shadow.js";
 import { enrichSeries, checkSeriesLiquidity, fetchSeriesMeta, SCREEN_AUTO_DISMISS } from "../kalshi-series-check.js";
 import { updateLiveMakerOrders, emergencyKillLive, setArmed, computeWantedMakerQuotes,
   gradeResolvedMakerPositions,
-  isArmed as isMakerV2Armed, ensureMakerLiveTables, MAKER_V2_SHELVED } from "../maker-live.js";
+  isArmed as isMakerV2Armed, ensureMakerLiveTables, MAKER_V2_SHELVED,
+  groupExposureCents, groupRealizedCents, haltedGroups } from "../maker-live.js";
 import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
-import { MAKER_V2_MAX_CONCURRENT, MAKER_V2_SAME_GAME_CAP } from "../config.js";
+import { MAKER_V2_MAX_CONCURRENT, MAKER_V2_SAME_GAME_CAP, MAKER_V2_LIVE_CELLS,
+  MAKER_V2_TRIAL_START } from "../config.js";
 
 const normName = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -480,7 +482,7 @@ export async function handleKalshiRoutes(ctx) {
       await ensureMakerLiveTables(env);
       const rows = await neonQuery(
         `SELECT ticker, series, sport, category, game_date, game_key, side, price, size,
-           filled_count, status, side_won, pnl_cents, placed_at, expires_at, canceled_at, graded_at
+           filled_count, status, side_won, pnl_cents, placed_at, expires_at, canceled_at, graded_at, live_group
          FROM maker_orders_v2 WHERE game_date >= $1
          ORDER BY (status = 'resting') DESC, placed_at DESC LIMIT 300`,
         [yesterdayPT], env, { write: true });
@@ -490,9 +492,36 @@ export async function handleKalshiRoutes(ctx) {
         size: Number(r.size), filledCount: Number(r.filled_count), status: r.status,
         sideWon: r.side_won, pnlCents: r.pnl_cents != null ? Number(r.pnl_cents) : null,
         placedAt: r.placed_at, expiresAt: r.expires_at, canceledAt: r.canceled_at, gradedAt: r.graded_at,
+        liveGroup: r.live_group,
       }));
     } catch (e) {
       console.error(`[maker-v2-board] order read failed: ${e?.message}`);
+    }
+
+    // Sub-50 live trial group rollup (docs/MAKER_V2_SUBFIFTY_TRIAL.md) — exposure/realized need
+    // the WHOLE trial window, not just the yesterday+today slice `orders` above is bounded to, so
+    // this is its own query scoped to the trial's own start date.
+    let groups = [];
+    try {
+      await ensureMakerLiveTables(env);
+      const groupRows = await neonQuery(
+        `SELECT status, price, size, filled_count, pnl_cents, graded_at, live_group
+         FROM maker_orders_v2 WHERE game_date >= $1 AND live_group IS NOT NULL`,
+        [MAKER_V2_TRIAL_START], env, { write: true });
+      const halted = haltedGroups(groupRows, MAKER_V2_LIVE_CELLS);
+      const seen = new Set();
+      for (const cell of MAKER_V2_LIVE_CELLS) {
+        if (seen.has(cell.group)) continue;
+        seen.add(cell.group);
+        groups.push({
+          group: cell.group, capCents: cell.capCents, stopLossCents: cell.stopLossCents,
+          exposureCents: groupExposureCents(groupRows, cell.group),
+          realizedCents: groupRealizedCents(groupRows, cell.group),
+          halted: halted.has(cell.group),
+        });
+      }
+    } catch (e) {
+      console.error(`[maker-v2-board] group rollup failed: ${e?.message}`);
     }
 
     // Live positions — currently-held, ungraded fills (status='executed' with graded_at IS NULL,
@@ -523,7 +552,7 @@ export async function handleKalshiRoutes(ctx) {
     }
 
     return jsonResponse({
-      ok: true, armed, shelved: MAKER_V2_SHELVED, orders, positions, eligibleBySport,
+      ok: true, armed, shelved: MAKER_V2_SHELVED, orders, positions, eligibleBySport, groups,
       caps: { maxConcurrent: MAKER_V2_MAX_CONCURRENT, sameGameCap: MAKER_V2_SAME_GAME_CAP },
     });
   }

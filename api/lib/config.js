@@ -96,3 +96,22 @@ export const MAKER_V2_SIZE = 5;              // contracts per resting order
 export const MAKER_V2_MAX_CONCURRENT = 20;   // total resting orders across all tickers
 export const MAKER_V2_SAME_GAME_CAP = 2;     // max concurrent resting orders per game (correlation guard)
 export const MAKER_V2_EXPIRATION_SEC = 150;  // self-expiring safety net — outlives one ~2min cron cycle
+
+// Sub-50 one-sided live trial (2026-08-24, docs/MAKER_V2_SUBFIFTY_TRIAL.md) — the eligibility set
+// updateWantedMakerQuotes actually reads while this trial runs; MAKER_V2_BAND/MAKER_V2_SIZE above
+// are the earlier, separately-shelved 80-84 favorite-band hypothesis and are not consulted by this
+// trial. Two independent groups, each targeting a category the netting screen (docs/
+// MAKER_LADDER_ARTIFACT.md) found NOT explained by the favorite-longshot mirror artifact — whole
+// book positive on both halves for wnba|points, mildly positive pooled for mlb|f5total. Each group
+// has its OWN dollar cap (capCents — max $ notional outstanding across resting + executed-
+// ungraded orders in that group at any moment; frees up as positions grade) and its OWN stop-loss
+// (stopLossCents — realized PnL floor; breach halts new placement AND cancels that group's
+// resting orders, see haltedGroups() in maker-live.js). sizeContracts is fixed per group so one
+// fill's cost is a small fraction of the group's cap, not inherited from the old 80-84 sizing.
+export const MAKER_V2_LIVE_CELLS = [
+  { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 3000, stopLossCents: -1500 },
+  { group: "wnba-points", sport: "wnba", category: "points", band: [25, 29], sizeContracts: 25, capCents: 3000, stopLossCents: -1500 },
+  { group: "mlb-f5total", sport: "mlb", category: "f5total", band: [10, 14], sizeContracts: 40, capCents: 3000, stopLossCents: -1500 },
+];
+export const MAKER_V2_TRIAL_START = "2026-08-24";      // forward window opens — see docs/MAKER_V2_SUBFIFTY_TRIAL.md
+export const MAKER_V2_TRIAL_CHECKPOINT = "2026-09-07"; // 2 weeks — see docs/MAKER_V2_SUBFIFTY_TRIAL.md

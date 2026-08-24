@@ -25,7 +25,7 @@
 // Failure-closed throughout: every exported IO entry point catches internally — a V2 failure
 // must never break the snapshot cron or the resolver (same contract as maker.js V1).
 
-import { MAKER_V2_BAND, MAKER_V2_SIZE, MAKER_V2_MAX_CONCURRENT, MAKER_V2_SAME_GAME_CAP,
+import { MAKER_V2_LIVE_CELLS, MAKER_V2_MAX_CONCURRENT, MAKER_V2_SAME_GAME_CAP,
   MAKER_V2_EXPIRATION_SEC } from "./config.js";
 import { computeMakerQuote, MAKER_FEE_SERIES } from "./maker.js";
 import { shadowId } from "./shadow-id.js";
@@ -113,16 +113,61 @@ export async function ensureMakerLiveTables(env) {
       canceled_at TIMESTAMPTZ
     );
     CREATE INDEX IF NOT EXISTS maker_orders_v2_resting_idx ON maker_orders_v2 (ticker) WHERE status = 'resting';
-    CREATE INDEX IF NOT EXISTS maker_orders_v2_day_idx ON maker_orders_v2 (game_date)
+    CREATE INDEX IF NOT EXISTS maker_orders_v2_day_idx ON maker_orders_v2 (game_date);
+    ALTER TABLE maker_orders_v2 ADD COLUMN IF NOT EXISTS live_group TEXT;
+    CREATE INDEX IF NOT EXISTS maker_orders_v2_group_idx ON maker_orders_v2 (live_group)
   `, env);
   _ddlDone = true;
+}
+
+// Which MAKER_V2_LIVE_CELLS entry (if any) a staging row belongs to — sport + category, same
+// category expression maker.js's updateMakerQuotes uses for the maker_quotes.category column
+// (`row.stat ?? row.gameType`), so a row's group assignment here can never drift from how the
+// SAME row would be bucketed by the report's category bands.
+export function matchLiveCell(row, cells = MAKER_V2_LIVE_CELLS) {
+  const category = row?.stat ?? row?.gameType ?? null;
+  return cells.find(c => c.sport === row?.sport && c.category === category) || null;
+}
+
+// Pure aggregation over already-fetched maker_orders_v2 rows — split out from the DB query so the
+// arithmetic is unit-testable without Neon. `exposureCents(group)`: cost basis (price × contracts,
+// in cents) of everything not yet graded (resting or executed) — this is what "$ at risk right
+// now" means, and it frees up the moment a position grades. `realizedCents(group)`: sum of
+// pnl_cents × filled_count over graded rows — the stop-loss input.
+export function groupExposureCents(rows, group) {
+  return rows
+    .filter(r => r.live_group === group && r.status !== "canceled" && r.status !== "expired" && !r.graded_at)
+    .reduce((sum, r) => sum + Number(r.price) * (Number(r.filled_count) || Number(r.size)), 0);
+}
+export function groupRealizedCents(rows, group) {
+  return rows
+    .filter(r => r.live_group === group && r.graded_at)
+    .reduce((sum, r) => sum + Number(r.pnl_cents || 0) * (Number(r.filled_count) || 0), 0);
+}
+// A group is halted once its realized PnL breaches its own stop-loss — halted groups place no new
+// orders and have any currently-resting orders actively canceled (see updateLiveMakerOrders).
+export function haltedGroups(rows, cells = MAKER_V2_LIVE_CELLS) {
+  const groups = [...new Set(cells.map(c => c.group))];
+  const halted = new Set();
+  for (const g of groups) {
+    const cell = cells.find(c => c.group === g);
+    if (groupRealizedCents(rows, g) <= cell.stopLossCents) halted.add(g);
+  }
+  return halted;
 }
 
 // Pure eligibility computation — shared by the quote pass below AND the read-only
 // /api/maker-v2-board endpoint (so "what's eligible" has exactly one definition; the endpoint
 // re-derives it live from the same KV sources rather than trusting a stale cron-tick snapshot).
-// Returns a Map: ticker → { q, row, series }.
-export function computeWantedMakerQuotes({ snapResults, staging, nowMs = Date.now() }) {
+// Returns a Map: ticker → { q, row, series, cell }.
+//
+// Per-cell, not a single global band (contrast with the pre-2026-08-24 version of this function,
+// which applied one MAKER_V2_BAND to every series): each market is matched against
+// MAKER_V2_LIVE_CELLS by sport+category (matchLiveCell), and ONLY that cell's own band is checked
+// — a row belonging to no live cell is never eligible, regardless of its price. `bothSides:true`
+// on computeMakerQuote because a live cell's band is the sub-50 (longshot) side by design, not
+// necessarily the higher-ask favorite that the single-side branch would pick.
+export function computeWantedMakerQuotes({ snapResults, staging, nowMs = Date.now(), cells = MAKER_V2_LIVE_CELLS }) {
   const idx = new Map();
   for (const p of [...(staging?.plays || []), ...(staging?.dropped || [])]) {
     const t = p.kalshiTicker ?? p._ticker;
@@ -131,14 +176,21 @@ export function computeWantedMakerQuotes({ snapResults, staging, nowMs = Date.no
     if (!prev || (prev.direction === "under" && p.direction !== "under")) idx.set(t, p);
   }
 
-  const want = new Map(); // ticker → { q, row, series }
+  const want = new Map(); // ticker → { q, row, series, cell }
   for (const [series, data] of Object.entries(snapResults || {})) {
     if (MAKER_FEE_SERIES.has(series)) continue;
     for (const m of (data?.markets || [])) {
       const row = idx.get(m?.ticker);
       if (!row) continue;
-      const q = computeMakerQuote(m, row, nowMs, MAKER_V2_BAND);
-      if (q) want.set(m.ticker, { q, row, series });
+      const cell = matchLiveCell(row, cells);
+      if (!cell) continue;
+      const sides = computeMakerQuote(m, row, nowMs, cell.band, true);
+      if (!sides?.length) continue;
+      // A narrow 5¢ band practically never has both YES and NO in it at once (their asks sum to
+      // ~100+spread); if it somehow did, take the first — not worth extra machinery for a 2-week,
+      // $30-per-group trial to handle an edge case that would need a second resting order per
+      // ticker, which the DB schema here (one row per ticker in restingByTicker) doesn't support.
+      want.set(m.ticker, { q: sides[0], row, series, cell });
     }
   }
   return want;
@@ -152,9 +204,13 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
 
   const want = computeWantedMakerQuotes({ snapResults, staging, nowMs });
 
-  const resting = await neonQuery(
-    `SELECT * FROM maker_orders_v2 WHERE status = 'resting'`, [], env, { write: true });
+  // Whole table, not just resting — group exposure/stop-loss need graded rows too, and this
+  // table only ever holds this trial's own orders (a few hundred rows over 2 weeks at this
+  // sizing), so one full read per tick is cheap.
+  const allOrders = await neonQuery(`SELECT * FROM maker_orders_v2`, [], env, { write: true });
+  const resting = allOrders.filter(r => r.status === "resting");
   const restingByTicker = new Map(resting.map(r => [r.ticker, r]));
+  const halted = haltedGroups(allOrders);
 
   // Poll real fills every tick, not just in the nightly reconcile — previously a resting order
   // that filled between ticks stayed 'resting' in the DB for up to ~10 hours (until the next
@@ -186,6 +242,14 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
   const toPlace = [];    // tickers to place a fresh order for
 
   for (const [ticker, r] of restingByTicker) {
+    if (r.live_group && halted.has(r.live_group)) {
+      // Stop-loss breached for this group — cancel unconditionally, never place a replacement,
+      // regardless of what `want` says (the group is done for this trial until a human re-arms
+      // it). No `toExpireLocally` fallback here on purpose: waiting out expires_at could take up
+      // to MAKER_V2_EXPIRATION_SEC longer than an explicit cancel needs to.
+      toCancel.push(r);
+      continue;
+    }
     const w = want.get(ticker);
     const expiresAt = r.expires_at ? Date.parse(r.expires_at) : 0;
     if (!w) {
@@ -205,7 +269,7 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
     }
   }
   for (const [ticker, w] of want) {
-    if (!restingByTicker.has(ticker)) toPlace.push({ ticker, ...w });
+    if (!restingByTicker.has(ticker) && !halted.has(w.cell.group)) toPlace.push({ ticker, ...w });
   }
 
   // Cancels first (frees slots + avoids double-resting on a reprice). reducedBy tells us how
@@ -258,15 +322,26 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
     gameCounts.set(gk, (gameCounts.get(gk) || 0) + 1);
   }
 
+  // Group exposure starts from what's already outstanding (pre-existing resting/executed-
+  // ungraded rows for that group) and accumulates as this tick places new orders, so the cap is
+  // enforced against the true running total, not just this tick's placements.
+  const groupExposure = new Map();
+  const exposureFor = (group) => {
+    if (!groupExposure.has(group)) groupExposure.set(group, groupExposureCents(allOrders, group));
+    return groupExposure.get(group);
+  };
+
   let opened = 0, capped = 0, errors = 0;
-  for (const { ticker, q, row, series } of toPlaceFiltered) {
+  for (const { ticker, q, row, series, cell } of toPlaceFiltered) {
     const gk = _gameKey(row);
     const gameCount = gameCounts.get(gk) || 0;
     if (globalCount >= MAKER_V2_MAX_CONCURRENT || gameCount >= MAKER_V2_SAME_GAME_CAP) { capped++; continue; }
+    const costCents = cell.sizeContracts * q.ask;
+    if (exposureFor(cell.group) + costCents > cell.capCents) { capped++; continue; }
     const expirationTime = Math.floor(nowMs / 1000) + MAKER_V2_EXPIRATION_SEC;
     const buyOrder = sellAsBuy(q.side, q.ask);
     const res = await placeKalshiOrder(
-      { ticker, side: buyOrder.side, price: buyOrder.price, count: MAKER_V2_SIZE, expirationTime }, env
+      { ticker, side: buyOrder.side, price: buyOrder.price, count: cell.sizeContracts, expirationTime }, env
     ).catch(e => ({ ok: false, error: String(e?.message || e) }));
     if (!res.ok) { errors++; console.error(`[maker-live] place ${ticker} failed: ${res.error}`); continue; }
     const filled = res.fillCount || 0;
@@ -274,19 +349,20 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
     await neonQuery(
       `INSERT INTO maker_orders_v2
         (ticker, kalshi_order_id, client_order_id, series, sport, category, game_date, game_key,
-         shadow_row_id, row_direction, side, price, size, filled_count, status, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, to_timestamp($16))`,
+         shadow_row_id, row_direction, side, price, size, filled_count, status, expires_at, live_group)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, to_timestamp($16), $17)`,
       [ticker, res.orderId, res.clientOrderId, series, row.sport ?? null, row.stat ?? row.gameType ?? null,
        row.gameDate ?? snapshotDate ?? null, gk, shadowId(row, snapshotDate), row.direction ?? null,
-       q.side, q.ask, MAKER_V2_SIZE, filled, status, expirationTime],
+       q.side, q.ask, cell.sizeContracts, filled, status, expirationTime, cell.group],
       env, { write: true });
     opened++;
     globalCount++;
     gameCounts.set(gk, gameCount + 1);
+    groupExposure.set(cell.group, exposureFor(cell.group) + costCents);
   }
 
   return { eligible: want.size, canceled: canceledCount, failedCancels: failedCancelTickers.size,
-    expiredLocally: toExpireLocally.length, opened, capped, errors };
+    expiredLocally: toExpireLocally.length, opened, capped, errors, halted: [...halted] };
 }
 
 // PnL grading — date-agnostic (grades ANY executed+ungraded position the instant its
