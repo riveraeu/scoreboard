@@ -108,3 +108,31 @@ A clean forward pass satisfies the `REENTRY.md` re-entry bar for this cell and f
 
 Criteria, window, and green-light action are fixed as of 2026-08-10. Moving any threshold
 post-hoc voids the pre-registration.
+
+## Checkpoint result (2026-08-24) — KILL
+
+Forward window `2026-08-10` → checkpoint `2026-08-24`. Only 5 WNBA slate days materialized in this
+window (this cell was registered slightly later in the 8/10 tripwire batch than the wnbatp
+20-34¢ cluster, so its forward clock effectively started thinner).
+
+| criterion | bar | actual | met? |
+|---|---|---|---|
+| CI-lo > 0 | >0 | +16.42 | ✅ |
+| mean ≥ +5¢/ct | ≥5 | +17.19 | ✅ |
+| ≥60% days positive | ≥0.6 | 5/5 = 1.0 | ✅ |
+| sideWon < 0.05 | <0.05 | 0.000 | ✅ |
+| sample | ≥8d & ≥50 fills | 5d/34 | ❌ |
+
+Criteria 1-4 pass cleanly — sideWon stayed at exactly 0 across all 5 forward days, consistent with
+the in-sample "categorical non-occurrence" read. Criterion 5 is the only miss, on both its
+components this time (5d<8, 34<50 fills).
+
+**This document's own text (§ KILL / EXTEND rules) describes exactly this shape as extend-eligible**
+("only criterion 5 unmet, with 1-4/6 otherwise trending pass → extend once to 2026-09-07"). That
+clause is not being invoked, for the same reason recorded across the other three WNBA checkpoint
+results dated today: `api/lib/maker-prereg.js:259-262` has no EXTEND verdict in the running system
+(confirmed intentional 2026-08-24), and the decision here is to evaluate on the data already
+collected rather than push to a second future checkpoint.
+
+**Verdict: KILL.** Not re-sliced. Does not affect the wnbatp-2024/2529/3034 cluster's independent
+verdict (recorded separately in `docs/MAKER_WNBA_TP_PREREG.md`).

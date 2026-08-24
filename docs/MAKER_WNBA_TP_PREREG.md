@@ -142,3 +142,36 @@ Criteria, window, and green-light action are fixed as of 2026-08-10. All three b
 clearing a structural bar AND sharing an articulable first-principles mechanism; the forward test is
 the only thing standing between "looks green" and "is real," so the rule that evaluates it must not
 be adjustable after the fact.
+
+## Checkpoint result (2026-08-24) — KILL
+
+Forward window `2026-08-10` → checkpoint `2026-08-24`, 7 WNBA slate days materialized (of the ~10
+expected at typical cadence).
+
+| band | days | fills | mean | bar | CI-lo | bar | posDays | bar | sideWon | bar | sample | met? |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 20-24 | 7 | 71 | +21.96 | ≥5 ✅ | +21.54 | >0 ✅ | 7/7 | ≥0.6 ✅ | 0.000 | <0.15 ✅ | 7d/71 | ❌ (7d<8) |
+| 25-29 | 7 | 107 | +12.65 | ≥5 ✅ | +3.96 | >0 ✅ | 6/7 | ≥0.6 ✅ | 0.137 | <0.15 ✅ | 7d/107 | ❌ (7d<8) |
+| 30-34 | 7 | 84 | +14.92 | ≥5 ✅ | +5.72 | >0 ✅ | 6/7 | ≥0.6 ✅ | 0.172 | <0.22 ✅ | 7d/84 | ❌ (7d<8) |
+
+All three bands: criteria 1-4 pass cleanly. Criterion 5 (sample) is the only miss, and only its
+days component — every band already cleared its 50-fill floor (71/107/84), but only 7 of the
+required 8 WNBA slate days had landed by the fixed 2026-08-24 checkpoint.
+
+**This document's own text (§ KILL / EXTEND rules) describes exactly this case as extend-eligible**
+("only criterion 5 unmet, with 1-4/6 otherwise trending pass → extend once to 2026-09-07"). That
+clause is not being invoked. `api/lib/maker-prereg.js:259-262` has no EXTEND verdict in the running
+system — once `now >= checkpoint`, a sample-floor miss and a statistical failure both collapse to
+KILL — and this was investigated and confirmed intentional on 2026-08-24 (checkpoint date fixed
+*before* the window opens specifically so it cannot be moved after seeing how the data looks; see
+memory `feedback_prereg_checkpoint_hard_deadline`). The call made here is to evaluate on the data
+already collected rather than set a second future checkpoint: **KILL, cluster does not advance.**
+
+Corroborating context, not new evidence: the netting screen (`docs/MAKER_LADDER_ARTIFACT.md`, run
+2026-08-11) already classified this category's whole book as "MIRRORED, net +" — sub-50 +17.93¢/ct
+against 50+ −12.43¢/ct, whole book +2.75¢/ct, inside noise floor. A same-day independent recheck on
+the current window reproduces this: sub-50 +13.81¢/ct, 50+ −12.70¢/ct, whole book **+1.28¢/ct on
+15,575 contracts** — still small, still consistent with no independent edge once both halves of the
+book are pooled. The checkpoint result does not contradict that classification.
+
+**Verdict: KILL.** Cluster does not advance to real capital. Per the KILL rule, not re-sliced.

@@ -123,3 +123,25 @@ Criteria, window, and green-light action are fixed as of 2026-08-10. This cell g
 one cell of ~555 with a clean structural bar AND an articulable first-principles mechanism; the
 forward test is the only thing standing between "looks green" and "is real," so the rule that
 evaluates it must not be adjustable after the fact.
+
+## Checkpoint result (2026-08-23) — KILL
+
+Forward window `2026-08-10` → checkpoint `2026-08-23`, 8 days / 390 fills / 2259.8 contracts.
+
+| # | Criterion | Bar | Actual | Met? |
+|---|---|---|---|---|
+| 1 | CI-lo > 0 | > 0 | +0.41 | ✅ |
+| 2 | Mean ≥ +5¢/ct | ≥ 5.00 | +4.59 | ❌ |
+| 3 | ≥ 60% days positive | ≥ 0.60 | 0.75 (6/8) | ✅ |
+| 4 | sideWon < 0.13 | < 0.13 | 0.1248 | ✅ |
+| 5 | Sample floor | ≥8d & ≥50 fills | 8d/390 | ✅ |
+
+Criterion 2 (mean ≥ +5¢/ct) fails — sample floor is already cleared, so this is not an
+extend-eligible case (rule reserves EXTEND for criterion 5 alone). Per the KILL rule: any of
+1-4/6 failing → KILL, no re-slice, no band widening, no side restriction.
+
+**Verdict: KILL.** Forward mean landed at +4.59¢/ct, just under the +5¢ floor that was set to
+absorb variance drag + fees + tail risk premium + adverse selection. The other four criteria
+passed — the direction and mechanism (sideWon 0.1248, close to in-sample 0.077) held up — but the
+per-contract edge itself was too thin to clear the bar this window sets deliberately above
+"merely positive." Re-entry for this cell requires new data, not a re-slice of this window.

@@ -108,3 +108,29 @@ A clean forward pass satisfies the `REENTRY.md` re-entry bar for this cell and f
 
 Criteria, window, and green-light action are fixed as of 2026-08-10. Moving any threshold
 post-hoc, or combining this verdict with another cell's verdict, voids the pre-registration.
+
+## Checkpoint result (2026-08-24) — KILL
+
+Forward window `2026-08-10` → checkpoint `2026-08-24`, 7 WNBA slate days materialized (of the ~8-10
+expected).
+
+| criterion | bar | actual | met? |
+|---|---|---|---|
+| CI-lo > 0 | >0 | **−2.85** | ❌ |
+| mean ≥ +5¢/ct | ≥5 | +23.66 | ✅ |
+| ≥60% days positive | ≥0.6 | 6/7 = 0.857 | ✅ |
+| sideWon < 0.40 | <0.40 | 0.382 | ✅ |
+| sample | ≥8d & ≥50 fills | 7d/39 | ❌ |
+
+This is **not** a pure sample-floor case — criterion 1 (day-clustered CI lower bound) also fails,
+independent of the sample question: the forward interval is [−2.85, +50.16], crossing zero. Per
+this document's own KILL/EXTEND rule, the extend clause applies "only" when criterion 5 alone is
+unmet with 1-4/6 otherwise trending pass; that is not the case here, so this cell was never
+extend-eligible on its own terms.
+
+This is the cell flagged in `docs/MAKER_LADDER_ARTIFACT.md` as the one candidate whose direction
+sits *opposite* the ladder artifact (60-64¢ in a book whose 50+ half was the winning half in-sample)
+— structurally the cleanest of the 8/10 wave. It is also the one true statistical forward failure
+among the WNBA checkpoint kills this cycle: the mechanism that looked most likely to survive did not.
+
+**Verdict: KILL.** Not re-sliced. Does not affect the wnbatp or wnbasp clusters' independent verdicts.

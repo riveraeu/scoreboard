@@ -145,3 +145,34 @@ Criteria, window, and green-light action are fixed as of 2026-08-10. All three b
 structural bar and share an articulable first-principles mechanism; the forward test is the only
 thing standing between "looks green" and "is real," so the rule that evaluates it must not be
 adjustable after the fact.
+
+## Checkpoint result (2026-08-24) — KILL
+
+Forward window `2026-08-10` → checkpoint `2026-08-24`, 7 WNBA slate days materialized (of the ~10
+expected at typical cadence).
+
+| band | days | fills | mean | bar | CI-lo | bar | posDays | bar | sideWon | bar | sample | met? |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 10-14 | 7 | 66 | +12.54 | ≥5 ✅ | +12.07 | >0 ✅ | 7/7 | ≥0.6 ✅ | 0.000 | <0.08 ✅ | 7d/66 | ❌ (7d<8) |
+| 15-19 | 7 | 113 | +14.61 | ≥5 ✅ | +10.88 | >0 ✅ | 7/7 | ≥0.6 ✅ | 0.026 | <0.12 ✅ | 7d/113 | ❌ (7d<8) |
+| 20-24 | 7 | 98 | +13.40 | ≥5 ✅ | +1.72 | >0 ✅ | 6/7 | ≥0.6 ✅ | 0.089 | <0.12 ✅ | 7d/98 | ❌ (7d<8) |
+
+All three bands: criteria 1-4 pass cleanly, criterion 5 is the only miss and only its days
+component — all three already cleared their 50-fill floors (66/113/98), but only 7 of the required
+8 WNBA slate days had landed by the fixed 2026-08-24 checkpoint.
+
+**This document's own text (§ KILL / EXTEND rules) describes exactly this case as extend-eligible.**
+That clause is not being invoked, for the same reason recorded in `docs/MAKER_WNBA_TP_PREREG.md`'s
+checkpoint result: `api/lib/maker-prereg.js:259-262` has no EXTEND verdict in the running system,
+this was confirmed intentional on 2026-08-24 (checkpoint fixed before the window opens so it can't
+move after seeing the data), and the call here is to evaluate on the data in hand rather than set a
+second future checkpoint.
+
+Corroborating context, not new evidence: the netting screen (`docs/MAKER_LADDER_ARTIFACT.md`, run
+2026-08-11) classified this category's whole book as **ARTIFACT** — sub-50 +13.91¢/ct against 50+
+−14.11¢/ct, whole book −1.77¢/ct, a near-perfect mirror. A same-day independent recheck on the
+current window reproduces the shape: sub-50 +13.21¢/ct, 50+ −12.33¢/ct, whole book **−0.23¢/ct on
+16,741 contracts** — still net negative pooled. The three cells reaching checkpoint here are the
+winning half of that same mirrored, money-losing book.
+
+**Verdict: KILL.** Cluster does not advance to real capital. Per the KILL rule, not re-sliced.
