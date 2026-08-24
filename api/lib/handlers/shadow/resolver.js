@@ -616,31 +616,37 @@ async function handleShadowResolver({ path, request, env, cache }) {
 
   // ── Shadow maker: replay last night's trade tape → maker_fills, then grade the whole ungraded
   // backlog (api/lib/maker.js; TAPE_REPLAY_ENABLED, re-enabled 2026-07-29). The tape walk fetches
-  // one page per ticker at ~16 req/s and Kalshi 429s partway once a day carries enough tickers
-  // (429 ceiling is a stable ~870-890 requests, confirmed unchanged 08-04 → 08-15). A 429 makes
-  // detectAndGrade return reachedEnd=false → graded=0 for the ENTIRE ungraded set, so a single
-  // offset-0 pass would silently stall the whole book on a busy night — grading only runs when the
-  // walk reaches the end. So resume on `nextOffset` (non-null iff the pass 429'd) within a run,
-  // bounded by MAX_PASSES and a wall-clock budget (resolver maxDuration 300s, this runs near the
-  // end). Ticker volume grew ~1,166 → ~4,145/day between 08-04 and 08-15 (new model-free leagues),
-  // so one run's budget now covers only ~35% of a day's walk — restarting every run at offset 0
-  // meant the three daily cron fires each re-walked the same rate-limited prefix and NEVER reached
-  // the tail, rather than accumulating toward it. `maker:tapewalk:{dayPT}` (48h TTL) persists
-  // `nextOffset` across runs so same-day cron fires resume where the last one stopped instead of
-  // restarting; cleared on the terminal pass (offset===null) so the next calendar day starts clean.
-  // If the backlog is still behind after all three fires, `?makerDetectDay=` remains the manual
-  // catch-up path. Failure-closed — a KV hiccup degrades to the old restart-at-0 behavior, never
-  // breaks resolution.
+  // one page per ticker at ~16 req/s; Kalshi 429s partway once a day carries enough tickers (429
+  // ceiling is a stable ~870-890 requests, confirmed unchanged 08-04 → 08-15), and maker.js's own
+  // internal `deadlineMs` (added 2026-08-24) now also bounds a single call so it can never run past
+  // this handler's platform ceiling and get hard-killed with zero progress banked. Grading runs on
+  // every call regardless of whether the walk finished (maker.js, 2026-08-24) — it grades the whole
+  // ungraded backlog, not just `dayPT`, so this no longer waits on a single day's completion.
+  //
+  // Day selection: `maker:tapewalk:current` (single persistent KV key, replacing the old
+  // per-day `maker:tapewalk:{dayPT}` scheme 2026-08-24) holds `{day, offset}` for whichever day is
+  // CURRENTLY being walked. The old scheme kept a separate cursor per calendar day, keyed off
+  // "yesterday" recomputed fresh on every invocation — so a day that didn't finish within its own
+  // 3 same-day cron fires was silently abandoned forever once the calendar rolled to a new "yesterday"
+  // (confirmed root cause of the 2026-08-23/24 grading stall, frozen at 2026-08-20). Now a day stays
+  // the active cursor across as many cron fires — and calendar days — as it takes to finish; only
+  // once it completes does the cursor advance, one day at a time, toward real "yesterday" (so a
+  // multi-day backlog is walked in order, not skipped over). Bounded within one invocation by
+  // MAX_PASSES and a wall-clock budget (this runs near the end of resolver's own 300s ceiling).
+  // If the backlog is still behind after the automatic passes, `?makerDetectDay=` remains the manual
+  // catch-up path. Failure-closed — a KV hiccup degrades to targeting fresh "yesterday" at offset 0,
+  // never breaks resolution.
   let makerMeta = null;
   try {
-    const _yd = new Date(new Date(today).getTime() - 86400_000).toISOString().slice(0, 10);
+    const freshYesterday = new Date(new Date(today).getTime() - 86400_000).toISOString().slice(0, 10);
     const MAX_PASSES = 8, PASS_BUDGET_MS = 120_000, BACKOFF_MS = 5_000;
-    const TAPEWALK_KEY = `maker:tapewalk:${_yd}`, TAPEWALK_TTL_S = 172800;
+    const TAPEWALK_KEY = "maker:tapewalk:current", TAPEWALK_TTL_S = 172800;
     const started = Date.now();
     const saved = cache ? await cache.get(TAPEWALK_KEY, "json").catch(() => null) : null;
+    const dayPT = saved?.day || freshYesterday;
     let offset = saved?.offset ?? 0, passes = 0, totalNew = 0;
     do {
-      makerMeta = await detectAndGradeMakerFills({ env, dayPT: _yd, offset });
+      makerMeta = await detectAndGradeMakerFills({ env, dayPT, offset });
       totalNew += makerMeta.newFills || 0;
       passes++;
       offset = makerMeta.nextOffset; // null once the walk reaches the end (grading ran)
@@ -648,14 +654,26 @@ async function handleShadowResolver({ path, request, env, cache }) {
       await new Promise(r => setTimeout(r, BACKOFF_MS)); // let the 429 window clear before resuming
     } while (true);
     if (cache) {
-      if (offset == null) await cache.delete(TAPEWALK_KEY).catch(() => {});
-      else await cache.put(TAPEWALK_KEY, { offset, updatedAt: new Date().toISOString() },
-        { expirationTtl: TAPEWALK_TTL_S }).catch(() => {});
+      if (offset == null) {
+        // This day is done. If it's still behind real "yesterday", queue the NEXT day so the next
+        // cron fire keeps catching up sequentially instead of jumping straight to fresh "yesterday"
+        // and skipping whatever's still unwalked in between.
+        const nextDay = new Date(new Date(dayPT).getTime() + 86400_000).toISOString().slice(0, 10);
+        if (nextDay <= freshYesterday) {
+          await cache.put(TAPEWALK_KEY, { day: nextDay, offset: 0, updatedAt: new Date().toISOString() },
+            { expirationTtl: TAPEWALK_TTL_S }).catch(() => {});
+        } else {
+          await cache.delete(TAPEWALK_KEY).catch(() => {});
+        }
+      } else {
+        await cache.put(TAPEWALK_KEY, { day: dayPT, offset, updatedAt: new Date().toISOString() },
+          { expirationTtl: TAPEWALK_TTL_S }).catch(() => {});
+      }
     }
-    console.log(`[shadow-resolver] maker graded=${makerMeta.graded} passes=${passes} newFills=${totalNew}`
+    console.log(`[shadow-resolver] maker day=${dayPT} graded=${makerMeta.graded} passes=${passes} newFills=${totalNew}`
       + ` startOffset=${saved?.offset ?? 0}`
       + (makerMeta.skipped ? ` skipped=${makerMeta.skipped}`
-        : ` tickers=${makerMeta.tickers} tapeFails=${makerMeta.tapeFails} rateLimited=${makerMeta.rateLimited} complete=${offset == null}`));
+        : ` tickers=${makerMeta.tickers} tapeFails=${makerMeta.tapeFails} rateLimited=${makerMeta.rateLimited} timedOut=${makerMeta.timedOut} complete=${offset == null}`));
   } catch (e) {
     console.error(`[shadow-resolver] maker fill pass failed: ${e?.message}`);
   }

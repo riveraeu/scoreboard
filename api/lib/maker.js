@@ -355,9 +355,24 @@ const TAPE_REPLAY_ENABLED = true;
 // the same rate-limited prefix. Now it starts at `offset`, tickers are sorted for a stable order,
 // and it returns `nextOffset` (the index it reached, or null when the day is fully walked). The
 // caller loops on nextOffset with a cooldown, exactly like ?makerBackfill=. The nightly cron omits
-// offset → offset 0, one pass, unchanged. Grading runs only on the final chunk (nextOffset===null),
-// since gradeMakerFills scans the whole ungraded set and is wasteful to call mid-walk.
-export async function detectAndGradeMakerFills({ env, dayPT, force = false, offset = 0 }) {
+// offset → offset 0.
+//
+// `deadlineMs` (added 2026-08-24, fixing the stall found that day) bounds the walk's OWN elapsed
+// time, breaking the loop exactly like a 429 does. Ticker volume grew enough (~4,145+/day) that just
+// the artificial inter-batch DELAY spacing for one full day exceeds ~259s — a fresh offset-0 call
+// could run past the caller's platform ceiling (Vercel 300s) and get hard-killed mid-flight, banking
+// ZERO progress (no fills committed, no cursor to resume from) — confirmed live: a manual repair
+// call ran the full 290s and returned nothing. The internal deadline guarantees this function always
+// returns promptly with a valid, resumable `nextOffset`, regardless of ticker volume.
+//
+// Grading (`gradeMakerFills`) now runs on EVERY call, not just the final chunk (2026-08-24) —
+// `gradeMakerFills` grades the entire ungraded backlog across ALL days, not just `dayPT`, so gating
+// it on THIS call's `reachedEnd` meant already-inserted fills from earlier passes/days sat ungraded
+// indefinitely whenever a day's walk kept failing to complete (which, combined with the resolver's
+// old "always target yesterday" day-selection, could stall grading for the whole book — see
+// resolver.js). It's idempotent and cheap when nothing's newly gradable (one SELECT, short-circuits
+// at `if (!candidates.length) return 0`), so calling it more often has no real cost.
+export async function detectAndGradeMakerFills({ env, dayPT, force = false, offset = 0, deadlineMs = 90_000 }) {
   await ensureMakerTables(env);
 
   if (!TAPE_REPLAY_ENABLED && !force) {
@@ -380,14 +395,16 @@ export async function detectAndGradeMakerFills({ env, dayPT, force = false, offs
   }
 
   const fills = [];
-  let tapeFails = 0, rateLimited = false;
+  let tapeFails = 0, rateLimited = false, timedOut = false;
   const minTs = Math.floor((Date.parse(`${dayPT}T00:00:00-07:00`) - 6 * 3600_000) / 1000);
   // Sorted so `offset` refers to the same ticker across passes — Map key order is insertion order
   // and stable within a query, but sorting makes resume robust to any query-plan change.
   const tickers = [...byTicker.keys()].sort();
   const BATCH = 4, DELAY = 250;
+  const walkStarted = Date.now();
   let off = offset;
   for (off = offset; off < tickers.length && !rateLimited; off += BATCH) {
+    if (Date.now() - walkStarted >= deadlineMs) { timedOut = true; break; }
     const batch = tickers.slice(off, off + BATCH);
     await Promise.all(batch.map(async (ticker) => {
       try {
@@ -422,18 +439,19 @@ export async function detectAndGradeMakerFills({ env, dayPT, force = false, offs
     });
   }
 
-  // nextOffset: where to resume. If we stopped on a 429 mid-walk, resume at the batch we reached;
-  // if we walked off the end, the day is complete → null. The nightly cron (offset 0, one pass)
-  // gets null unless it 429'd, in which case a later run resumes rather than restarting the prefix.
+  // nextOffset: where to resume. If we stopped on a 429 or the internal deadline mid-walk, resume at
+  // the batch we reached; if we walked off the end, the day is complete → null. The nightly cron
+  // (offset 0, one pass) gets null unless it 429'd or timed out, in which case a later run resumes
+  // rather than restarting the prefix.
   const reachedEnd = off >= tickers.length;
   const nextOffset = reachedEnd ? null : off;
 
-  // Grade only when the day is fully walked — gradeMakerFills scans the entire ungraded set, so
-  // calling it on every chunk of a resumed day repeats the same work N times for no new rows.
-  const gradedCount = reachedEnd ? await gradeMakerFills({ env }) : 0;
+  // Always grade the ungraded backlog, whether or not THIS call's walk reached its own end — see the
+  // function-header comment. Cheap no-op when nothing's newly gradable.
+  const gradedCount = await gradeMakerFills({ env });
 
   return { tickers: tickers.length, newFills: fills.length, graded: gradedCount,
-    tapeFails, rateLimited, nextOffset };
+    tapeFails, rateLimited, timedOut, nextOffset };
 }
 
 // Grades everything ungraded directly off Kalshi's own public settlement for the ticker (2026-07-
