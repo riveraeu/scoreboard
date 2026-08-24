@@ -41,7 +41,7 @@ Production: `https://scoreboard-ivory-xi.vercel.app`
 
 Key state flags (context in memory + `docs/REENTRY.md`):
 - **`AWAITING_VALIDATED_EDGE`** (`api/lib/config.js`) — no strategy family has cleared validation; suppresses the imperative mood only, never a measurement. Instruments (boards, quoting, fills, series scan) keep running.
-- **Maker V2 UN-SHELVED 2026-08-24, scoped to one trial only** — `SHELVED = false` in `api/lib/maker-live.js`, deliberately, for the sub-50 one-sided live trial (`docs/MAKER_V2_SUBFIFTY_TRIAL.md`: `wnba|points` + `mlb|f5total|10-14`, per-group $30 caps + $15 stop-losses, checkpoint 2026-09-07). This does NOT reverse the original 80-84 favorite-band verdict (six dissolutions, no demonstrated edge) — `computeWantedMakerQuotes` no longer reads `MAKER_V2_BAND` at all; real orders target ONLY `MAKER_V2_LIVE_CELLS` (config.js). V1 quoting, nightly tape replay, and grading stay ON regardless.
+- **Maker V2 LIVE 2026-08-24, scoped to one trial only** — `SHELVED = false` in `api/lib/maker-live.js` AND `armed:true` confirmed (the KV flag never got cleared from the 7/21 arming, so it went live the moment SHELVED flipped, without a separate POST). Deliberate, for the sub-50 one-sided live trial (`docs/MAKER_V2_SUBFIFTY_TRIAL.md`: `wnba|points` + `mlb|f5total|10-14`, per-group $30 caps + $15 stop-losses, checkpoint 2026-09-07). This does NOT reverse the original 80-84 favorite-band verdict (six dissolutions, no demonstrated edge) — `computeWantedMakerQuotes` no longer reads `MAKER_V2_BAND` at all; real orders target ONLY `MAKER_V2_LIVE_CELLS` (config.js). V1 quoting, nightly tape replay, and grading stay ON regardless. **Check `/api/maker-v2-board`'s `groups[]` for live status** (`exposureCents`/`realizedCents`/`halted` per group).
 - **Model + taker teardown COMPLETE** — all model/taker/push code deleted; capture-all is the only path.
 
 ## Capture doctrine
@@ -58,7 +58,7 @@ Two gates at collection, both quote-sanity (not price-preference): (1) **band** 
 | Common debugging recipes | `docs/DEBUGGING.md` |
 | What would justify betting again (re-entry conditions + required method) | `docs/REENTRY.md` — read before any work premised on a new edge |
 | Why a lit sub-50¢ maker cell is usually not an edge (band-ladder artifact, netting screen, prereg audit) | `docs/MAKER_LADDER_ARTIFACT.md` — read before promoting any `robustCandidates` hit |
-| Sub-50 one-sided live trial (`wnba\|points`, `mlb\|f5total\|10-14`) — mechanism, sizing, per-group caps/stop-losses, checkpoint | `docs/MAKER_V2_SUBFIFTY_TRIAL.md` — un-shelved 2026-08-24, key verified; KV arm pending this deploy |
+| Sub-50 one-sided live trial (`wnba\|points`, `mlb\|f5total\|10-14`) — mechanism, sizing, per-group caps/stop-losses, checkpoint | `docs/MAKER_V2_SUBFIFTY_TRIAL.md` — **LIVE 2026-08-24** (`armed:true` confirmed via `/api/maker-v2-board`; the KV flag was already `true` from the 7/21 arming, never cleared, so no explicit POST was needed once SHELVED flipped) |
 
 ## Architecture
 
