@@ -1,6 +1,34 @@
 # Live trial — sub-50 one-sided quoting, `wnba|points` + `mlb|f5total|10-14` (2026-08-24)
 
-## Status: KILLED 2026-08-24 (exposure-cap bug, real capital ~5x intended caps) — not re-armed
+## Status: RE-ARMED 2026-08-25 — `mlb-f5total` continues its original window, `wnba-points` gets a fresh ledger
+
+Pre-kill positions settled naturally (per the KILLED account below) before re-arming: `mlb-f5total`
+realized **+$28.00** (never breached its stop-loss) and `wnba-points` realized **−$60.75** (4x its
+own −$15 stop-loss, entirely accrued under the exposure-cap bug's oversized real positions). Both
+groups showed `exposureCents: 0` at re-arm time — nothing left open.
+
+`groupExposureCents`/`groupRealizedCents`/`haltedGroups` (`api/lib/maker-live.js`) had no time or
+attempt scoping — they summed every historical graded row for a `live_group` forever. Under the
+original code, re-arming as-is would have permanently halted `wnba-points` on its very first tick
+(−$60.75 ≤ −$15 stop-loss, unconditionally, regardless of how much time had passed or how the fix
+had already changed the cap math) — it would never place another order. Decided 2026-08-25: give
+`wnba-points` a fresh ledger rather than leave it permanently retired on bug-era losses. Each cell
+in `MAKER_V2_LIVE_CELLS` now carries its own `resumeFrom` date (`api/lib/config.js`); the three
+group functions above filter rows to `game_date >= resumeFrom` before summing, per-group — see
+`MAKER_V2_WNBA_POINTS_RESUME` ("2026-08-25", fresh ledger) vs. `MAKER_V2_TRIAL_START`
+("2026-08-24", unchanged — `mlb-f5total` never breached its stop-loss so its original window
+stays intact and its cumulative track record isn't discarded). `/api/maker-v2-board`'s `groups[]`
+rollup query dropped its single global `WHERE game_date >= $1` bound (now fetches unfiltered and
+relies on the same per-group-scoped pure functions `updateLiveMakerOrders` uses, so display and
+live trading logic can't read different windows). Pinned in `maker-live.test.js` (2 new tests:
+a pre-resumeFrom loss must not count toward a reset group's realized PnL/halt state, and pre-
+resumeFrom resting exposure must not count either).
+
+Re-armed via: `env.MAKER_V2_ARMED` set to `"true"` in Vercel production (was not `"true"` before
+this), then `POST /api/maker-v2-arm`. `MAKER_V2_SHELVED` was already `false` (set 2026-08-24) and
+the Kalshi trading-capable key pair was already present — neither blocked this re-arm.
+
+## Prior status (2026-08-24): KILLED (exposure-cap bug, real capital ~5x intended caps)
 
 Same day the trial went live, `groupExposureCents`/`costCents` (`api/lib/maker-live.js`) were found
 to compute the per-group $30 cap off the SOLD side's price (`price`/`q.ask`), not the real dollar
@@ -84,6 +112,7 @@ observer of a two-sided book. **This trial never quotes the 50+ side of either c
 | Contracts per order | 25 | 40 |
 | Dollar cap (outstanding, not cumulative-ever) | $30 | $30 |
 | Stop-loss (realized) | −$15 (50% of cap) | −$15 (50% of cap) |
+| Ledger start (`resumeFrom`) | 2026-08-25 (reset — see Status) | 2026-08-24 (original, unchanged) |
 | Checkpoint | 2026-09-07 (2 weeks) | 2026-09-07 (2 weeks) |
 
 The dollar cap is **outstanding exposure**, not a one-shot budget — it is the cost basis of
@@ -129,20 +158,17 @@ Scope, sizing, caps, stop-losses, and checkpoint are fixed as of 2026-08-24. A c
 them is a new trial (new doc), not an edit of this one — same discipline as every shadow
 pre-registration in this repo.
 
-## Arming (NOT done as of this writing)
+## Arming — DONE 2026-08-25 (re-arm; original arming was 2026-08-24)
 
-`MAKER_V2_SHELVED` remains `true` in `api/lib/maker-live.js` — the scoping/eligibility/cap/stop-
-loss mechanism above is implemented and test-covered (`maker-live.test.js`), but nothing places a
-real order until a deliberate follow-up:
+`MAKER_V2_SHELVED` is `false` (set 2026-08-24). Re-arm steps taken 2026-08-25:
 
-1. **A trading-capable Kalshi API key.** `kalshi-order-client.js` requires `env.KALSHI_API_KEY_ID`
-   + `env.KALSHI_PRIVATE_KEY` (RSA-signed order requests) — a **different** credential from
-   whatever is wired for read-only market data. Noted 2026-08-24: the currently configured key is
-   not confirmed to have order-placement permission on the funded account; this needs a fresh key
-   pulled and wired into `env` (`vercel env add`) before arming, not assumed to already work.
-2. Flip `MAKER_V2_SHELVED` to `false` and update its tripwire test in the same commit.
-3. Set `env.MAKER_V2_ARMED = "true"`.
+1. Trading-capable Kalshi API key already present in `env` from the original 2026-08-24 arming.
+2. `MAKER_V2_SHELVED` already `false`.
+3. `env.MAKER_V2_ARMED` set to `"true"` in Vercel production (was not `"true"` after the 8/24 kill
+   left the KV flag false — the env var itself was not `"true"` either at re-arm time; both needed
+   setting).
 4. `POST /api/maker-v2-arm`.
 
-Before step 2, verify via `/api/maker-v2-board` (`groups[]`, `eligibleBySport`) that eligibility is
-computing the expected two cells and nothing else, while still disarmed.
+Before step 4, `/api/maker-v2-board`'s `groups[].exposureCents` was re-verified against
+`/api/kalshi-balance`'s `makerCommittedCents` (both 0 — clean) per the exposure-cap-bug follow-up
+requirement, and the `wnba-points` permanent-halt issue (see Status above) was fixed first.

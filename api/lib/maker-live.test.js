@@ -4,9 +4,9 @@ import { isArmed, setArmed, gameKeyFor, sellAsBuy, matchLiveCell, groupExposureC
   groupRealizedCents, haltedGroups } from "./maker-live.js";
 
 const TEST_CELLS = [
-  { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 3000, stopLossCents: -1500 },
-  { group: "wnba-points", sport: "wnba", category: "points", band: [25, 29], sizeContracts: 25, capCents: 3000, stopLossCents: -1500 },
-  { group: "mlb-f5total", sport: "mlb", category: "f5total", band: [10, 14], sizeContracts: 40, capCents: 3000, stopLossCents: -1500 },
+  { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 3000, stopLossCents: -1500, resumeFrom: "2026-08-10" },
+  { group: "wnba-points", sport: "wnba", category: "points", band: [25, 29], sizeContracts: 25, capCents: 3000, stopLossCents: -1500, resumeFrom: "2026-08-10" },
+  { group: "mlb-f5total", sport: "mlb", category: "f5total", band: [10, 14], sizeContracts: 40, capCents: 3000, stopLossCents: -1500, resumeFrom: "2026-08-10" },
 ];
 
 // Fake KV — just enough of the { get, put } contract used by isArmed/setArmed.
@@ -111,33 +111,33 @@ test("matchLiveCell: never throws on a missing/malformed row", () => {
 
 test("groupExposureCents: sums REAL cost basis (100 - price) x contracts for not-yet-graded rows only, per group — `price` is the SOLD side/price, the real order Kalshi executes is the complementary buy at (100 - price)", () => {
   const rows = [
-    { live_group: "wnba-points", status: "resting", price: 22, size: 25, filled_count: 0, graded_at: null },
-    { live_group: "wnba-points", status: "executed", price: 21, size: 25, filled_count: 25, graded_at: null },
-    { live_group: "wnba-points", status: "executed", price: 20, size: 25, filled_count: 25, graded_at: "2026-08-25" }, // graded — excluded
-    { live_group: "mlb-f5total", status: "resting", price: 12, size: 40, filled_count: 0, graded_at: null },
-    { live_group: "wnba-points", status: "canceled", price: 23, size: 25, filled_count: 0, graded_at: null }, // canceled — excluded
+    { live_group: "wnba-points", game_date: "2026-08-11", status: "resting", price: 22, size: 25, filled_count: 0, graded_at: null },
+    { live_group: "wnba-points", game_date: "2026-08-11", status: "executed", price: 21, size: 25, filled_count: 25, graded_at: null },
+    { live_group: "wnba-points", game_date: "2026-08-11", status: "executed", price: 20, size: 25, filled_count: 25, graded_at: "2026-08-25" }, // graded — excluded
+    { live_group: "mlb-f5total", game_date: "2026-08-11", status: "resting", price: 12, size: 40, filled_count: 0, graded_at: null },
+    { live_group: "wnba-points", game_date: "2026-08-11", status: "canceled", price: 23, size: 25, filled_count: 0, graded_at: null }, // canceled — excluded
   ];
-  assert.equal(groupExposureCents(rows, "wnba-points"), (100 - 22) * 25 + (100 - 21) * 25);
-  assert.equal(groupExposureCents(rows, "mlb-f5total"), (100 - 12) * 40);
-  assert.equal(groupExposureCents(rows, "nonexistent-group"), 0);
+  assert.equal(groupExposureCents(rows, "wnba-points", TEST_CELLS), (100 - 22) * 25 + (100 - 21) * 25);
+  assert.equal(groupExposureCents(rows, "mlb-f5total", TEST_CELLS), (100 - 12) * 40);
+  assert.equal(groupExposureCents(rows, "nonexistent-group", TEST_CELLS), 0);
 });
 
 test("groupRealizedCents: sums pnl_cents × filled_count for graded rows only, per group", () => {
   const rows = [
-    { live_group: "wnba-points", graded_at: "2026-08-25", pnl_cents: -20, filled_count: 25 },
-    { live_group: "wnba-points", graded_at: "2026-08-26", pnl_cents: 5, filled_count: 25 },
-    { live_group: "wnba-points", status: "resting", graded_at: null, pnl_cents: null, filled_count: 0 }, // ungraded — excluded
-    { live_group: "mlb-f5total", graded_at: "2026-08-25", pnl_cents: -10, filled_count: 40 },
+    { live_group: "wnba-points", game_date: "2026-08-11", graded_at: "2026-08-25", pnl_cents: -20, filled_count: 25 },
+    { live_group: "wnba-points", game_date: "2026-08-11", graded_at: "2026-08-26", pnl_cents: 5, filled_count: 25 },
+    { live_group: "wnba-points", game_date: "2026-08-11", status: "resting", graded_at: null, pnl_cents: null, filled_count: 0 }, // ungraded — excluded
+    { live_group: "mlb-f5total", game_date: "2026-08-11", graded_at: "2026-08-25", pnl_cents: -10, filled_count: 40 },
   ];
-  assert.equal(groupRealizedCents(rows, "wnba-points"), -20 * 25 + 5 * 25);
-  assert.equal(groupRealizedCents(rows, "mlb-f5total"), -10 * 40);
+  assert.equal(groupRealizedCents(rows, "wnba-points", TEST_CELLS), -20 * 25 + 5 * 25);
+  assert.equal(groupRealizedCents(rows, "mlb-f5total", TEST_CELLS), -10 * 40);
 });
 
 test("haltedGroups: a group's realized PnL at or below its own stopLossCents halts ONLY that group", () => {
   // wnba-points stopLossCents is -1500; -20¢ x 100 contracts = -2000, breaches it.
   const rows = [
-    { live_group: "wnba-points", graded_at: "2026-08-25", pnl_cents: -20, filled_count: 100 },
-    { live_group: "mlb-f5total", graded_at: "2026-08-25", pnl_cents: -5, filled_count: 40 }, // -200, does not breach
+    { live_group: "wnba-points", game_date: "2026-08-11", graded_at: "2026-08-25", pnl_cents: -20, filled_count: 100 },
+    { live_group: "mlb-f5total", game_date: "2026-08-11", graded_at: "2026-08-25", pnl_cents: -5, filled_count: 40 }, // -200, does not breach
   ];
   const halted = haltedGroups(rows, TEST_CELLS);
   assert.equal(halted.has("wnba-points"), true);
@@ -146,4 +146,41 @@ test("haltedGroups: a group's realized PnL at or below its own stopLossCents hal
 
 test("haltedGroups: empty/no history halts nothing", () => {
   assert.equal(haltedGroups([], TEST_CELLS).size, 0);
+});
+
+// ── Per-group ledger reset (2026-08-25, docs/MAKER_V2_SUBFIFTY_TRIAL.md re-arm) ─────────────────
+// wnba-points breached its real stop-loss under the pre-fix exposure-cap bug; re-arming gives it a
+// fresh ledger via a later `resumeFrom` rather than staying permanently halted against bug-era rows.
+
+test("groupRealizedCents / haltedGroups: rows before a group's own resumeFrom are excluded — a ledger reset actually resets", () => {
+  const RESET_CELLS = [
+    { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 3000, stopLossCents: -1500, resumeFrom: "2026-08-25" },
+    { group: "mlb-f5total", sport: "mlb", category: "f5total", band: [10, 14], sizeContracts: 40, capCents: 3000, stopLossCents: -1500, resumeFrom: "2026-08-24" },
+  ];
+  const rows = [
+    // Pre-reset wnba-points loss — breaches stop-loss on its own, but predates resumeFrom.
+    { live_group: "wnba-points", game_date: "2026-08-24", graded_at: "2026-08-24", pnl_cents: -60, filled_count: 100 },
+    // Post-reset wnba-points result — small win, should count.
+    { live_group: "wnba-points", game_date: "2026-08-25", graded_at: "2026-08-25", pnl_cents: 3, filled_count: 25 },
+    // mlb-f5total's resumeFrom is unchanged (2026-08-24) — its pre-existing history still counts.
+    { live_group: "mlb-f5total", game_date: "2026-08-24", graded_at: "2026-08-24", pnl_cents: 28, filled_count: 40 },
+  ];
+  assert.equal(groupRealizedCents(rows, "wnba-points", RESET_CELLS), 3 * 25,
+    "the pre-reset -6000 loss must not be summed once resumeFrom moves past it");
+  assert.equal(groupRealizedCents(rows, "mlb-f5total", RESET_CELLS), 28 * 40);
+  const halted = haltedGroups(rows, RESET_CELLS);
+  assert.equal(halted.has("wnba-points"), false, "reset ledger is a small win, not halted");
+  assert.equal(halted.has("mlb-f5total"), false);
+});
+
+test("groupExposureCents: rows before a group's own resumeFrom are excluded from exposure too", () => {
+  const RESET_CELLS = [
+    { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 3000, stopLossCents: -1500, resumeFrom: "2026-08-25" },
+  ];
+  const rows = [
+    { live_group: "wnba-points", game_date: "2026-08-24", status: "resting", price: 22, size: 25, filled_count: 0, graded_at: null },
+    { live_group: "wnba-points", game_date: "2026-08-25", status: "resting", price: 21, size: 25, filled_count: 0, graded_at: null },
+  ];
+  assert.equal(groupExposureCents(rows, "wnba-points", RESET_CELLS), (100 - 21) * 25,
+    "only the post-resumeFrom resting order counts");
 });

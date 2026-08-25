@@ -145,14 +145,23 @@ export function matchLiveCell(row, cells = MAKER_V2_LIVE_CELLS) {
 // `makerCommittedCents` (api/lib/handlers/kalshi.js), which already used the correct `100 − price`
 // basis and was the tell. `realizedCents(group)`: sum of pnl_cents × filled_count over graded
 // rows — the stop-loss input.
-export function groupExposureCents(rows, group) {
+// Both scoped to the group's own `resumeFrom` (cells config) via `game_date >= resumeFrom` — a
+// group whose ledger was reset (see MAKER_V2_WNBA_POINTS_RESUME) must not keep summing rows from
+// before the reset, or the reset would be a no-op.
+function _resumeFrom(group, cells) {
+  return cells.find(c => c.group === group)?.resumeFrom || "";
+}
+export function groupExposureCents(rows, group, cells = MAKER_V2_LIVE_CELLS) {
+  const resumeFrom = _resumeFrom(group, cells);
   return rows
-    .filter(r => r.live_group === group && r.status !== "canceled" && r.status !== "expired" && !r.graded_at)
+    .filter(r => r.live_group === group && r.status !== "canceled" && r.status !== "expired" && !r.graded_at
+      && (r.game_date || "") >= resumeFrom)
     .reduce((sum, r) => sum + (100 - Number(r.price)) * (Number(r.filled_count) || Number(r.size)), 0);
 }
-export function groupRealizedCents(rows, group) {
+export function groupRealizedCents(rows, group, cells = MAKER_V2_LIVE_CELLS) {
+  const resumeFrom = _resumeFrom(group, cells);
   return rows
-    .filter(r => r.live_group === group && r.graded_at)
+    .filter(r => r.live_group === group && r.graded_at && (r.game_date || "") >= resumeFrom)
     .reduce((sum, r) => sum + Number(r.pnl_cents || 0) * (Number(r.filled_count) || 0), 0);
 }
 // A group is halted once its realized PnL breaches its own stop-loss — halted groups place no new
@@ -162,7 +171,7 @@ export function haltedGroups(rows, cells = MAKER_V2_LIVE_CELLS) {
   const halted = new Set();
   for (const g of groups) {
     const cell = cells.find(c => c.group === g);
-    if (groupRealizedCents(rows, g) <= cell.stopLossCents) halted.add(g);
+    if (groupRealizedCents(rows, g, cells) <= cell.stopLossCents) halted.add(g);
   }
   return halted;
 }

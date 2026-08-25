@@ -108,10 +108,17 @@ export const MAKER_V2_EXPIRATION_SEC = 150;  // self-expiring safety net — out
 // (stopLossCents — realized PnL floor; breach halts new placement AND cancels that group's
 // resting orders, see haltedGroups() in maker-live.js). sizeContracts is fixed per group so one
 // fill's cost is a small fraction of the group's cap, not inherited from the old 80-84 sizing.
-export const MAKER_V2_LIVE_CELLS = [
-  { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 3000, stopLossCents: -1500 },
-  { group: "wnba-points", sport: "wnba", category: "points", band: [25, 29], sizeContracts: 25, capCents: 3000, stopLossCents: -1500 },
-  { group: "mlb-f5total", sport: "mlb", category: "f5total", band: [10, 14], sizeContracts: 40, capCents: 3000, stopLossCents: -1500 },
-];
-export const MAKER_V2_TRIAL_START = "2026-08-24";      // forward window opens — see docs/MAKER_V2_SUBFIFTY_TRIAL.md
+// `resumeFrom` is each group's own ledger start: groupExposureCents/groupRealizedCents (maker-live.js)
+// only sum rows with game_date >= their group's resumeFrom, so a group's cap/stop-loss reads against
+// ITS OWN window, not the whole table's history.
+export const MAKER_V2_TRIAL_START = "2026-08-24";      // original forward window opens — see docs/MAKER_V2_SUBFIFTY_TRIAL.md
 export const MAKER_V2_TRIAL_CHECKPOINT = "2026-09-07"; // 2 weeks — see docs/MAKER_V2_SUBFIFTY_TRIAL.md
+// wnba-points breached its -$15 stop-loss for real (-$60.75) under the pre-2026-08-24-fix exposure-
+// cap bug — its ledger resets here on re-arm rather than staying permanently halted against bug-era
+// losses. mlb-f5total never breached its stop-loss (+$28.00 realized) and keeps its original window.
+export const MAKER_V2_WNBA_POINTS_RESUME = "2026-08-25"; // fresh ledger — see docs/MAKER_V2_SUBFIFTY_TRIAL.md
+export const MAKER_V2_LIVE_CELLS = [
+  { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 3000, stopLossCents: -1500, resumeFrom: MAKER_V2_WNBA_POINTS_RESUME },
+  { group: "wnba-points", sport: "wnba", category: "points", band: [25, 29], sizeContracts: 25, capCents: 3000, stopLossCents: -1500, resumeFrom: MAKER_V2_WNBA_POINTS_RESUME },
+  { group: "mlb-f5total", sport: "mlb", category: "f5total", band: [10, 14], sizeContracts: 40, capCents: 3000, stopLossCents: -1500, resumeFrom: MAKER_V2_TRIAL_START },
+];

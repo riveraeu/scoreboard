@@ -24,8 +24,7 @@ import { updateLiveMakerOrders, emergencyKillLive, setArmed, computeWantedMakerQ
   isArmed as isMakerV2Armed, ensureMakerLiveTables, MAKER_V2_SHELVED,
   groupExposureCents, groupRealizedCents, haltedGroups } from "../maker-live.js";
 import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
-import { MAKER_V2_MAX_CONCURRENT, MAKER_V2_SAME_GAME_CAP, MAKER_V2_LIVE_CELLS,
-  MAKER_V2_TRIAL_START } from "../config.js";
+import { MAKER_V2_MAX_CONCURRENT, MAKER_V2_SAME_GAME_CAP, MAKER_V2_LIVE_CELLS } from "../config.js";
 
 const normName = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -505,15 +504,18 @@ export async function handleKalshiRoutes(ctx) {
     }
 
     // Sub-50 live trial group rollup (docs/MAKER_V2_SUBFIFTY_TRIAL.md) — exposure/realized need
-    // the WHOLE trial window, not just the yesterday+today slice `orders` above is bounded to, so
-    // this is its own query scoped to the trial's own start date.
+    // each group's OWN window, not just the yesterday+today slice `orders` above is bounded to, so
+    // this is its own query. Not date-bounded in SQL (groups now have DIFFERENT resumeFrom dates
+    // since the 2026-08-25 wnba-points ledger reset — see MAKER_V2_WNBA_POINTS_RESUME) — the
+    // per-group `game_date >= resumeFrom` filtering happens inside groupExposureCents/
+    // groupRealizedCents (maker-live.js), the same single source of truth updateLiveMakerOrders uses.
     let groups = [];
     try {
       await ensureMakerLiveTables(env);
       const groupRows = await neonQuery(
-        `SELECT status, price, size, filled_count, pnl_cents, graded_at, live_group
-         FROM maker_orders_v2 WHERE game_date >= $1 AND live_group IS NOT NULL`,
-        [MAKER_V2_TRIAL_START], env, { write: true });
+        `SELECT status, price, size, filled_count, pnl_cents, graded_at, live_group, game_date
+         FROM maker_orders_v2 WHERE live_group IS NOT NULL`,
+        [], env, { write: true });
       const halted = haltedGroups(groupRows, MAKER_V2_LIVE_CELLS);
       const seen = new Set();
       for (const cell of MAKER_V2_LIVE_CELLS) {
