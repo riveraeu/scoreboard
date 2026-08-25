@@ -109,7 +109,7 @@ test("matchLiveCell: never throws on a missing/malformed row", () => {
   assert.doesNotThrow(() => matchLiveCell({}, TEST_CELLS));
 });
 
-test("groupExposureCents: sums cost basis (price × contracts) for not-yet-graded rows only, per group", () => {
+test("groupExposureCents: sums REAL cost basis (100 - price) x contracts for not-yet-graded rows only, per group — `price` is the SOLD side/price, the real order Kalshi executes is the complementary buy at (100 - price)", () => {
   const rows = [
     { live_group: "wnba-points", status: "resting", price: 22, size: 25, filled_count: 0, graded_at: null },
     { live_group: "wnba-points", status: "executed", price: 21, size: 25, filled_count: 25, graded_at: null },
@@ -117,8 +117,8 @@ test("groupExposureCents: sums cost basis (price × contracts) for not-yet-grade
     { live_group: "mlb-f5total", status: "resting", price: 12, size: 40, filled_count: 0, graded_at: null },
     { live_group: "wnba-points", status: "canceled", price: 23, size: 25, filled_count: 0, graded_at: null }, // canceled — excluded
   ];
-  assert.equal(groupExposureCents(rows, "wnba-points"), 22 * 25 + 21 * 25);
-  assert.equal(groupExposureCents(rows, "mlb-f5total"), 12 * 40);
+  assert.equal(groupExposureCents(rows, "wnba-points"), (100 - 22) * 25 + (100 - 21) * 25);
+  assert.equal(groupExposureCents(rows, "mlb-f5total"), (100 - 12) * 40);
   assert.equal(groupExposureCents(rows, "nonexistent-group"), 0);
 });
 

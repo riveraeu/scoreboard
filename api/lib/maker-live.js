@@ -134,14 +134,21 @@ export function matchLiveCell(row, cells = MAKER_V2_LIVE_CELLS) {
 }
 
 // Pure aggregation over already-fetched maker_orders_v2 rows — split out from the DB query so the
-// arithmetic is unit-testable without Neon. `exposureCents(group)`: cost basis (price × contracts,
-// in cents) of everything not yet graded (resting or executed) — this is what "$ at risk right
-// now" means, and it frees up the moment a position grades. `realizedCents(group)`: sum of
-// pnl_cents × filled_count over graded rows — the stop-loss input.
+// arithmetic is unit-testable without Neon. `exposureCents(group)`: REAL cost basis (in cents) of
+// everything not yet graded (resting or executed) — this is what "$ at risk right now" means, and
+// it frees up the moment a position grades. `price`/`side` on the row are the SOLD side/price
+// (kept that way for grading/diffing, see sellAsBuy() below) — the real order Kalshi executes is
+// the complementary BUY at (100 − price), so that's the real dollar cost per contract, not `price`
+// itself. Using `price` directly understated real exposure by up to ~9x on the cheap sold sides
+// this trial targets (sell @10¢ ⇒ real cost 90¢/contract) and let real capital run to ~9x the
+// intended per-group cap before this was caught 2026-08-24 — see kalshi-balance's
+// `makerCommittedCents` (api/lib/handlers/kalshi.js), which already used the correct `100 − price`
+// basis and was the tell. `realizedCents(group)`: sum of pnl_cents × filled_count over graded
+// rows — the stop-loss input.
 export function groupExposureCents(rows, group) {
   return rows
     .filter(r => r.live_group === group && r.status !== "canceled" && r.status !== "expired" && !r.graded_at)
-    .reduce((sum, r) => sum + Number(r.price) * (Number(r.filled_count) || Number(r.size)), 0);
+    .reduce((sum, r) => sum + (100 - Number(r.price)) * (Number(r.filled_count) || Number(r.size)), 0);
 }
 export function groupRealizedCents(rows, group) {
   return rows
@@ -340,7 +347,7 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
     const gk = _gameKey(row);
     const gameCount = gameCounts.get(gk) || 0;
     if (globalCount >= MAKER_V2_MAX_CONCURRENT || gameCount >= MAKER_V2_SAME_GAME_CAP) { capped++; continue; }
-    const costCents = cell.sizeContracts * q.ask;
+    const costCents = cell.sizeContracts * (100 - q.ask); // real cost of the complementary buy sellAsBuy() places
     if (exposureFor(cell.group) + costCents > cell.capCents) { capped++; continue; }
     const expirationTime = Math.floor(nowMs / 1000) + MAKER_V2_EXPIRATION_SEC;
     const buyOrder = sellAsBuy(q.side, q.ask);

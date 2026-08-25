@@ -1,5 +1,24 @@
 # Live trial — sub-50 one-sided quoting, `wnba|points` + `mlb|f5total|10-14` (2026-08-24)
 
+## Status: KILLED 2026-08-24 (exposure-cap bug, real capital ~5x intended caps) — not re-armed
+
+Same day the trial went live, `groupExposureCents`/`costCents` (`api/lib/maker-live.js`) were found
+to compute the per-group $30 cap off the SOLD side's price (`price`/`q.ask`), not the real dollar
+cost of the complementary BUY order `sellAsBuy()` actually places (`100 − price`). Real capital
+committed was `(100−price)/price` times the tracked figure — worse the cheaper the sold side,
+which is exactly this trial's sub-50 target range. By the time this was caught (via a Kalshi
+account-app screenshot vs. `/api/maker-v2-board` cross-check), real cost basis was **$60.84**
+against a **$30** `wnba-points` cap (2x) and **$252.88** against a **$30** `mlb-f5total` cap
+(8.4x) — total real exposure ~$313 vs. a combined $60 intended ceiling. Side/mechanism were
+correct throughout (`sellAsBuy` executed as designed); only the safety-cap arithmetic was wrong.
+Killed via `POST /api/maker-v2-kill` (0 orders were resting at kill time; both groups' positions
+were already `executed`, left to settle naturally). Fix shipped same day (`100 − price` in both
+`groupExposureCents` and the per-placement `costCents`); `maker-live.test.js` updated to match.
+**Not re-armed as of this writing** — re-arming is a deliberate follow-up per the "Arming" section
+below, now additionally conditioned on re-verifying `/api/maker-v2-board`'s `groups[].exposureCents`
+against `/api/kalshi-balance`'s `makerCommittedCents` (which used the correct `100 − price` basis
+throughout and was the tell) before trusting the cap again.
+
 Written before this trial goes live. Unlike every other `docs/MAKER_*_PREREG.md` in this repo,
 this is **not a shadow forward test** — it is a small REAL-money trial, entered deliberately
 without a preceding shadow checkpoint, per an explicit 2026-08-24 decision to evaluate the
