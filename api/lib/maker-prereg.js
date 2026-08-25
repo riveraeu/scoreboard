@@ -134,6 +134,18 @@
 // whole +1.79). Two named bad days (07-29, 08-02) are real volume, not tiny-sample outliers — more
 // day-to-day variance than any other registered wnbatp cell. Separate registration (post-hoc cluster
 // edits change the existing all-must-pass verdict). sideWonBelow 0.32.
+//
+// `wnbapts-8084` (docs/MAKER_WNBA_PTS8084_PREREG.md) added 2026-08-25 — first FAVORITE-side
+// wnba|points cell (every prior points registration is sub-30¢); surfaced digging into the 2026-08-25
+// robustCandidates list. In-sample sideWon ~0.7123 vs ~82¢ priced, +10.66¢/ct, CI [+0.52, +20.80],
+// exactly 8/16 days positive — a 50% split, already below the 60% GREEN bar, disclosed not softened.
+// Netting screen: both halves of wnba|points positive (+0.64/+4.82, whole +2.93) — not the mirrored
+// artifact. Robust to dropping the top 1-2 volume days (+10.66 → +10.58 → +9.56), unlike the original
+// shelved 80-84 hypothesis's one-day-dependent reading. Mechanism is deliberately NOT the broadly-
+// pooled cross-category "sell 80-84" hypothesis this project already shelved (six dissolutions,
+// 2026-07-21 → 2026-07-28) — this is scoped to WNBA player-points playing-time-truncation risk
+// specifically (foul trouble/blowout/rest cutting a "safely on pace" player's stats), a claim about
+// this market, not price level generally. sideWonBelow 0.76.
 export const PREREG_CELLS = [
   {
     id: "totalruns-1519", sport: "mlb", category: "totalRuns", band: "15-19",
@@ -224,6 +236,12 @@ export const PREREG_CELLS = [
     doc: "docs/MAKER_WNBA_TP3539_PREREG.md", label: "WNBA total points longshot 35-39¢",
     forwardStart: "2026-08-17", checkpoint: "2026-08-31",
     criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.32, minDays: 8, minFills: 50 },
+  },
+  {
+    id: "wnbapts-8084", sport: "wnba", category: "points", band: "80-84",
+    doc: "docs/MAKER_WNBA_PTS8084_PREREG.md", label: "WNBA points moderate-favorite 80-84¢",
+    forwardStart: "2026-08-25", checkpoint: "2026-09-08",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.76, minDays: 8, minFills: 50 },
   },
 ];
 
