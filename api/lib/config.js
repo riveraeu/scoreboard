@@ -108,9 +108,9 @@ export const MAKER_V2_EXPIRATION_SEC = 540;
 // Sub-50 one-sided live trial (2026-08-24, docs/MAKER_V2_SUBFIFTY_TRIAL.md) — the eligibility set
 // updateWantedMakerQuotes actually reads while this trial runs; MAKER_V2_BAND/MAKER_V2_SIZE above
 // are the earlier, separately-shelved 80-84 favorite-band hypothesis and are not consulted by this
-// trial. Two independent groups, each targeting a category the netting screen (docs/
-// MAKER_LADDER_ARTIFACT.md) found NOT explained by the favorite-longshot mirror artifact — whole
-// book positive on both halves for wnba|points, mildly positive pooled for mlb|f5total. Each group
+// trial. Each group targets a category the netting screen (docs/MAKER_LADDER_ARTIFACT.md) found
+// NOT explained by the favorite-longshot mirror artifact (or, for the 2026-08-26 diagnostic cells,
+// deliberately targets one that IS explained by it — see the per-cell notes below). Each group
 // has its OWN dollar cap (capCents — max $ notional outstanding across resting + executed-
 // ungraded orders in that group at any moment; frees up as positions grade) and its OWN stop-loss
 // (stopLossCents — realized PnL floor; breach halts new placement AND cancels that group's
@@ -121,10 +121,9 @@ export const MAKER_V2_EXPIRATION_SEC = 540;
 // ITS OWN window, not the whole table's history.
 export const MAKER_V2_TRIAL_START = "2026-08-24";      // original forward window opens — see docs/MAKER_V2_SUBFIFTY_TRIAL.md
 export const MAKER_V2_TRIAL_CHECKPOINT = "2026-09-07"; // 2 weeks — see docs/MAKER_V2_SUBFIFTY_TRIAL.md
-// wnba-points breached its -$15 stop-loss for real (-$60.75) under the pre-2026-08-24-fix exposure-
-// cap bug — its ledger resets here on re-arm rather than staying permanently halted against bug-era
-// losses. mlb-f5total never breached its stop-loss (+$28.00 realized) and keeps its original window.
-export const MAKER_V2_WNBA_POINTS_RESUME = "2026-08-25"; // fresh ledger — see docs/MAKER_V2_SUBFIFTY_TRIAL.md
+// mlb-f5total never breached its stop-loss (+$28.00 realized) and keeps its original window.
+// (wnba-points' own resumeFrom constant was removed 2026-08-26 along with its cells — see the
+// halt note below; it will get a NEW resumeFrom, not this stale one, whenever it's re-added.)
 // 2026-08-26 expansion: two diagnostic cells, added not for expected profit but to test the trial
 // INSTRUMENT itself (does live one-sided execution match what shadow data predicts?) — see
 // "Expansion 2026-08-26" in docs/MAKER_V2_SUBFIFTY_TRIAL.md. Both start at half the standard
@@ -162,11 +161,24 @@ export const MAKER_V2_DIAGNOSTIC_CHECKPOINT = "2026-09-09";
 // Portfolio-level backstop, independent of any single group's own cap arithmetic — the exposure-cap
 // bug (2026-08-24) showed per-group cap math itself can be wrong, so this is a second, simpler
 // check (plain sum across groups) that doesn't share code with groupExposureCents' per-group logic.
-// Set below the sum of all per-group caps ($105) so it can actually bind, not just mirror it.
-export const MAKER_V2_GLOBAL_CAP_CENTS = 7500; // $75
+// Set below the sum of all per-group caps so it can actually bind, not just mirror it — re-tuned
+// 2026-08-26 when wnba-points' $30 cap left the sum (was $105, now $75 with wnba-points halted);
+// $75 would have made this a no-op, so it comes back down to $60 alongside the halt. Re-tune again
+// (not just restore to $75) whenever wnba-points is re-added, per the invariant test in
+// maker-live.test.js.
+export const MAKER_V2_GLOBAL_CAP_CENTS = 6000; // $60
+// `wnba-points` HALTED 2026-08-26 (cells removed, not just capped to 0 — see
+// docs/MAKER_V2_SUBFIFTY_TRIAL.md § Incident) after a live position (Flau'jae Johnson 20+ points,
+// 2026-08-26) filled in two pieces on Kalshi's side (4.12ct then 20.88ct, same order_id, 4 minutes
+// apart) and our fill-poller only ever recorded the first piece — the order flipped to 'executed'
+// with filled_count=4 and was dropped from every future fills-poll, so the remaining ~21 contracts
+// (~$16) were never applied to groupExposureCents. Real group exposure was ~$38.75 against a $30
+// cap (~29% over) while our own tracking showed only $22.58 and never tripped the cap check. Fixed
+// in maker-live.js (both fill-polling sites now re-check any not-yet-fully-filled order regardless
+// of status, and recompute filled_count as the SUM of matching fill events, not a single event's
+// overwrite) — this halt is the "kill wnba-points now" half of that response; re-add once the fix
+// is verified against a live multi-piece fill.
 export const MAKER_V2_LIVE_CELLS = [
-  { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 3000, stopLossCents: -1500, resumeFrom: MAKER_V2_WNBA_POINTS_RESUME },
-  { group: "wnba-points", sport: "wnba", category: "points", band: [25, 29], sizeContracts: 25, capCents: 3000, stopLossCents: -1500, resumeFrom: MAKER_V2_WNBA_POINTS_RESUME },
   { group: "mlb-f5total", sport: "mlb", category: "f5total", band: [10, 14], sizeContracts: 40, capCents: 3000, stopLossCents: -1500, resumeFrom: MAKER_V2_TRIAL_START },
   { group: "mlb-hrr-negctrl", sport: "mlb", category: "hrr", band: [30, 34], sizeContracts: 20, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_HRR_NEGCTRL_START },
   { group: "wnbasp-onesided", sport: "wnba", category: "spread", band: [20, 24], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBASP_ONESIDED_START },

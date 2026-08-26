@@ -173,6 +173,14 @@ export function totalExposureCents(rows, cells = MAKER_V2_LIVE_CELLS) {
   const groups = [...new Set(cells.map(c => c.group))];
   return groups.reduce((sum, g) => sum + groupExposureCents(rows, g, cells), 0);
 }
+
+// Reconciles a real order's tracked filled_count against a freshly-summed fill window (2026-08-26
+// fix — see the FIX comments at both call sites for the incident this closes). Never regresses
+// below what was already recorded (a partial-window read must not erase a real earlier fill) and
+// never exceeds the order's own size (a late/duplicate fill event must not overcount past 100%).
+export function reconciledFilledCount(existingFilledCount, size, windowSum) {
+  return Math.min(Number(size), Math.max(Number(existingFilledCount) || 0, Number(windowSum) || 0));
+}
 // A group is halted once its realized PnL breaches its own stop-loss — halted groups place no new
 // orders and have any currently-resting orders actively canceled (see updateLiveMakerOrders).
 export function haltedGroups(rows, cells = MAKER_V2_LIVE_CELLS) {
@@ -245,20 +253,41 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
   // that filled between ticks stayed 'resting' in the DB for up to ~10 hours (until the next
   // shadow-resolver run), which read as a stuck STATUS column even though Refresh was genuinely
   // re-querying Neon. 15min lookback tolerates a few missed ticks without re-scanning the day.
+  //
+  // FIX 2026-08-26 (found via a Kalshi-app screenshot vs /api/maker-v2-board cross-check, same
+  // detection method as the 8/24 exposure-cap bug): candidates used to be built from `resting`
+  // ONLY, and each matching fill event OVERWROTE filled_count with just that one event's own
+  // count. A single Kalshi order that fills in more than one piece (confirmed live: a 25-count
+  // order filled 4.12 then 20.88 four minutes apart, same order_id) got its FIRST partial fill
+  // recorded, was immediately flipped to 'executed' and dropped out of `resting`, and every
+  // SUBSEQUENT fill on that same still-partially-open order was silently never applied — real
+  // exposure was understated (this one order: tracked 4/25 filled, real 25/25, ~$16 missing from
+  // `groupExposureCents`, enough to push wnba-points ~29% over its $30 cap without the cap check
+  // ever seeing it). Fix: candidates are any not-yet-fully-filled, non-canceled order regardless
+  // of current status (an 'executed' row can still be short of its real total), and filled_count
+  // is recomputed as the SUM of every matching fill event in this window, floored at whatever was
+  // already recorded (never regress on a partial-window read) — not a single event's own count.
   const executedIds = new Set();
-  if (resting.length) {
+  const fillCandidates = allOrders.filter(r =>
+    r.kalshi_order_id && r.status !== "canceled" && Number(r.filled_count) < Number(r.size));
+  if (fillCandidates.length) {
     const fillsRes = await fetchKalshiFills({ minTs: Math.floor((nowMs - 15 * 60_000) / 1000) }, env)
       .catch(e => ({ ok: false, error: String(e?.message || e) }));
     if (fillsRes.ok && fillsRes.fills.length) {
-      const byOrderId = new Map(resting.filter(r => r.kalshi_order_id).map(r => [r.kalshi_order_id, r]));
+      const byOrderId = new Map(fillCandidates.map(r => [r.kalshi_order_id, r]));
+      const sumByOrderId = new Map();
       for (const f of fillsRes.fills) {
-        const r = byOrderId.get(f.order_id);
-        if (!r) continue;
-        const filledCount = Math.round(parseFloat(f.count ?? f.count_fp ?? "0")) || 0;
-        if (!filledCount) continue;
+        if (!byOrderId.has(f.order_id)) continue;
+        const count = Math.round(parseFloat(f.count ?? f.count_fp ?? "0")) || 0;
+        sumByOrderId.set(f.order_id, (sumByOrderId.get(f.order_id) || 0) + count);
+      }
+      for (const [orderId, windowSum] of sumByOrderId) {
+        const r = byOrderId.get(orderId);
+        const newFilledCount = reconciledFilledCount(r.filled_count, r.size, windowSum);
+        if (newFilledCount <= (Number(r.filled_count) || 0)) continue;
         await neonQuery(
           `UPDATE maker_orders_v2 SET filled_count = $2, status = 'executed' WHERE id = $1`,
-          [r.id, filledCount], env, { write: true });
+          [r.id, newFilledCount], env, { write: true });
         executedIds.add(r.id);
         restingByTicker.delete(r.ticker);
       }
@@ -494,16 +523,27 @@ export async function reconcileLiveMakerFills({ env, dayPT }) {
   const fillsRes = await fetchKalshiFills({ minTs }, env);
   let matched = 0;
   if (fillsRes.ok && fillsRes.fills.length) {
+    // FIX 2026-08-26 (see updateLiveMakerOrders' matching fix for the full writeup) — 'executed'
+    // rows must stay candidates too (an executed row can still be short of its real total from a
+    // multi-piece fill the quote pass already missed once), and a matching order's filled_count
+    // is recomputed as the SUM of every matching fill event this pass sees, floored at whatever
+    // was already recorded, never a single event's own count.
     const tracked = await neonQuery(
-      `SELECT id, kalshi_order_id, size FROM maker_orders_v2
-       WHERE game_date = $1 AND status IN ('resting', 'expired') AND kalshi_order_id IS NOT NULL`,
+      `SELECT id, kalshi_order_id, size, filled_count FROM maker_orders_v2
+       WHERE game_date = $1 AND status != 'canceled' AND kalshi_order_id IS NOT NULL
+         AND filled_count < size`,
       [dayPT], env, { write: true });
     const byOrderId = new Map(tracked.map(t => [t.kalshi_order_id, t]));
+    const sumByOrderId = new Map();
     for (const f of fillsRes.fills) {
-      const t = byOrderId.get(f.order_id);
-      if (!t) continue;
-      const filledCount = Math.round(parseFloat(f.count ?? f.count_fp ?? "0")) || 0;
-      if (!filledCount) continue;
+      if (!byOrderId.has(f.order_id)) continue;
+      const count = Math.round(parseFloat(f.count ?? f.count_fp ?? "0")) || 0;
+      sumByOrderId.set(f.order_id, (sumByOrderId.get(f.order_id) || 0) + count);
+    }
+    for (const [orderId, windowSum] of sumByOrderId) {
+      const t = byOrderId.get(orderId);
+      const filledCount = reconciledFilledCount(t.filled_count, t.size, windowSum);
+      if (filledCount <= (Number(t.filled_count) || 0)) continue;
       await neonQuery(
         `UPDATE maker_orders_v2 SET filled_count = $2, status = 'executed' WHERE id = $1`,
         [t.id, filledCount], env, { write: true });

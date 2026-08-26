@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { isArmed, setArmed, gameKeyFor, sellAsBuy, matchLiveCell, groupExposureCents,
-  groupRealizedCents, haltedGroups, totalExposureCents } from "./maker-live.js";
+  groupRealizedCents, haltedGroups, totalExposureCents, reconciledFilledCount } from "./maker-live.js";
 import { MAKER_V2_LIVE_CELLS, MAKER_V2_GLOBAL_CAP_CENTS } from "./config.js";
 
 const TEST_CELLS = [
@@ -199,6 +199,30 @@ test("totalExposureCents: sums groupExposureCents across every distinct group in
 
 test("totalExposureCents: zero on empty history", () => {
   assert.equal(totalExposureCents([], TEST_CELLS), 0);
+});
+
+// 2026-08-26 fix — a real order (KXWNBAPTS-...-SEAFJOHNSON4-20) filled 4.12 contracts then 20.88
+// more four minutes later, same order_id, on a 25-count resting order. The pre-fix code recorded
+// only the first piece (filled_count=4), flipped the row to 'executed', and never saw the second
+// fill. reconciledFilledCount is the arithmetic that closes this: reproduces the exact incident,
+// then the boundary cases around it.
+test("reconciledFilledCount: reproduces the 2026-08-26 incident — a multi-piece fill sums correctly", () => {
+  assert.equal(reconciledFilledCount(4, 25, 25), 25,
+    "the order's true total (4.12+20.88, rounded to 25) must replace the stale first-piece-only value");
+});
+
+test("reconciledFilledCount: never regresses below what was already recorded", () => {
+  assert.equal(reconciledFilledCount(25, 25, 4), 25,
+    "a partial-window read that only sees the smaller/earlier fill must not erase a real later one");
+});
+
+test("reconciledFilledCount: never exceeds the order's own size", () => {
+  assert.equal(reconciledFilledCount(0, 25, 40), 25,
+    "a duplicate or misattributed fill event must not overcount past 100% of the order");
+});
+
+test("reconciledFilledCount: takes the fresh window sum when it's the larger, still-valid figure", () => {
+  assert.equal(reconciledFilledCount(4, 25, 21), 21);
 });
 
 // 2026-08-26 expansion (docs/MAKER_V2_SUBFIFTY_TRIAL.md § Expansion) — a portfolio-level backstop

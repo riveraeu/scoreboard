@@ -1,5 +1,51 @@
 # Live trial — sub-50 one-sided quoting, `wnba|points` + `mlb|f5total|10-14` (2026-08-24)
 
+## Incident 2026-08-26: `wnba-points` HALTED — multi-piece fills silently understated exposure
+
+Found via the same detection method as the 8/24 exposure-cap bug: a real Kalshi-app screenshot of
+open positions checked against `/api/maker-v2-board`. Two `wnba-points` positions were open on the
+TOR@SEA game — Flau'jae Johnson (20+ points, cost $19.25) and Dominique Malonga (25+ points, cost
+$19.80) — summing to **$39.05 real dollars committed against a $30 group cap (~29% over)**, while
+`/api/maker-v2-board` reported the group's tracked exposure at only $22.58. The cap check itself
+never saw this — it enforces against `groupExposureCents`, which was reading a wrong number.
+
+**Root cause, confirmed against Kalshi's own fills feed**: the Johnson order filled in two separate
+pieces on Kalshi's side — 4.12 contracts at 16:01:32 UTC, then 20.88 more at 16:05:26 UTC, same
+`order_id`, four minutes apart, 25 total. `updateLiveMakerOrders`' fill-poller (and
+`reconcileLiveMakerFills`'s nightly counterpart) detected the FIRST partial fill, immediately
+flipped the row to `'executed'` with `filled_count=4`, and **removed it from every future
+fills-poll** (both call sites only ever re-checked rows still `status='resting'`). The second fill
+— 84% of the position — landed on a Kalshi order our system had already stopped watching, and was
+never applied. `groupExposureCents` correctly computes `(100-price) × filled_count`, but
+`filled_count` itself was stale by ~21 contracts (~$16) on this one order.
+
+**Fix** (`api/lib/maker-live.js`, both fill-polling sites): a matching order is now a candidate for
+as long as `filled_count < size` and it isn't `canceled`, regardless of current status — an
+`'executed'` row can still be short of its real total. `filled_count` is recomputed each poll as
+the **sum of every matching fill event** seen in that poll's window (`reconciledFilledCount`, a
+pure helper pinned directly in `maker-live.test.js` against the exact 4→25 incident numbers),
+floored at whatever was already recorded and capped at the order's own size — never a single fill
+event's own count overwriting the total. A 15-minute lookback (quote-pass) fully covers any one
+order's fillable lifetime, since `MAKER_V2_EXPIRATION_SEC` (9 min) bounds how long an order can
+receive fills before Kalshi auto-cancels the remainder.
+
+**Response, in order**: (1) `wnba-points`' two cells were **removed from `MAKER_V2_LIVE_CELLS`
+entirely** (not just capped to 0) — the existing open positions can't be un-filled, so this stops
+NEW placements while leaving Johnson/Malonga to settle and grade normally (grading reads Kalshi's
+own settlement cost directly, `fetchKalshiSettlements`, not our `filled_count` — so the PnL that
+eventually posts for these two positions will be correct regardless of this bug; only the
+mid-flight *exposure/cap* accounting was wrong). (2) The fix above shipped in the same commit.
+(3) `MAKER_V2_GLOBAL_CAP_CENTS` was re-tuned $75→$60 — with `wnba-points`' $30 cap gone, the
+remaining per-group caps sum to exactly $75, which would have made the portfolio backstop a no-op
+(caught by its own invariant test failing). `wnba-points` gets a **new** `resumeFrom` when it's
+re-added, not its old 2026-08-25 one — this incident's exposure shouldn't count toward whatever
+ledger it resumes on. 365/365 tests pass.
+
+**Re-arm criteria for `wnba-points`** (not yet met): a live order that fills in more than one piece
+must be observed post-fix with `filled_count` correctly reflecting the full total (cross-check
+`/api/maker-v2-board` against a Kalshi-app screenshot or `/api/kalshi-fills` directly, same method
+that caught both this bug and the 8/24 one) before re-adding its cells.
+
 ## Expansion 2026-08-26: three diagnostic cells + a global exposure cap
 
 Added three more cells to `MAKER_V2_LIVE_CELLS`, each at half the standard sizing ($15 cap / $7.50
