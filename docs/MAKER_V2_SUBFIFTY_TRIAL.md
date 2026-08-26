@@ -1,5 +1,20 @@
 # Live trial — sub-50 one-sided quoting, `wnba|points` + `mlb|f5total|10-14` (2026-08-24)
 
+## Addendum 2026-08-25: `MAKER_V2_EXPIRATION_SEC` was stale, cutting fill opportunity ~75%
+
+Cross-checked a `wnba-points` position from a Kalshi-app screenshot against `/api/maker-v2-board`'s
+`orders` log: today's 8 quote attempts on the two eligible tickers (KIRIAFEN 20+, SCITRON 10+) had
+6 expire with 0 fill and only 2 partial-fill (7/25 each). `MAKER_V2_EXPIRATION_SEC` was still 150s
+(2.5min), sized for the `kalshi-snapshot` cron's ORIGINAL `*/2min` cadence — but that cron widened
+to `*/10min` on 2026-08-17 (Neon compute-cost fix; unrelated decision at the time). Nobody re-tuned
+the expiration to match, so each resting order lived 150s of every ~600s between requotes (~25%
+duty cycle) and then sat unquoted — nothing on the book for a counterparty to hit — until the next
+cron tick placed a replacement. Raised to 540s (9min, just under the cron interval) so an order
+stays continuously resting between quote passes instead of going dark most of the cycle, while
+staying bounded below the cron interval as the safety net it was always meant to be. This is a
+mechanical fix, not evidence about the trial's edge — read future fill-rate readings against a
+board that was actually quoting most of the time, not the ~25%-duty-cycle history above.
+
 ## Status: RE-ARMED 2026-08-25 — `mlb-f5total` continues its original window, `wnba-points` gets a fresh ledger
 
 Pre-kill positions settled naturally (per the KILLED account below) before re-arming: `mlb-f5total`

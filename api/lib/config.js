@@ -95,7 +95,15 @@ export const MAKER_V2_BAND = [80, 84];       // real-order eligibility band (nar
 export const MAKER_V2_SIZE = 5;              // contracts per resting order
 export const MAKER_V2_MAX_CONCURRENT = 20;   // total resting orders across all tickers
 export const MAKER_V2_SAME_GAME_CAP = 2;     // max concurrent resting orders per game (correlation guard)
-export const MAKER_V2_EXPIRATION_SEC = 150;  // self-expiring safety net — outlives one ~2min cron cycle
+// Self-expiring safety net. Was 150 (2.5min), sized for the kalshi-snapshot cron's ORIGINAL */2min
+// cadence ("outlives one cron cycle"). That cron widened to */10min on 2026-08-17 (Neon
+// compute-cost fix, see docs/INFRA.md) but this was never re-tuned to match — an order sat
+// resting for only 150s of every ~600s between requotes (~25% duty cycle), then went dark with
+// nothing on the book until the next tick replaced it. Set to 540 (9min, just under the 10min
+// cron interval) so an order stays resting continuously between quote passes instead of expiring
+// and sitting unquoted for most of the cycle; still bounded below the cron interval as the
+// safety net this was always meant to be, in case a cron tick is ever skipped/delayed.
+export const MAKER_V2_EXPIRATION_SEC = 540;
 
 // Sub-50 one-sided live trial (2026-08-24, docs/MAKER_V2_SUBFIFTY_TRIAL.md) — the eligibility set
 // updateWantedMakerQuotes actually reads while this trial runs; MAKER_V2_BAND/MAKER_V2_SIZE above
