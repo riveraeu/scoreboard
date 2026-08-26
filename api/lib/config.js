@@ -142,17 +142,33 @@ export const MAKER_V2_WNBA_POINTS_RESUME = "2026-08-25"; // fresh ledger — see
 //   at reduced size tests whether that inversion was a real mechanism failure or a shadow-fill
 //   artifact. Tracked here, explicitly, as a deliberate diagnostic — never to be read as "reopening"
 //   the shadow kill.
+// - `wnbasp-onesided`: tests the question docs/MAKER_LADDER_ARTIFACT.md explicitly left open —
+//   "whether the sub-50 premium survives one-sided quoting." wnba|spread is a near-perfect MIRROR
+//   book (sub-50 wins big, 50+ loses big, whole book nets ~zero pooled — the wnbasp shadow prereg
+//   cluster was killed on this basis). The sub-50 half alone, though, clears the robustness bar
+//   cleanly on its own (band 20-24: +16.36c/ct, CI [10.19,22.53], 19 days) — this cell tests
+//   whether that individually-clean reading survives actually being quoted, one-sided, for real,
+//   rather than being a two-sided-pooling artifact that a real maker never has to net against.
 export const MAKER_V2_HRR_NEGCTRL_START = "2026-08-26";
 export const MAKER_V2_WNBA3P_KILLDIAG_START = "2026-08-26";
+export const MAKER_V2_WNBASP_ONESIDED_START = "2026-08-26";
+// Checkpoint for all three 2026-08-26 diagnostic cells (2 weeks, matching the original trial's
+// cadence) — see docs/MAKER_V2_SUBFIFTY_TRIAL.md § Expansion for the pre-committed pass/fail
+// thresholds evaluated at this date. Unlike a shadow prereg checkpoint, an inconclusive (too-thin-
+// sample) read here may extend once rather than forcing a KILL — these cells gate no capital-
+// allocation decision themselves (sizing doesn't change on their result), so extending to actually
+// learn something doesn't carry the same re-slicing risk the no-extend prereg rule exists to stop.
+export const MAKER_V2_DIAGNOSTIC_CHECKPOINT = "2026-09-09";
 // Portfolio-level backstop, independent of any single group's own cap arithmetic — the exposure-cap
 // bug (2026-08-24) showed per-group cap math itself can be wrong, so this is a second, simpler
 // check (plain sum across groups) that doesn't share code with groupExposureCents' per-group logic.
-// Set below the sum of all per-group caps ($90) so it can actually bind, not just mirror it.
+// Set below the sum of all per-group caps ($105) so it can actually bind, not just mirror it.
 export const MAKER_V2_GLOBAL_CAP_CENTS = 7500; // $75
 export const MAKER_V2_LIVE_CELLS = [
   { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 3000, stopLossCents: -1500, resumeFrom: MAKER_V2_WNBA_POINTS_RESUME },
   { group: "wnba-points", sport: "wnba", category: "points", band: [25, 29], sizeContracts: 25, capCents: 3000, stopLossCents: -1500, resumeFrom: MAKER_V2_WNBA_POINTS_RESUME },
   { group: "mlb-f5total", sport: "mlb", category: "f5total", band: [10, 14], sizeContracts: 40, capCents: 3000, stopLossCents: -1500, resumeFrom: MAKER_V2_TRIAL_START },
   { group: "mlb-hrr-negctrl", sport: "mlb", category: "hrr", band: [30, 34], sizeContracts: 20, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_HRR_NEGCTRL_START },
+  { group: "wnbasp-onesided", sport: "wnba", category: "spread", band: [20, 24], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBASP_ONESIDED_START },
   { group: "wnba3p-killdiag", sport: "wnba", category: "threePointers", band: [60, 64], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBA3P_KILLDIAG_START },
 ];

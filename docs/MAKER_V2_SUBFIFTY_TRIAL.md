@@ -1,12 +1,12 @@
 # Live trial — sub-50 one-sided quoting, `wnba|points` + `mlb|f5total|10-14` (2026-08-24)
 
-## Expansion 2026-08-26: two diagnostic cells + a global exposure cap
+## Expansion 2026-08-26: three diagnostic cells + a global exposure cap
 
-Added two more cells to `MAKER_V2_LIVE_CELLS`, both at half the standard sizing ($15 cap / $7.50
+Added three more cells to `MAKER_V2_LIVE_CELLS`, each at half the standard sizing ($15 cap / $7.50
 stop-loss vs. the original $30/$15), and a new portfolio-level backstop
 (`MAKER_V2_GLOBAL_CAP_CENTS`, $75, `api/lib/maker-live.js`'s `totalExposureCents`) checked at
-placement time alongside each group's own cap. Neither new cell was added because it looks
-profitable — both are diagnostic, testing the TRIAL MECHANISM itself rather than searching for
+placement time alongside each group's own cap. None of the three was added because it looks
+profitable — all three are diagnostic, testing the TRIAL MECHANISM itself rather than searching for
 more edge:
 
 - **`mlb-hrr-negctrl`** (`mlb|hrr|30-34`, $15 cap) — a **negative control**. The same-day netting
@@ -27,11 +27,20 @@ more edge:
   (`maker-prereg.test.js`'s absence tripwire is unchanged), and this cell's result is tracked
   separately from that registry's promote/kill ledger so it can never be misread as "the kill was
   undone."
+- **`wnbasp-onesided`** (`wnba|spread|20-24`, $15 cap) — tests the question
+  `docs/MAKER_LADDER_ARTIFACT.md` explicitly left open: *"whether the sub-50 premium survives
+  one-sided quoting."* `wnba|spread` is a near-perfect MIRROR book (sub-50 wins big, 50+ loses big,
+  pooled whole-book nets ~zero — the `wnbasp` shadow-prereg cluster was killed on this basis). The
+  sub-50 half alone still clears the robustness bar cleanly on its own (band 20-24: +16.36¢/ct, CI
+  [10.19, 22.53], 19 days, `topDayShare` 0.14 as of 2026-08-26) — this cell tests whether that
+  individually-clean reading is real when actually quoted one-sided for real, or whether it's a
+  two-sided-pooling artifact that a real maker never has to net against (a real maker never has to
+  also eat the losing 50+ half the way the pooled shadow measurement does).
 
-Both cells use their own `resumeFrom` (`2026-08-26`, a fresh ledger — no prior history to inherit)
-and are otherwise governed by the exact same mechanics as the original two cells (self-expiring
-orders, `sellAsBuy`, per-group `haltedGroups`). Pinned in `maker-live.test.js`: the two cells'
-exact config, and a structural test that `MAKER_V2_GLOBAL_CAP_CENTS` stays below the summed
+All three cells use their own `resumeFrom` (`2026-08-26`, a fresh ledger — no prior history to
+inherit) and are otherwise governed by the exact same mechanics as the original two cells
+(self-expiring orders, `sellAsBuy`, per-group `haltedGroups`). Pinned in `maker-live.test.js`: each
+cell's exact config, and a structural test that `MAKER_V2_GLOBAL_CAP_CENTS` stays below the summed
 per-group caps (otherwise the portfolio backstop would be a no-op). 361/361 tests pass.
 
 **Why sizing was halved rather than matched to the original two cells**: both real bugs found in
@@ -39,6 +48,32 @@ this trial so far (the 8.4x exposure-cap miscalculation, the 75%-duty-cycle expi
 this exact live-cell machinery, discovered at n=2 groups. Adding cells at full size before that
 machinery is proven at n>2 would multiply the blast radius of a third, not-yet-found bug in the
 same class.
+
+### Evaluation criteria (fixed 2026-08-26, before any of the three has a fill)
+
+Checkpoint: **2026-09-09** (`MAKER_V2_DIAGNOSTIC_CHECKPOINT`, 2 weeks — matches the original trial's
+cadence). Unlike a shadow prereg or the original two live cells, these three gate no
+capital-allocation decision of their own — their sizing doesn't change based on the result, they
+exist purely to produce information about the trial mechanism. So the no-extend discipline that
+protects prereg checkpoints from re-slicing doesn't apply the same way here: if a cell's sample is
+too thin to say anything at the checkpoint, it's fine to extend the window once rather than forcing
+a premature read — extending doesn't bias any future bet, because there isn't one riding on it.
+Fixed in advance anyway, so a real result can't be read whichever way is convenient after the fact:
+
+| Cell | Expected result | CONFIRMS (what we already believe) | FLAGS a real problem |
+|---|---|---|---|
+| `mlb-hrr-negctrl` | Negative or flat | Realized PnL ≤ 0, or too few fills (<10) to conclude anything | Clearly positive: mean ≥ +3¢/ct across ≥10 fills |
+| `wnba3p-killdiag` | Negative or flat (reconfirms the shadow kill) | Realized PnL ≤ 0, or too few fills (<10) to conclude anything | Clearly positive: mean ≥ +5¢/ct across ≥10 fills |
+| `wnbasp-onesided` | Positive (tests whether the sub-50 half's shadow reading survives live) | Mean ≥ +5¢/ct across ≥10 fills | Flat or negative across ≥10 fills — would mean the individually-clean sub-50 reading does NOT survive one-sided execution |
+
+A "FLAGS a real problem" result on either `mlb-hrr-negctrl` or `wnba3p-killdiag` is the same class of
+finding either way: live one-sided execution is producing results the shadow simulation would not
+have predicted, which means every prior promote/kill call made from shadow data alone should be
+treated as less certain until the discrepancy is understood — not treated as "great, a new edge
+found." A "FLAGS" result on `wnbasp-onesided` (i.e., it does NOT show the expected positive) answers
+the open question from `docs/MAKER_LADDER_ARTIFACT.md` directly: the sub-50 premium in mirror books
+does not survive one-sided quoting, closing that door for every other mirror-book category too
+(`mlb|totalRuns`, `mlb|spread`, `wnbatp`), not just this one cell.
 
 ## Addendum 2026-08-25: `MAKER_V2_EXPIRATION_SEC` was stale, cutting fill opportunity ~75%
 

@@ -219,4 +219,8 @@ test("2026-08-26 diagnostic cells are present with the documented reduced sizing
   const killdiag = MAKER_V2_LIVE_CELLS.find(c => c.group === "wnba3p-killdiag");
   assert.deepEqual(killdiag, { group: "wnba3p-killdiag", sport: "wnba", category: "threePointers", band: [60, 64],
     sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-26" });
+
+  const onesided = MAKER_V2_LIVE_CELLS.find(c => c.group === "wnbasp-onesided");
+  assert.deepEqual(onesided, { group: "wnbasp-onesided", sport: "wnba", category: "spread", band: [20, 24],
+    sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-26" });
 });
