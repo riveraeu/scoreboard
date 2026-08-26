@@ -26,7 +26,7 @@
 // must never break the snapshot cron or the resolver (same contract as maker.js V1).
 
 import { MAKER_V2_LIVE_CELLS, MAKER_V2_MAX_CONCURRENT, MAKER_V2_SAME_GAME_CAP,
-  MAKER_V2_EXPIRATION_SEC } from "./config.js";
+  MAKER_V2_EXPIRATION_SEC, MAKER_V2_GLOBAL_CAP_CENTS } from "./config.js";
 import { computeMakerQuote, MAKER_FEE_SERIES } from "./maker.js";
 import { shadowId } from "./shadow-id.js";
 import { neonQuery, neonExec } from "./neon.js";
@@ -163,6 +163,15 @@ export function groupRealizedCents(rows, group, cells = MAKER_V2_LIVE_CELLS) {
   return rows
     .filter(r => r.live_group === group && r.graded_at && (r.game_date || "") >= resumeFrom)
     .reduce((sum, r) => sum + Number(r.pnl_cents || 0) * (Number(r.filled_count) || 0), 0);
+}
+// Portfolio-level exposure, independent of groupExposureCents' per-group logic (deliberately not
+// sharing code — the exposure-cap bug showed per-group math itself can be wrong, so this is a
+// plain second check, not a call-through that would inherit the same bug). Gated against
+// MAKER_V2_GLOBAL_CAP_CENTS at placement time only, same as a per-group cap — it does not halt or
+// cancel existing positions.
+export function totalExposureCents(rows, cells = MAKER_V2_LIVE_CELLS) {
+  const groups = [...new Set(cells.map(c => c.group))];
+  return groups.reduce((sum, g) => sum + groupExposureCents(rows, g, cells), 0);
 }
 // A group is halted once its realized PnL breaches its own stop-loss — halted groups place no new
 // orders and have any currently-resting orders actively canceled (see updateLiveMakerOrders).
@@ -350,6 +359,9 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
     if (!groupExposure.has(group)) groupExposure.set(group, groupExposureCents(allOrders, group));
     return groupExposure.get(group);
   };
+  // Running portfolio total, seeded once and accumulated alongside groupExposure as this tick
+  // places new orders — same running-total shape as the per-group cap, just summed across groups.
+  let totalExposureRunning = totalExposureCents(allOrders);
 
   let opened = 0, capped = 0, errors = 0;
   for (const { ticker, q, row, series, cell } of toPlaceFiltered) {
@@ -358,6 +370,7 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
     if (globalCount >= MAKER_V2_MAX_CONCURRENT || gameCount >= MAKER_V2_SAME_GAME_CAP) { capped++; continue; }
     const costCents = cell.sizeContracts * (100 - q.ask); // real cost of the complementary buy sellAsBuy() places
     if (exposureFor(cell.group) + costCents > cell.capCents) { capped++; continue; }
+    if (totalExposureRunning + costCents > MAKER_V2_GLOBAL_CAP_CENTS) { capped++; continue; }
     const expirationTime = Math.floor(nowMs / 1000) + MAKER_V2_EXPIRATION_SEC;
     const buyOrder = sellAsBuy(q.side, q.ask);
     const res = await placeKalshiOrder(
@@ -379,6 +392,7 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
     globalCount++;
     gameCounts.set(gk, gameCount + 1);
     groupExposure.set(cell.group, exposureFor(cell.group) + costCents);
+    totalExposureRunning += costCents;
   }
 
   return { eligible: want.size, canceled: canceledCount, failedCancels: failedCancelTickers.size,

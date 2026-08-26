@@ -125,8 +125,34 @@ export const MAKER_V2_TRIAL_CHECKPOINT = "2026-09-07"; // 2 weeks — see docs/M
 // cap bug — its ledger resets here on re-arm rather than staying permanently halted against bug-era
 // losses. mlb-f5total never breached its stop-loss (+$28.00 realized) and keeps its original window.
 export const MAKER_V2_WNBA_POINTS_RESUME = "2026-08-25"; // fresh ledger — see docs/MAKER_V2_SUBFIFTY_TRIAL.md
+// 2026-08-26 expansion: two diagnostic cells, added not for expected profit but to test the trial
+// INSTRUMENT itself (does live one-sided execution match what shadow data predicts?) — see
+// "Expansion 2026-08-26" in docs/MAKER_V2_SUBFIFTY_TRIAL.md. Both start at half the standard
+// $30/$15 cap/stop-loss (smaller size = smaller blast radius while the new-cell machinery is
+// unproven at n>2 groups) and their own fresh `resumeFrom`.
+// - `mlb-hrr-negctrl`: a NEGATIVE CONTROL. Today's netting screen found mlb|hrr|30-34's sub-50
+//   half confidently LOSES in shadow (-1.30c/ct, island pattern, same shape as the already-killed
+//   hrr-7074). Expected to lose live too — if it does, that's evidence the sim-vs-real fill
+//   assumption holds; if it doesn't, that undermines every promote/kill decision the shadow
+//   pipeline has made.
+// - `wnba3p-killdiag`: an explicit, one-time EXCEPTION to the "killed cells are never re-added"
+//   rule (see maker-prereg.test.js's absence tripwire for the shadow-prereg registry, which this
+//   does NOT touch — wnba3p-6064 stays permanently absent from PREREG_CELLS). wnba3p-6064 inverted
+//   forward in shadow (+29c/ct in-sample -> CI-lo -2.85 at its 8/24 checkpoint); re-quoting it live
+//   at reduced size tests whether that inversion was a real mechanism failure or a shadow-fill
+//   artifact. Tracked here, explicitly, as a deliberate diagnostic — never to be read as "reopening"
+//   the shadow kill.
+export const MAKER_V2_HRR_NEGCTRL_START = "2026-08-26";
+export const MAKER_V2_WNBA3P_KILLDIAG_START = "2026-08-26";
+// Portfolio-level backstop, independent of any single group's own cap arithmetic — the exposure-cap
+// bug (2026-08-24) showed per-group cap math itself can be wrong, so this is a second, simpler
+// check (plain sum across groups) that doesn't share code with groupExposureCents' per-group logic.
+// Set below the sum of all per-group caps ($90) so it can actually bind, not just mirror it.
+export const MAKER_V2_GLOBAL_CAP_CENTS = 7500; // $75
 export const MAKER_V2_LIVE_CELLS = [
   { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 3000, stopLossCents: -1500, resumeFrom: MAKER_V2_WNBA_POINTS_RESUME },
   { group: "wnba-points", sport: "wnba", category: "points", band: [25, 29], sizeContracts: 25, capCents: 3000, stopLossCents: -1500, resumeFrom: MAKER_V2_WNBA_POINTS_RESUME },
   { group: "mlb-f5total", sport: "mlb", category: "f5total", band: [10, 14], sizeContracts: 40, capCents: 3000, stopLossCents: -1500, resumeFrom: MAKER_V2_TRIAL_START },
+  { group: "mlb-hrr-negctrl", sport: "mlb", category: "hrr", band: [30, 34], sizeContracts: 20, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_HRR_NEGCTRL_START },
+  { group: "wnba3p-killdiag", sport: "wnba", category: "threePointers", band: [60, 64], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBA3P_KILLDIAG_START },
 ];

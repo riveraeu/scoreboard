@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { isArmed, setArmed, gameKeyFor, sellAsBuy, matchLiveCell, groupExposureCents,
-  groupRealizedCents, haltedGroups } from "./maker-live.js";
+  groupRealizedCents, haltedGroups, totalExposureCents } from "./maker-live.js";
+import { MAKER_V2_LIVE_CELLS, MAKER_V2_GLOBAL_CAP_CENTS } from "./config.js";
 
 const TEST_CELLS = [
   { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 3000, stopLossCents: -1500, resumeFrom: "2026-08-10" },
@@ -183,4 +184,39 @@ test("groupExposureCents: rows before a group's own resumeFrom are excluded from
   ];
   assert.equal(groupExposureCents(rows, "wnba-points", RESET_CELLS), (100 - 21) * 25,
     "only the post-resumeFrom resting order counts");
+});
+
+test("totalExposureCents: sums groupExposureCents across every distinct group in cells", () => {
+  const rows = [
+    { live_group: "wnba-points", game_date: "2026-08-10", status: "resting", price: 22, size: 25, filled_count: 0, graded_at: null },
+    { live_group: "mlb-f5total", game_date: "2026-08-10", status: "resting", price: 12, size: 40, filled_count: 0, graded_at: null },
+    // Graded rows must not count toward exposure (same rule groupExposureCents enforces per group).
+    { live_group: "mlb-f5total", game_date: "2026-08-10", status: "executed", price: 12, size: 40, filled_count: 40, graded_at: "2026-08-11T00:00:00Z" },
+  ];
+  assert.equal(totalExposureCents(rows, TEST_CELLS), (100 - 22) * 25 + (100 - 12) * 40,
+    "sums the two groups' outstanding exposure only, ignoring the already-graded row");
+});
+
+test("totalExposureCents: zero on empty history", () => {
+  assert.equal(totalExposureCents([], TEST_CELLS), 0);
+});
+
+// 2026-08-26 expansion (docs/MAKER_V2_SUBFIFTY_TRIAL.md § Expansion) — a portfolio-level backstop
+// only means something if it's actually tighter than what the per-group caps would allow combined;
+// this pins that invariant so a future cap bump can't silently make the global cap a no-op.
+test("MAKER_V2_GLOBAL_CAP_CENTS is below the sum of all live cells' per-group caps", () => {
+  const groups = [...new Set(MAKER_V2_LIVE_CELLS.map(c => c.group))];
+  const sumOfCaps = groups.reduce((sum, g) => sum + MAKER_V2_LIVE_CELLS.find(c => c.group === g).capCents, 0);
+  assert.ok(MAKER_V2_GLOBAL_CAP_CENTS < sumOfCaps,
+    `global cap ${MAKER_V2_GLOBAL_CAP_CENTS} must stay below the summed per-group caps ${sumOfCaps} to bind`);
+});
+
+test("2026-08-26 diagnostic cells are present with the documented reduced sizing", () => {
+  const negctrl = MAKER_V2_LIVE_CELLS.find(c => c.group === "mlb-hrr-negctrl");
+  assert.deepEqual(negctrl, { group: "mlb-hrr-negctrl", sport: "mlb", category: "hrr", band: [30, 34],
+    sizeContracts: 20, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-26" });
+
+  const killdiag = MAKER_V2_LIVE_CELLS.find(c => c.group === "wnba3p-killdiag");
+  assert.deepEqual(killdiag, { group: "wnba3p-killdiag", sport: "wnba", category: "threePointers", band: [60, 64],
+    sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-26" });
 });

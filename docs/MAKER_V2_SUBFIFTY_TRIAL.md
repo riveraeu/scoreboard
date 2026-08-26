@@ -1,5 +1,45 @@
 # Live trial — sub-50 one-sided quoting, `wnba|points` + `mlb|f5total|10-14` (2026-08-24)
 
+## Expansion 2026-08-26: two diagnostic cells + a global exposure cap
+
+Added two more cells to `MAKER_V2_LIVE_CELLS`, both at half the standard sizing ($15 cap / $7.50
+stop-loss vs. the original $30/$15), and a new portfolio-level backstop
+(`MAKER_V2_GLOBAL_CAP_CENTS`, $75, `api/lib/maker-live.js`'s `totalExposureCents`) checked at
+placement time alongside each group's own cap. Neither new cell was added because it looks
+profitable — both are diagnostic, testing the TRIAL MECHANISM itself rather than searching for
+more edge:
+
+- **`mlb-hrr-negctrl`** (`mlb|hrr|30-34`, $15 cap) — a **negative control**. The same-day netting
+  screen (see the 2026-08-26 daily report memory) found this cell's sub-50 half confidently LOSES
+  in shadow (−1.30¢/ct over 15,348 contracts, island pattern — book loses on both halves, same
+  shape as the already-killed `hrr-7074`). It is expected to lose live too. If it does, that is
+  real evidence the sim-vs-real fill-matching assumption (the same assumption that was silently
+  wrong for years on V1's original vig read) holds for this mechanism. If it does NOT lose live,
+  that is a materially bigger finding — it would mean live one-sided execution behaves differently
+  enough from shadow's two-sided read that every prior promote/kill decision needs to be treated as
+  less certain than it currently is.
+- **`wnba3p-killdiag`** (`wnba|threePointers|60-64`, $15 cap) — an explicit, one-time **exception**
+  to "killed cells are never re-added." `wnba3p-6064` inverted forward in shadow (+29.20¢/ct
+  in-sample → CI-lo −2.85 at its 2026-08-24 checkpoint, see
+  `docs/MAKER_WNBA_3P_PREREG.md`). Re-quoting it live at reduced size tests whether that inversion
+  was a real mechanism failure or an artifact of shadow's fill assumption. **This does NOT reopen
+  the shadow kill** — `wnba3p-6064` stays permanently absent from `PREREG_CELLS`
+  (`maker-prereg.test.js`'s absence tripwire is unchanged), and this cell's result is tracked
+  separately from that registry's promote/kill ledger so it can never be misread as "the kill was
+  undone."
+
+Both cells use their own `resumeFrom` (`2026-08-26`, a fresh ledger — no prior history to inherit)
+and are otherwise governed by the exact same mechanics as the original two cells (self-expiring
+orders, `sellAsBuy`, per-group `haltedGroups`). Pinned in `maker-live.test.js`: the two cells'
+exact config, and a structural test that `MAKER_V2_GLOBAL_CAP_CENTS` stays below the summed
+per-group caps (otherwise the portfolio backstop would be a no-op). 361/361 tests pass.
+
+**Why sizing was halved rather than matched to the original two cells**: both real bugs found in
+this trial so far (the 8.4x exposure-cap miscalculation, the 75%-duty-cycle expiration bug) were in
+this exact live-cell machinery, discovered at n=2 groups. Adding cells at full size before that
+machinery is proven at n>2 would multiply the blast radius of a third, not-yet-found bug in the
+same class.
+
 ## Addendum 2026-08-25: `MAKER_V2_EXPIRATION_SEC` was stale, cutting fill opportunity ~75%
 
 Cross-checked a `wnba-points` position from a Kalshi-app screenshot against `/api/maker-v2-board`'s
