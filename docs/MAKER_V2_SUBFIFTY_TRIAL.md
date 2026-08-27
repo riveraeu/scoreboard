@@ -73,6 +73,37 @@ Pinned in `maker-live.test.js`: exact cell config, plus the existing global-cap 
 (sum of per-group caps rises to $90 with this addition; `MAKER_V2_GLOBAL_CAP_CENTS` stays $60,
 still binding, no re-tune needed).
 
+## Addition 2026-08-27 (second): `wnbareb-6569` — a re-screen, not a fresh find
+
+`wnba|rebounds|65-69` was **rejected 2026-08-21** as an ISLAND (`docs/MAKER_LADDER_ARTIFACT.md`
+class — the whole `rebounds` book lost money on both halves even excluding the candidate cell,
+"ordinary multiplicity noise," no nameable mechanism). That rejection doc explicitly named its own
+re-open condition: *"if it recurs with a materially different profile... that would be new
+evidence worth re-screening, not a reason to ignore this entry."*
+
+Re-screened 2026-08-27 as part of a full backlog scan across every category's whole-book netting
+(prompted by the user asking whether new candidates were being discovered efficiently). The cell
+still clears the robustness bar (ciLo +1.34, 85 fills/14 days, up from 82/13 on 8/21) — what
+changed is the category shape:
+
+| | 8/21 | 8/27 |
+|---|---|---|
+| 50+ half, excluding the candidate | −1.88¢/ct | **+2.80¢/ct** |
+| Whole book, excluding candidate | −1.27¢/ct | **+0.08¢/ct** |
+
+The sign flipped. This is no longer the ISLAND pattern — it's now a MIRROR whose favorite side
+(where the candidate sits) genuinely wins on its own, with the candidate excluded. Same "inverted
+mirror" shape that let `wnba3p-6064` survive the original 2026-08-11 screen and that
+`wnbasp-onesided` already tests live: a 50+ cell in a book whose 50+ half independently wins is
+NOT explained by the standard favorite-longshot-bias mirror (which predicts the opposite sign).
+
+**Sizing**: `wnbareb-6569` group, `wnba|rebounds|65-69`, 25 contracts/fill, $15 cap / $7.50
+stop-loss (`MAKER_V2_WNBAREB6569_START = "2026-08-27"`), same halved discipline as every cell
+added since 8/26. Checkpoint **2026-09-10** (`MAKER_V2_WNBAREB6569_CHECKPOINT`).
+
+Trial now at **8 groups**. Pinned in `maker-live.test.js`; global cap sum now $135, `$60` still
+binds, no re-tune needed.
+
 ## Incident 2026-08-26: `wnba-points` HALTED — multi-piece fills silently understated exposure
 
 Found via the same detection method as the 8/24 exposure-cap bug: a real Kalshi-app screenshot of

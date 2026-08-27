@@ -162,6 +162,19 @@ export const MAKER_V2_WNBASP_ONESIDED_START = "2026-08-26";
 // clean at n>4 groups — see docs/MAKER_V2_SUBFIFTY_TRIAL.md § Addition 2026-08-27.
 export const MAKER_V2_WNBAPTS1014_START = "2026-08-27";
 export const MAKER_V2_WNBAPTS1014_CHECKPOINT = "2026-09-10"; // 2 weeks from resumeFrom
+// 2026-08-27 addition: `wnbareb-6569` (`wnba|rebounds|65-69`) — a re-screen, not a fresh find.
+// Rejected 2026-08-21 as an ISLAND (whole book loses on both halves independent of this cell,
+// docs/MAKER_LADDER_ARTIFACT.md's "ordinary multiplicity noise" case). That rejection doc
+// explicitly flagged its own re-screen condition ("if it recurs with a materially different
+// profile... that would be new evidence worth re-screening"), and today's re-screen found exactly
+// that: the 50+ half EXCLUDING this candidate flipped from -1.88c/ct (8/21) to +2.80c/ct (8/27),
+// and whole-book-ex-candidate from -1.27 to +0.08 — no longer ISLAND, now a MIRROR whose favorite
+// side genuinely wins on its own. Same "inverted mirror" shape that let wnba3p-6064 survive the
+// original screen and that wnbasp-onesided already tests live. Still clears the robustness bar
+// (ciLo +1.34, 85 fills/14 days). Halved sizing per the same standing caution as every cell added
+// since 8/26 (live-cell machinery not yet proven clean at n>4 groups).
+export const MAKER_V2_WNBAREB6569_START = "2026-08-27";
+export const MAKER_V2_WNBAREB6569_CHECKPOINT = "2026-09-10"; // 2 weeks from resumeFrom
 // Checkpoint for all three 2026-08-26 diagnostic cells (2 weeks, matching the original trial's
 // cadence) — see docs/MAKER_V2_SUBFIFTY_TRIAL.md § Expansion for the pre-committed pass/fail
 // thresholds evaluated at this date. Unlike a shadow prereg checkpoint, an inconclusive (too-thin-
@@ -175,9 +188,9 @@ export const MAKER_V2_DIAGNOSTIC_CHECKPOINT = "2026-09-09";
 // Set below the sum of all per-group caps so it can actually bind, not just mirror it — re-tuned
 // 2026-08-26 when wnba-points' $30 cap left the sum (was $105, now $75 with wnba-points halted);
 // $75 would have made this a no-op, so it comes back down to $60 alongside the halt. 2026-08-27:
-// `wnbapts-1014` added ($15 cap, sum $90), then `wnba-points` re-armed at halved $15 cap ×2 bands
-// (sum $120) — $60 still binds comfortably at 7 groups, no re-tune needed. Re-tune only if a
-// future addition brings the sum below $60 (would make this a no-op).
+// `wnbapts-1014` added ($15 cap, sum $90), `wnba-points` re-armed at halved $15 cap x2 bands
+// (sum $120), then `wnbareb-6569` added ($15 cap, sum $135) — $60 still binds comfortably at 8
+// groups, no re-tune needed. Re-tune only if a future addition brings the sum below $60.
 export const MAKER_V2_GLOBAL_CAP_CENTS = 6000; // $60
 // `wnba-points` HALTED 2026-08-26 (cells removed, not just capped to 0 — see
 // docs/MAKER_V2_SUBFIFTY_TRIAL.md § Incident) after a live position (Flau'jae Johnson 20+ points,
@@ -208,4 +221,5 @@ export const MAKER_V2_LIVE_CELLS = [
   { group: "wnbapts-1014", sport: "wnba", category: "points", band: [10, 14], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBAPTS1014_START },
   { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBA_POINTS_REARM },
   { group: "wnba-points", sport: "wnba", category: "points", band: [25, 29], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBA_POINTS_REARM },
+  { group: "wnbareb-6569", sport: "wnba", category: "rebounds", band: [65, 69], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBAREB6569_START },
 ];

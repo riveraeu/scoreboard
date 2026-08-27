@@ -272,3 +272,11 @@ test("2026-08-27 wnba-points is re-armed at halved sizing with a fresh resumeFro
     { group: "wnba-points", sport: "wnba", category: "points", band: [25, 29],
       sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-27" });
 });
+
+// 2026-08-27 addition (docs/MAKER_V2_SUBFIFTY_TRIAL.md § Addition 2026-08-27, second entry) —
+// a re-screen of an 8/21 REJECT whose profile flipped from ISLAND to inverted-mirror. Halved sizing.
+test("2026-08-27 wnbareb-6569 cell is present with the documented reduced sizing", () => {
+  const wnbareb6569 = MAKER_V2_LIVE_CELLS.find(c => c.group === "wnbareb-6569");
+  assert.deepEqual(wnbareb6569, { group: "wnbareb-6569", sport: "wnba", category: "rebounds", band: [65, 69],
+    sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-27" });
+});
