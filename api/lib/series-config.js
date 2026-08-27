@@ -1098,4 +1098,17 @@ export const DISMISSED_SERIES = [
   // Season-leader outright: resolves once a year off a full-season aggregate, no per-game flow.
   // FIRST explicit dismissal of the KXLEADER* family (KXLEADERMLBHR and siblings are still sitting
   // in `baseline`, silently ack'd rather than judged) — same class, dismiss them as they surface.
+  // 8/27 daily-report triage: 8 items that sat in `toVet` since 2026-06-13 (2.5 months), re-reviewed
+  // and re-confirmed non-buildable on every daily report with zero information gain each time —
+  // dismissing here stops the recurring cost. All confirmed REAL_BOOK (liquid) but wrong SHAPE
+  // (season/tournament futures or poll outcomes, not per-game markets) — same class as the
+  // KXNCAAFWINS-adjacent futures already dismissed above, not a liquidity judgment.
+  "KXNCAAFWINS",     // College Football Win Total — season futures, 1 market/team, not per-game.
+  "KXNBATRADE",      // Pro Basketball Trade — player-movement novelty, no per-game outcome.
+  "KXNCAAFAPRANK",   // College Football AP Rank — poll/opinion outcome, not a game result.
+  "KXCOACHOUTMLB",   // Baseball Managers Out — departure novelty, same class as KXPOCHETTINOOUT.
+  "KXCOPADELREY",    // Copa del Rey Winner — tournament-winner futures, same class as KXPREMIERLEAGUE.
+  "KXNBACUP",        // Pro Basketball Cup Champion — tournament-winner futures, same class as above.
+  "KXNCAAMBBIG12",   // Big 12 Conference Tournament — conference-champion futures, not per-game.
+  "KXMLBNLHAARON",   // Hank Aaron Award (AL, despite the "NL" ticker) — season award futures.
 ];
