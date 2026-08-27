@@ -1,5 +1,33 @@
 # Live trial — sub-50 one-sided quoting, `wnba|points` + `mlb|f5total|10-14` (2026-08-24)
 
+## Re-arm 2026-08-27: `wnba-points` (bands 20-24, 25-29) — re-armed at HALVED sizing
+
+The § Incident re-arm criterion below ("a live order that fills in more than one piece must be
+observed post-fix with `filled_count` correctly reflecting the full total") was met the same day
+the fix deployed: the exact Johnson order that triggered the 2026-08-26 halt
+(`KXWNBAPTS-26AUG26TORSEA-SEAFJOHNSON4-20`) now shows `filled_count: 25` (was the stale `4`),
+corrected by the first post-fix `shadow-resolver` cron pass (`gradedAt: 2026-08-27T04:30:49Z`) —
+confirmed by cross-checking `/api/maker-v2-board`'s `orders[]` against `/api/kalshi-fills`, the same
+method that caught the original bug.
+
+**Sizing decision**: re-armed at the **halved $15 cap / $7.50 stop-loss** (25 contracts/fill), not
+restored to the pre-halt $30/$15. The 8/25 re-arm (after the 1st/2nd bugs) DID restore full size —
+that precedent existed, but this group's own fill-tracking bug is exactly why the halving
+discipline was introduced for every cell added since 8/26 (`mlb-hrr-negctrl`, `wnba3p-killdiag`,
+`wnbasp-onesided`, `wnbapts-1014`). Re-arming this group at full size while every other live cell
+sits at half would be inconsistent with that standing caution, and this group specifically is the
+one that has now caused a real-capital bug — asked and confirmed with the user 2026-08-27 rather
+than assumed.
+
+Fresh ledger: `MAKER_V2_WNBA_POINTS_REARM = "2026-08-27"` (new `resumeFrom`, both bands) — the
+pre-halt track record was earned at the old $30/$15 sizing and doesn't carry over cleanly to a
+resized group, same reasoning as the 8/25 re-arm's fresh ledger for the exposure-cap-bug era.
+`MAKER_V2_WNBA_POINTS_RESUME` (the 8/25 ledger-start constant) was already deleted with the halt;
+this is a new constant, not a revival of that one.
+
+Global cap unaffected: `MAKER_V2_GLOBAL_CAP_CENTS` stays $60, still binds against the new $120 sum
+of all 7 groups' per-group caps. Pinned in `maker-live.test.js`. 367/367 tests pass, clean build.
+
 ## Addition 2026-08-27: `wnbapts-1014` — first cell to clear both free gates since the process change
 
 Added via the 2026-08-26 process change (see § Expansion below): a cell clearing the structural
@@ -86,10 +114,11 @@ remaining per-group caps sum to exactly $75, which would have made the portfolio
 re-added, not its old 2026-08-25 one — this incident's exposure shouldn't count toward whatever
 ledger it resumes on. 365/365 tests pass.
 
-**Re-arm criteria for `wnba-points`** (not yet met): a live order that fills in more than one piece
-must be observed post-fix with `filled_count` correctly reflecting the full total (cross-check
-`/api/maker-v2-board` against a Kalshi-app screenshot or `/api/kalshi-fills` directly, same method
-that caught both this bug and the 8/24 one) before re-adding its cells.
+**Re-arm criteria for `wnba-points`** (MET 2026-08-27, see § Re-arm 2026-08-27 above): a live order
+that fills in more than one piece must be observed post-fix with `filled_count` correctly reflecting
+the full total (cross-check `/api/maker-v2-board` against a Kalshi-app screenshot or
+`/api/kalshi-fills` directly, same method that caught both this bug and the 8/24 one) before
+re-adding its cells.
 
 ## Expansion 2026-08-26: three diagnostic cells + a global exposure cap
 

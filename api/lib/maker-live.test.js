@@ -258,3 +258,17 @@ test("2026-08-27 wnbapts-1014 cell is present with the documented reduced sizing
   assert.deepEqual(wnbapts1014, { group: "wnbapts-1014", sport: "wnba", category: "points", band: [10, 14],
     sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-27" });
 });
+
+// 2026-08-27 re-arm (docs/MAKER_V2_SUBFIFTY_TRIAL.md § Incident) — re-armed at the HALVED sizing,
+// not restored to its pre-halt $30/$15, since this group's own bug is why the halving discipline
+// exists. Fresh resumeFrom, both bands.
+test("2026-08-27 wnba-points is re-armed at halved sizing with a fresh resumeFrom", () => {
+  const cells = MAKER_V2_LIVE_CELLS.filter(c => c.group === "wnba-points");
+  assert.equal(cells.length, 2);
+  assert.deepEqual(cells.find(c => c.band[0] === 20),
+    { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24],
+      sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-27" });
+  assert.deepEqual(cells.find(c => c.band[0] === 25),
+    { group: "wnba-points", sport: "wnba", category: "points", band: [25, 29],
+      sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-27" });
+});

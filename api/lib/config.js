@@ -175,8 +175,9 @@ export const MAKER_V2_DIAGNOSTIC_CHECKPOINT = "2026-09-09";
 // Set below the sum of all per-group caps so it can actually bind, not just mirror it — re-tuned
 // 2026-08-26 when wnba-points' $30 cap left the sum (was $105, now $75 with wnba-points halted);
 // $75 would have made this a no-op, so it comes back down to $60 alongside the halt. 2026-08-27:
-// `wnbapts-1014` added ($15 cap), sum now $90 — $60 still binds comfortably, no re-tune needed.
-// Re-tune again whenever wnba-points is re-added, per the invariant test in maker-live.test.js.
+// `wnbapts-1014` added ($15 cap, sum $90), then `wnba-points` re-armed at halved $15 cap ×2 bands
+// (sum $120) — $60 still binds comfortably at 7 groups, no re-tune needed. Re-tune only if a
+// future addition brings the sum below $60 (would make this a no-op).
 export const MAKER_V2_GLOBAL_CAP_CENTS = 6000; // $60
 // `wnba-points` HALTED 2026-08-26 (cells removed, not just capped to 0 — see
 // docs/MAKER_V2_SUBFIFTY_TRIAL.md § Incident) after a live position (Flau'jae Johnson 20+ points,
@@ -187,12 +188,24 @@ export const MAKER_V2_GLOBAL_CAP_CENTS = 6000; // $60
 // cap (~29% over) while our own tracking showed only $22.58 and never tripped the cap check. Fixed
 // in maker-live.js (both fill-polling sites now re-check any not-yet-fully-filled order regardless
 // of status, and recompute filled_count as the SUM of matching fill events, not a single event's
-// overwrite) — this halt is the "kill wnba-points now" half of that response; re-add once the fix
-// is verified against a live multi-piece fill.
+// overwrite).
+// RE-ARMED 2026-08-27: the re-arm criterion (docs/MAKER_V2_SUBFIFTY_TRIAL.md § Incident — "a live
+// order that fills in more than one piece must be observed post-fix with filled_count correctly
+// reflecting the full total") was met the same day the fix deployed: the exact Johnson order that
+// triggered the halt now shows filled_count=25 (was the stale 4), corrected by the first
+// post-fix shadow-resolver pass, cross-checked against /api/kalshi-fills. Re-added at the HALVED
+// $15/$7.50 sizing (not restored to its pre-halt $30/$15) — this group's own bug is the reason the
+// halving discipline exists, so it re-enters under the same caution as every other cell added since
+// 8/26 rather than the earlier 8/25 re-arm's full-size precedent. Fresh ledger, new resumeFrom (no
+// bug-era history to inherit at this size — the pre-halt track record was at the old $30/$15 sizing
+// and doesn't carry over cleanly to a resized group).
+export const MAKER_V2_WNBA_POINTS_REARM = "2026-08-27";
 export const MAKER_V2_LIVE_CELLS = [
   { group: "mlb-f5total", sport: "mlb", category: "f5total", band: [10, 14], sizeContracts: 40, capCents: 3000, stopLossCents: -1500, resumeFrom: MAKER_V2_TRIAL_START },
   { group: "mlb-hrr-negctrl", sport: "mlb", category: "hrr", band: [30, 34], sizeContracts: 20, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_HRR_NEGCTRL_START },
   { group: "wnbasp-onesided", sport: "wnba", category: "spread", band: [20, 24], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBASP_ONESIDED_START },
   { group: "wnba3p-killdiag", sport: "wnba", category: "threePointers", band: [60, 64], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBA3P_KILLDIAG_START },
   { group: "wnbapts-1014", sport: "wnba", category: "points", band: [10, 14], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBAPTS1014_START },
+  { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBA_POINTS_REARM },
+  { group: "wnba-points", sport: "wnba", category: "points", band: [25, 29], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBA_POINTS_REARM },
 ];
