@@ -1,5 +1,50 @@
 # Live trial — sub-50 one-sided quoting, `wnba|points` + `mlb|f5total|10-14` (2026-08-24)
 
+## Addition 2026-08-27: `wnbapts-1014` — first cell to clear both free gates since the process change
+
+Added via the 2026-08-26 process change (see § Expansion below): a cell clearing the structural
+robustness bar AND the netting screen goes straight into a small live cell instead of a new
+`docs/MAKER_*_PREREG.md` shadow forward test. This is the first cell added under that rule that is
+**not diagnostic** — it is a normal candidate, tracked here rather than a new prereg doc.
+
+**Gate 1 — structural robustness bar** (`ROBUST_BAR`, `robustCandidates`): `wnba|points|10-14`
+crossed `ciLo > 0` for the first time in the 2026-08-27 daily report (+7.65¢/ct, CI
+`[+0.39, +14.91]`, 133 fills / 16 days — up from CI `[-0.07,+14.98]` on 2026-08-26). Margin is thin.
+
+**Gate 2 — netting screen** (`docs/MAKER_LADDER_ARTIFACT.md`, run 2026-08-27 off
+`makerBoard.categoryBands`, `since:2026-07-28`): pooling the whole `wnba|points` ladder
+contracts-weighted at the 50¢ split gives sub-50 **+1.41¢/ct** (10,125 ct), 50+ **+4.71¢/ct**
+(12,182 ct), whole book **+3.21¢/ct** (22,307 ct) — both halves positive, the cleanest
+classification in the ladder-artifact framework (not the mirrored price-level artifact). This is
+the **same shape already measured 3 times** at this category's prior registrations
+(`docs/MAKER_WNBA_PTS_PREREG.md` for `wnbapts-2529`: +1.81/+3.81/+2.97 as of 2026-08-16;
+`docs/MAKER_WNBA_PTS8084_PREREG.md` for `wnbapts-8084`: +0.64/+4.82/+2.93 as of 2026-08-25) — the
+category has now cleared this screen identically 4 times running. The ladder itself is
+non-monotone/wiggly band-to-band (not a steep price curve), the signature the doc associates with
+"no exploitable price-level offset."
+
+**Mechanism** (same class as the sibling `wnbapts-*` cells, per `docs/MAKER_WNBA_PTS_PREREG.md`'s
+hypothesis): Kalshi's individual-player-points threshold markets anchor on a coarser statistic
+(season-average points per game) without adequately widening for game-to-game variance, so the
+extreme-longshot side (a low-usage or role player scoring under 15) is systematically overpriced
+on the NO side / underpriced on the YES ask. `10-14` extends this to the deepest longshot band
+tested yet in this category (prior registrations covered `20-24`, `25-29`, and the favorite-side
+`80-84`).
+
+**Sizing**: `wnbapts-1014` group, `wnba|points|10-14`, 25 contracts/fill, **$15 cap / $7.50
+stop-loss** (`MAKER_V2_WNBAPTS1014_START = "2026-08-27"`, `api/lib/config.js`) — the halved
+discipline from the 2026-08-26 diagnostic cells, not the original $30/$15, because the live-cell
+machinery itself has produced 3 real-capital bugs in 3 days (8/24 cap-basis, 8/25 duty-cycle, 8/26
+fill-tracking) and hasn't gone a clean stretch at n>4 groups yet. Checkpoint
+**2026-09-10** (`MAKER_V2_WNBAPTS1014_CHECKPOINT`, 2 weeks from `resumeFrom`) — unlike the
+diagnostic cells, this one DOES gate a real allocation decision (whether to scale it toward the
+standard $30/$15 sizing), so the no-extend-on-thin-sample discipline applies same as any other live
+cell's checkpoint, not the diagnostics' relaxed one.
+
+Pinned in `maker-live.test.js`: exact cell config, plus the existing global-cap invariant test
+(sum of per-group caps rises to $90 with this addition; `MAKER_V2_GLOBAL_CAP_CENTS` stays $60,
+still binding, no re-tune needed).
+
 ## Incident 2026-08-26: `wnba-points` HALTED — multi-piece fills silently understated exposure
 
 Found via the same detection method as the 8/24 exposure-cap bug: a real Kalshi-app screenshot of

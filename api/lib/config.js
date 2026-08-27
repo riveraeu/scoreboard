@@ -151,6 +151,17 @@ export const MAKER_V2_TRIAL_CHECKPOINT = "2026-09-07"; // 2 weeks — see docs/M
 export const MAKER_V2_HRR_NEGCTRL_START = "2026-08-26";
 export const MAKER_V2_WNBA3P_KILLDIAG_START = "2026-08-26";
 export const MAKER_V2_WNBASP_ONESIDED_START = "2026-08-26";
+// 2026-08-27 addition: `wnbapts-1014` (`wnba|points|10-14`) is NOT diagnostic — it is a normal
+// candidate that cleared both free gates (structural robustness bar: ciLo +0.39>0, 133 fills/16d;
+// netting screen: wnba|points nets both-halves-positive, sub-50 +1.41/50+ +4.71/whole +3.21 — the
+// SAME shape already measured 3x for this category at wnbapts-2529/wnbapts-8084's own
+// registrations). Per the 2026-08-26 process change, a cell clearing both goes straight to a live
+// cell instead of a new shadow prereg doc. Still sized at the halved $15/$7.50 discipline (not the
+// original $30/$15) because the live-cell machinery itself has produced 3 real-capital bugs in 3
+// days (8/24 cap-basis, 8/25 duty-cycle, 8/26 fill-tracking) and hasn't yet gone a stretch proven
+// clean at n>4 groups — see docs/MAKER_V2_SUBFIFTY_TRIAL.md § Addition 2026-08-27.
+export const MAKER_V2_WNBAPTS1014_START = "2026-08-27";
+export const MAKER_V2_WNBAPTS1014_CHECKPOINT = "2026-09-10"; // 2 weeks from resumeFrom
 // Checkpoint for all three 2026-08-26 diagnostic cells (2 weeks, matching the original trial's
 // cadence) — see docs/MAKER_V2_SUBFIFTY_TRIAL.md § Expansion for the pre-committed pass/fail
 // thresholds evaluated at this date. Unlike a shadow prereg checkpoint, an inconclusive (too-thin-
@@ -163,9 +174,9 @@ export const MAKER_V2_DIAGNOSTIC_CHECKPOINT = "2026-09-09";
 // check (plain sum across groups) that doesn't share code with groupExposureCents' per-group logic.
 // Set below the sum of all per-group caps so it can actually bind, not just mirror it — re-tuned
 // 2026-08-26 when wnba-points' $30 cap left the sum (was $105, now $75 with wnba-points halted);
-// $75 would have made this a no-op, so it comes back down to $60 alongside the halt. Re-tune again
-// (not just restore to $75) whenever wnba-points is re-added, per the invariant test in
-// maker-live.test.js.
+// $75 would have made this a no-op, so it comes back down to $60 alongside the halt. 2026-08-27:
+// `wnbapts-1014` added ($15 cap), sum now $90 — $60 still binds comfortably, no re-tune needed.
+// Re-tune again whenever wnba-points is re-added, per the invariant test in maker-live.test.js.
 export const MAKER_V2_GLOBAL_CAP_CENTS = 6000; // $60
 // `wnba-points` HALTED 2026-08-26 (cells removed, not just capped to 0 — see
 // docs/MAKER_V2_SUBFIFTY_TRIAL.md § Incident) after a live position (Flau'jae Johnson 20+ points,
@@ -183,4 +194,5 @@ export const MAKER_V2_LIVE_CELLS = [
   { group: "mlb-hrr-negctrl", sport: "mlb", category: "hrr", band: [30, 34], sizeContracts: 20, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_HRR_NEGCTRL_START },
   { group: "wnbasp-onesided", sport: "wnba", category: "spread", band: [20, 24], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBASP_ONESIDED_START },
   { group: "wnba3p-killdiag", sport: "wnba", category: "threePointers", band: [60, 64], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBA3P_KILLDIAG_START },
+  { group: "wnbapts-1014", sport: "wnba", category: "points", band: [10, 14], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: MAKER_V2_WNBAPTS1014_START },
 ];

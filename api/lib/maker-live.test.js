@@ -248,3 +248,13 @@ test("2026-08-26 diagnostic cells are present with the documented reduced sizing
   assert.deepEqual(onesided, { group: "wnbasp-onesided", sport: "wnba", category: "spread", band: [20, 24],
     sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-26" });
 });
+
+// 2026-08-27 addition (docs/MAKER_V2_SUBFIFTY_TRIAL.md § Addition 2026-08-27) — NOT diagnostic,
+// a normal candidate cleared both free gates (robustness bar + netting screen) and went straight
+// to a live cell per the 2026-08-26 process change. Still halved sizing pending the machinery
+// proving clean at n>4 groups.
+test("2026-08-27 wnbapts-1014 cell is present with the documented reduced sizing", () => {
+  const wnbapts1014 = MAKER_V2_LIVE_CELLS.find(c => c.group === "wnbapts-1014");
+  assert.deepEqual(wnbapts1014, { group: "wnbapts-1014", sport: "wnba", category: "points", band: [10, 14],
+    sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-27" });
+});
