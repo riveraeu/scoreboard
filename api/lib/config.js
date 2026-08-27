@@ -80,19 +80,18 @@ export const MAKER_SIZE = 10;         // simulated contracts per quote segment
 // is the FAVORITE band — its ≥55 floor means the paper engine only ever measured favorite-sells,
 // so the fill-price map had no data below ~50 (a favorite ask is ≥50 by definition). Quoting BOTH
 // sides across [1,97] completes the picture: the underdog side of every market (asks ~1-50) now
-// gets a paper segment too. Measurement only — V2 real orders stay locked to MAKER_V2_BAND. The
-// prior (n=44.5k pooled scan: longshot asks are ~fair) says expect ~0 edge down there, but the
-// maker side was never measured and quoting is free. Used ONLY by updateMakerQuotes with
-// bothSides=true; V2 and the backfill keep MAKER_BAND / MAKER_V2_BAND single-side (favorite).
+// gets a paper segment too. Measurement only — V2 real orders stay locked to their own per-cell
+// bands (MAKER_V2_LIVE_CELLS). The prior (n=44.5k pooled scan: longshot asks are ~fair) says
+// expect ~0 edge down there, but the maker side was never measured and quoting is free. Used ONLY
+// by updateMakerQuotes with bothSides=true; V2 and the backfill keep MAKER_BAND single-side
+// (favorite) — V2's own bands are per-cell now.
 export const MAKER_FULL_BAND = [1, 97];
 
-// Shadow maker V2 (2026-07-21, api/lib/maker-live.js) — REAL resting orders, scoped tight to
-// the one sub-band the 7/21 ARM review found a real, non-borderline edge in (n=295,
-// CI-lo≈+6¢); 85-97 stays V1-shadow-only. Defaults are deliberately conservative for the debut
-// — scale up only as a human decision once mechanics (place/reprice/fill/settle/grade) are
-// confirmed against real fills. See docs/INFRA.md § Shadow maker engine.
-export const MAKER_V2_BAND = [80, 84];       // real-order eligibility band (narrower than MAKER_BAND)
-export const MAKER_V2_SIZE = 5;              // contracts per resting order
+// MAKER_V2_BAND [80,84] / MAKER_V2_SIZE=5 (2026-07-21 debut — the single real-order favorite-band
+// hypothesis, from the 7/21 ARM review that found a real edge at n=295, CI-lo≈+6¢) were DELETED
+// 2026-08-27: dead since MAKER_V2_LIVE_CELLS superseded them 2026-08-24 (per-cell band +
+// sizeContracts instead of one global pair), confirmed zero non-comment references left anywhere
+// in the codebase. History: docs/INFRA.md § Shadow maker engine / § Shadow maker V2.
 export const MAKER_V2_MAX_CONCURRENT = 20;   // total resting orders across all tickers
 export const MAKER_V2_SAME_GAME_CAP = 2;     // max concurrent resting orders per game (correlation guard)
 // Self-expiring safety net. Was 150 (2.5min), sized for the kalshi-snapshot cron's ORIGINAL */2min
@@ -105,11 +104,12 @@ export const MAKER_V2_SAME_GAME_CAP = 2;     // max concurrent resting orders pe
 // safety net this was always meant to be, in case a cron tick is ever skipped/delayed.
 export const MAKER_V2_EXPIRATION_SEC = 540;
 
-// Sub-50 one-sided live trial (2026-08-24, docs/MAKER_V2_SUBFIFTY_TRIAL.md) — the eligibility set
-// updateWantedMakerQuotes actually reads while this trial runs; MAKER_V2_BAND/MAKER_V2_SIZE above
-// are the earlier, separately-shelved 80-84 favorite-band hypothesis and are not consulted by this
-// trial. Each group targets a category the netting screen (docs/MAKER_LADDER_ARTIFACT.md) found
-// NOT explained by the favorite-longshot mirror artifact (or, for the 2026-08-26 diagnostic cells,
+// Sub-50 one-sided live trial (2026-08-24, docs/MAKER_V2_SUBFIFTY_TRIAL.md) — MAKER_V2_LIVE_CELLS
+// below is the eligibility set updateWantedMakerQuotes actually reads while this trial runs; it
+// replaced the earlier, separately-shelved 80-84 favorite-band hypothesis (MAKER_V2_BAND/
+// MAKER_V2_SIZE, deleted 2026-08-27) entirely. Each group targets a category the netting screen
+// (docs/MAKER_LADDER_ARTIFACT.md) found NOT explained by the favorite-longshot mirror artifact
+// (or, for the 2026-08-26 diagnostic cells,
 // deliberately targets one that IS explained by it — see the per-cell notes below). Each group
 // has its OWN dollar cap (capCents — max $ notional outstanding across resting + executed-
 // ungraded orders in that group at any moment; frees up as positions grade) and its OWN stop-loss
@@ -120,7 +120,8 @@ export const MAKER_V2_EXPIRATION_SEC = 540;
 // only sum rows with game_date >= their group's resumeFrom, so a group's cap/stop-loss reads against
 // ITS OWN window, not the whole table's history.
 export const MAKER_V2_TRIAL_START = "2026-08-24";      // original forward window opens — see docs/MAKER_V2_SUBFIFTY_TRIAL.md
-export const MAKER_V2_TRIAL_CHECKPOINT = "2026-09-07"; // 2 weeks — see docs/MAKER_V2_SUBFIFTY_TRIAL.md
+// (MAKER_V2_TRIAL_CHECKPOINT, "2026-09-07", was deleted 2026-08-27 — never imported anywhere;
+// docs/MAKER_V2_SUBFIFTY_TRIAL.md hardcodes the date as a literal string instead.)
 // mlb-f5total never breached its stop-loss (+$28.00 realized) and keeps its original window.
 // (wnba-points' own resumeFrom constant was removed 2026-08-26 along with its cells — see the
 // halt note below; it will get a NEW resumeFrom, not this stale one, whenever it's re-added.)
