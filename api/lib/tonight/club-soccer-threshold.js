@@ -8,8 +8,9 @@
 // Leagues Cup's 1H total + full-game team-total (KXLEAGUESCUP1HTOTAL/TEAMTOTAL, added 2026-08-11 —
 // the first CROSS-LEAGUE entry here, whose `leaguescup` registry is derived as mls ∪ ligamx in
 // teams.js), and Eerste Divisie's full-game spread + total (KXEERSTEDIVSPREAD/TOTAL, added
-// 2026-08-14, no `half` tag). Phase 1, model-free.
-// One shared array + module across all four leagues (sport-tagged per row) —
+// 2026-08-14, no `half` tag), and Liga MX's 2nd-half BTTS + Ligue 1's first threshold derivative
+// (KXLIGAMX2HBTTS/KXLIGUE12HBTTS, both added 2026-08-28 off the discovery queue). Phase 1, model-free.
+// One shared array + module across all leagues (sport-tagged per row) —
 // unlike the shared GAME-winner module (model-free-ml.js, one path for all six leagues),
 // team identity here needs no subtitle-based disambiguation (none of MLS/LigaMX/Argentina have
 // scocup's kind of Kalshi-abbr collision), so there's no forcing reason to keep them in
@@ -46,6 +47,11 @@ const SCHEDULE_BY_SPORT = {
   // argprem failure, which is silent (the lookup is falsy-safe) and costs 100% of the league's
   // gameTime — and leaguescup cannot fall back to the ticker, which is date-only.
   leaguescup: leagueSource("leaguescup").getSchedule,
+  // ligue1 added 2026-08-28 for KXLIGUE12HBTTS — its first threshold derivative (only GAME
+  // existed before). Same argprem-omission trap as every entry above: leaving this out drops
+  // 100% of ligue1 threshold rows' gameTime silently (the `datesBySport[sport]` guard is
+  // falsy-safe). MODEL_FREE_LEAGUES already carries ligue1's espnSlug (fra.1, verified live).
+  ligue1: leagueSource("ligue1").getSchedule,
 };
 
 export async function emitClubSoccerThresholdPlays(ctx) {

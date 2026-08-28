@@ -119,6 +119,13 @@ export const SERIES_CONFIG = {
   KXLIGAMX1HSPREAD:{ sport: "ligamx", league: "ligamx", stat: "1hspread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread",  half: "1h" },
   KXLIGAMX1HTOTAL: { sport: "ligamx", league: "ligamx", stat: "1htotal", col: "G", gameType: "clubSoccerThreshold", subtype: "total",    half: "1h" },
   KXLIGAMXTEAMTOTAL:{ sport: "ligamx", league: "ligamx", stat: "teamTotal", col: "G", gameType: "clubSoccerThreshold", subtype: "teamTotal" },
+  // Liga MX 2nd-half BTTS (KXLIGAMX2HBTTS, adopted 2026-08-28 off the discovery queue, firstSeen
+  // 2026-08-27, 7/7 real books). Same clubSoccerThreshold path as the 1H sibling above — grading
+  // is settlement-authoritative (Kalshi's own settlement via kalshi_ticker/kalshi_side, not an
+  // ESPN half-score computation), so `half:"2h"` is purely a label; zero new resolver logic.
+  // Confirmed no Polymarket counterpart (`mex` in POLY_MARKETS only captures `moneyline`, same as
+  // every other soccer league here) — recorded per CLAUDE.md step 4, not a blocker.
+  KXLIGAMX2HBTTS:  { sport: "ligamx", league: "ligamx", stat: "2hbtts", col: "G",  gameType: "clubSoccerThreshold", subtype: "btts",      half: "2h" },
   // Argentina Liga Profesional de Fútbol game winner + full-game spread/total/BTTS — model-free,
   // found via the 2141-row kalshi_series_seen baseline backlog sweep (adopted 2026-07-24, see
   // project_baseline_backlog_2026_07_24 memory). GAME reuses the clubSoccerMl-style dedicated
@@ -301,6 +308,16 @@ export const SERIES_CONFIG = {
   // TWO 2-CHAR ABBRS in ligue1 registry (OL=Lyon, OM=Marseille) — ligue1 is in the parse-teams.js
   // variable-length allowlist (this commit).
   KXLIGUE1GAME: { sport: "ligue1", league: "ligue1", stat: "game", col: "ML", gameType: "modelFreeMl" },
+  // Ligue 1 2nd-half BTTS (KXLIGUE12HBTTS, adopted 2026-08-28 off the discovery queue, firstSeen
+  // 2026-08-27, 6/6 real books) — Ligue 1's first threshold derivative (only GAME existed before).
+  // Same clubSoccerThreshold path as MLS/Liga MX/etc; grading is settlement-authoritative (no ESPN
+  // half-score computation needed), so `half:"2h"` is purely a label. Needs a schedule source for
+  // gameTime — `ligue1` added to `SCHEDULE_BY_SPORT` in tonight/club-soccer-threshold.js in the
+  // same commit (via `leagueSource("ligue1").getSchedule`, already backed by MODEL_FREE_LEAGUES'
+  // ligue1 entry / espnSlug fra.1 — the exact 2026-07-24 argprem gameTime-omission trap otherwise).
+  // Confirmed no Polymarket counterpart (`fl1` in POLY_MARKETS only captures `moneyline`) —
+  // recorded per CLAUDE.md step 4, not a blocker.
+  KXLIGUE12HBTTS: { sport: "ligue1", league: "ligue1", stat: "2hbtts", col: "G", gameType: "clubSoccerThreshold", subtype: "btts", half: "2h" },
   // J.League 1 game winner — 3-way (home/away/tie), model-free maker (built 2026-08-10).
   // 30/30 real books, 1¢ median spread. ESPN slug jpn.1 verified. All 20 Kalshi codes are 3-char.
   // 11 ESPN mismatches resolved in teams.js (includes 2 four-char ESPN codes: MIT→MITO, VER→TYKV).
