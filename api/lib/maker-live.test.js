@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { isArmed, setArmed, gameKeyFor, sellAsBuy, matchLiveCell, groupExposureCents,
-  groupRealizedCents, haltedGroups, totalExposureCents, reconciledFilledCount } from "./maker-live.js";
+import { isArmed, setArmed, gameKeyFor, sellAsBuy, matchLiveCell, candidateLiveCells,
+  computeWantedMakerQuotes, groupExposureCents, groupRealizedCents, haltedGroups,
+  totalExposureCents, reconciledFilledCount } from "./maker-live.js";
 import { MAKER_V2_LIVE_CELLS, MAKER_V2_GLOBAL_CAP_CENTS } from "./config.js";
 
 const TEST_CELLS = [
@@ -98,16 +99,80 @@ test("sellAsBuy: settlement-equivalent to actually selling `side` at `askCents` 
 
 // ── Sub-50 one-sided live trial (2026-08-24, docs/MAKER_V2_SUBFIFTY_TRIAL.md) ──────────────────
 
-test("matchLiveCell: matches on sport + category (row.stat, falling back to row.gameType — same expression maker.js uses for the category column)", () => {
-  assert.deepEqual(matchLiveCell({ sport: "wnba", stat: "points" }, TEST_CELLS)?.band, [20, 24]);
+test("candidateLiveCells: returns every cell for a sport + category (row.stat, falling back to row.gameType — same expression maker.js uses for the category column), not just one", () => {
+  assert.deepEqual(candidateLiveCells({ sport: "wnba", stat: "points" }, TEST_CELLS).map(c => c.band), [[20, 24], [25, 29]]);
+  assert.deepEqual(candidateLiveCells({ sport: "mlb", gameType: "f5total" }, TEST_CELLS).map(c => c.band), [[10, 14]]);
+  assert.deepEqual(candidateLiveCells({ sport: "mlb", stat: "spread" }, TEST_CELLS), [], "no live cell for this category");
+  assert.deepEqual(candidateLiveCells({ sport: "wnba", stat: "spread" }, TEST_CELLS), [], "wrong category, same sport");
+});
+
+test("candidateLiveCells: never throws on a missing/malformed row", () => {
+  assert.doesNotThrow(() => candidateLiveCells(null, TEST_CELLS));
+  assert.doesNotThrow(() => candidateLiveCells({}, TEST_CELLS));
+});
+
+// matchLiveCell is a thin, NOT-band-aware convenience (first candidate only) — kept for the common
+// single-cell-per-category case. It must never be used to pick a cell for a sport+category with
+// more than one band (see the regression tests below) — computeWantedMakerQuotes uses
+// candidateLiveCells directly for exactly that reason.
+test("matchLiveCell: single-cell categories still resolve correctly", () => {
   assert.deepEqual(matchLiveCell({ sport: "mlb", gameType: "f5total" }, TEST_CELLS)?.band, [10, 14]);
   assert.equal(matchLiveCell({ sport: "mlb", stat: "spread" }, TEST_CELLS), null, "no live cell for this category");
-  assert.equal(matchLiveCell({ sport: "wnba", stat: "spread" }, TEST_CELLS), null, "wrong category, same sport");
 });
 
 test("matchLiveCell: never throws on a missing/malformed row", () => {
   assert.doesNotThrow(() => matchLiveCell(null, TEST_CELLS));
   assert.doesNotThrow(() => matchLiveCell({}, TEST_CELLS));
+});
+
+// ── Regression: 2026-08-27..31 bug — a sport+category with >1 band-distinct cell silently starved
+// every cell but the array's first, because matching used to stop at sport+category alone. Fixed
+// version must pick the candidate whose band actually contains the market's ask, not array order. ──
+
+function _market(ticker, { yesAsk, yesBid, noAsk, noBid }) {
+  return { ticker, yes_ask: yesAsk, yes_bid: yesBid, no_ask: noAsk, no_bid: noBid };
+}
+function _stagingRow(ticker, sport, stat) {
+  return { kalshiTicker: ticker, sport, stat, direction: "over", gameTime: new Date(Date.now() + 3600_000).toISOString() };
+}
+
+test("computeWantedMakerQuotes: disambiguates same-sport-category cells by which band the market's ask actually falls in", () => {
+  const cells = [
+    { group: "wnbapts-1014", sport: "wnba", category: "points", band: [10, 14], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-27" },
+    { group: "wnba-points", sport: "wnba", category: "points", band: [20, 24], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-27" },
+    { group: "wnba-points", sport: "wnba", category: "points", band: [25, 29], sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-27" },
+  ];
+  const rows = [
+    _stagingRow("T-1014", "wnba", "points"),
+    _stagingRow("T-2024", "wnba", "points"),
+    _stagingRow("T-2529", "wnba", "points"),
+  ];
+  const staging = { plays: rows, dropped: [] };
+  const snapResults = {
+    KXWNBAPTS: {
+      markets: [
+        _market("T-1014", { yesAsk: 12, yesBid: 8, noAsk: 90, noBid: 86 }),  // belongs to wnbapts-1014
+        _market("T-2024", { yesAsk: 22, yesBid: 18, noAsk: 80, noBid: 76 }), // belongs to wnba-points [20,24]
+        _market("T-2529", { yesAsk: 27, yesBid: 23, noAsk: 75, noBid: 71 }), // belongs to wnba-points [25,29]
+      ],
+    },
+  };
+  const want = computeWantedMakerQuotes({ snapResults, staging, cells });
+  assert.equal(want.get("T-1014")?.cell.group, "wnbapts-1014");
+  assert.equal(want.get("T-2024")?.cell.group, "wnba-points", "20-24c row must NOT fall through to wnbapts-1014 just because that cell is listed first");
+  assert.equal(want.get("T-2024")?.cell.band[0], 20);
+  assert.equal(want.get("T-2529")?.cell.group, "wnba-points");
+  assert.equal(want.get("T-2529")?.cell.band[0], 25);
+});
+
+test("computeWantedMakerQuotes: against the REAL production MAKER_V2_LIVE_CELLS, a wnba|points row at 22c resolves to wnba-points, not wnbapts-1014 (pins the exact 2026-08-27..31 incident)", () => {
+  const staging = { plays: [_stagingRow("REAL-T-2024", "wnba", "points")], dropped: [] };
+  const snapResults = {
+    KXWNBAPTS: { markets: [_market("REAL-T-2024", { yesAsk: 22, yesBid: 18, noAsk: 80, noBid: 76 })] },
+  };
+  const want = computeWantedMakerQuotes({ snapResults, staging }); // default cells = MAKER_V2_LIVE_CELLS
+  assert.equal(want.get("REAL-T-2024")?.cell.group, "wnba-points",
+    "before the fix this resolved to wnbapts-1014 (band [10,14]) via array order, so a 22c row never matched any band and was silently dropped");
 });
 
 test("groupExposureCents: sums REAL cost basis (100 - price) x contracts for not-yet-graded rows only, per group — `price` is the SOLD side/price, the real order Kalshi executes is the complementary buy at (100 - price)", () => {

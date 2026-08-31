@@ -124,13 +124,27 @@ export async function ensureMakerLiveTables(env) {
   _ddlDone = true;
 }
 
-// Which MAKER_V2_LIVE_CELLS entry (if any) a staging row belongs to — sport + category, same
+// Every MAKER_V2_LIVE_CELLS entry a staging row's sport + category could belong to — same
 // category expression maker.js's updateMakerQuotes uses for the maker_quotes.category column
 // (`row.stat ?? row.gameType`), so a row's group assignment here can never drift from how the
-// SAME row would be bucketed by the report's category bands.
-export function matchLiveCell(row, cells = MAKER_V2_LIVE_CELLS) {
+// SAME row would be bucketed by the report's category bands. Can return MORE THAN ONE cell (e.g.
+// wnba|points has three: wnbapts-1014 [10,14], wnba-points [20,24], wnba-points [25,29]) — band
+// disambiguation among them happens in computeWantedMakerQuotes, where the market's actual ask is
+// available; this function only narrows by sport+category.
+export function candidateLiveCells(row, cells = MAKER_V2_LIVE_CELLS) {
   const category = row?.stat ?? row?.gameType ?? null;
-  return cells.find(c => c.sport === row?.sport && c.category === category) || null;
+  return cells.filter(c => c.sport === row?.sport && c.category === category);
+}
+
+// Convenience for the (common) case of a sport+category with exactly one live cell. NOT band-aware
+// — returns the FIRST candidate regardless of price, so it must not be used to pick a cell when a
+// sport+category has more than one band-distinct entry (see the 2026-08-27..31 bug: adding
+// wnbapts-1014 ahead of wnba-points in MAKER_V2_LIVE_CELLS made every wnba|points row resolve to
+// wnbapts-1014's [10,14] band regardless of actual price, silently dropping every 20-29¢ row —
+// wnba-points placed zero real orders for its entire post-8/27 ledger as a result).
+// computeWantedMakerQuotes uses candidateLiveCells directly instead, exactly to avoid this trap.
+export function matchLiveCell(row, cells = MAKER_V2_LIVE_CELLS) {
+  return candidateLiveCells(row, cells)[0] || null;
 }
 
 // Pure aggregation over already-fetched maker_orders_v2 rows — split out from the DB query so the
@@ -200,10 +214,13 @@ export function haltedGroups(rows, cells = MAKER_V2_LIVE_CELLS) {
 //
 // Per-cell, not a single global band (contrast with the pre-2026-08-24 version of this function,
 // which applied one MAKER_V2_BAND to every series): each market is matched against
-// MAKER_V2_LIVE_CELLS by sport+category (matchLiveCell), and ONLY that cell's own band is checked
-// — a row belonging to no live cell is never eligible, regardless of its price. `bothSides:true`
-// on computeMakerQuote because a live cell's band is the sub-50 (longshot) side by design, not
-// necessarily the higher-ask favorite that the single-side branch would pick.
+// MAKER_V2_LIVE_CELLS by sport+category (candidateLiveCells) — a row belonging to no live cell is
+// never eligible, regardless of its price. When a sport+category has MORE THAN ONE cell (different
+// bands), every candidate's band is tried against computeMakerQuote and the first one that actually
+// produces a sale (i.e. whose band contains the market's real ask) wins — picking by array position
+// instead (the pre-2026-08-31 bug) silently starved every cell but the first for that sport+category.
+// `bothSides:true` on computeMakerQuote because a live cell's band is the sub-50 (longshot) side by
+// design, not necessarily the higher-ask favorite that the single-side branch would pick.
 export function computeWantedMakerQuotes({ snapResults, staging, nowMs = Date.now(), cells = MAKER_V2_LIVE_CELLS }) {
   const idx = new Map();
   for (const p of [...(staging?.plays || []), ...(staging?.dropped || [])]) {
@@ -219,10 +236,14 @@ export function computeWantedMakerQuotes({ snapResults, staging, nowMs = Date.no
     for (const m of (data?.markets || [])) {
       const row = idx.get(m?.ticker);
       if (!row) continue;
-      const cell = matchLiveCell(row, cells);
+      const candidates = candidateLiveCells(row, cells);
+      if (!candidates.length) continue;
+      let cell = null, sides = null;
+      for (const c of candidates) {
+        const s = computeMakerQuote(m, row, nowMs, c.band, true);
+        if (s?.length) { cell = c; sides = s; break; }
+      }
       if (!cell) continue;
-      const sides = computeMakerQuote(m, row, nowMs, cell.band, true);
-      if (!sides?.length) continue;
       // A narrow 5¢ band practically never has both YES and NO in it at once (their asks sum to
       // ~100+spread); if it somehow did, take the first — not worth extra machinery for a 2-week,
       // $30-per-group trial to handle an edge case that would need a second resting order per
