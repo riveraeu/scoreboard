@@ -318,6 +318,13 @@ export const SERIES_CONFIG = {
   // Confirmed no Polymarket counterpart (`fl1` in POLY_MARKETS only captures `moneyline`) —
   // recorded per CLAUDE.md step 4, not a blocker.
   KXLIGUE12HBTTS: { sport: "ligue1", league: "ligue1", stat: "2hbtts", col: "G", gameType: "clubSoccerThreshold", subtype: "btts", half: "2h" },
+  // Ligue 1 2nd-half total (KXLIGUE12HTOTAL, adopted 2026-08-30 off the discovery queue, firstSeen
+  // 2026-08-27, 9/9 real books) — same clubSoccerThreshold path as the 2HBTTS sibling above, zero
+  // new resolver logic (settlement-authoritative). Ligue1 already has its SCHEDULE_BY_SPORT entry
+  // (added with KXLIGUE12HBTTS 2026-08-28) — no gameTime wiring needed this commit. Confirmed no
+  // Polymarket counterpart (`fl1` in POLY_MARKETS only captures `moneyline`) — recorded per
+  // CLAUDE.md step 4, not a blocker.
+  KXLIGUE12HTOTAL: { sport: "ligue1", league: "ligue1", stat: "2htotal", col: "G", gameType: "clubSoccerThreshold", subtype: "total", half: "2h" },
   // J.League 1 game winner — 3-way (home/away/tie), model-free maker (built 2026-08-10).
   // 30/30 real books, 1¢ median spread. ESPN slug jpn.1 verified. All 20 Kalshi codes are 3-char.
   // 11 ESPN mismatches resolved in teams.js (includes 2 four-char ESPN codes: MIT→MITO, VER→TYKV).
