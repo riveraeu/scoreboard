@@ -1,5 +1,50 @@
 # Live trial — sub-50 one-sided quoting, `wnba|points` + `mlb|f5total|10-14` (2026-08-24)
 
+## Bug 2026-08-31: `wnba-points` placed ZERO real orders for its entire post-8/27 ledger — cell-matching picked by array order, not band
+
+Found during a daily-report follow-up (not the screenshot-vs-API method that caught the prior
+three bugs): five of the trial's seven groups had gone quiet for several days, two of them
+(`wnbasp-onesided`, `mlb-hrr-negctrl`) with literally zero fills since inception on 8/26. Cross-
+checking `wnbasp-onesided`'s and `mlb-hrr-negctrl`'s bands against the passive shadow capture
+(`wnba|spread|20-24`: 245 fills/21 days; `mlb|hrr|30-34`: 339 fills/23 days — both liquid, real
+markets) ruled out "the market is just thin" for those two, but didn't explain the pattern on its
+own. Reading the actual matching code did: `matchLiveCell` (`api/lib/maker-live.js`) selected a
+`MAKER_V2_LIVE_CELLS` entry by `sport`+`category` alone via `cells.find(...)`, returning the FIRST
+array match — never checking band. `wnbapts-1014` (`band [10,14]`) was added to the array ahead of
+`wnba-points`'s two entries (`[20,24]`, `[25,29]`) on 2026-08-27 (see § Addition 2026-08-27 below).
+From that commit forward, EVERY `wnba|points` staging row — regardless of its actual price —
+resolved to `wnbapts-1014`'s cell, so `computeMakerQuote(m, row, nowMs, [10,14], true)` ran against
+every wnba-points row including 20-29¢ asks, which fail the `[10,14]` band check and are silently
+dropped. Confirmed directly by calling `matchLiveCell` against the live production config: it
+returned `wnbapts-1014` for a synthetic `{sport:"wnba", stat:"points"}` row unconditionally.
+Cross-checked against real fill history (`/api/kalshi-fills`, 200-fill account history back to
+7/23): every `KXWNBAPTS` fill in the window fell in the pre-8/27 price range (20-23¢, the group's
+OLD pre-halt band), none since — `wnba-points`'s 8/27 "re-arm" (§ Re-arm 2026-08-27 below) had
+produced zero real trading evidence the entire time, silently.
+
+**Not a capital-safety bug** — the opposite failure mode from the prior three (which overexposed
+or misattributed real capital): this one just meant the group traded nothing, so no money was ever
+at risk from it. But it means `wnba-points`' checkpoint clock should be read from **2026-08-31**
+forward, not 8/27 — 4 days of the group's post-halt ledger produced no real signal at all.
+
+**Fix** (`api/lib/maker-live.js`, commit `00481b4`): added `candidateLiveCells(row, cells)`,
+returning EVERY cell matching a row's sport+category (not just the first). `computeWantedMakerQuotes`
+now loops over all candidates for a row and picks whichever one's band actually contains the
+market's ask, using the existing `computeMakerQuote` band gate directly rather than duplicating
+that logic — so band disambiguation can never drift from the real eligibility check. `matchLiveCell`
+stays exported as an explicitly non-band-aware convenience (first-candidate only) for the — still
+common — case of a sport+category with exactly one live cell; a comment on it names this exact
+incident as the reason it must never be used to disambiguate a multi-band category. 372/372 tests
+pass, 2 new: one reproducing the 3-cell collision with synthetic cells, one running
+`computeWantedMakerQuotes` against the **real, unmodified `MAKER_V2_LIVE_CELLS`** proving a 22¢
+wnba-points row now resolves to `wnba-points`, not `wnbapts-1014`.
+
+**This is the trial's 4th real-capital-adjacent bug** (after 8/24 exposure-cap basis, 8/25
+expiration duty-cycle, 8/26 multi-piece-fill tracking) — every one found in the live-cell machinery
+itself, not in a market read. Consistent with the trial's own "what each outcome changes" framing
+(§ below): live execution infrastructure has proven harder to get right than the market question
+it's trying to answer, four times running.
+
 ## Re-arm 2026-08-27: `wnba-points` (bands 20-24, 25-29) — re-armed at HALVED sizing
 
 The § Incident re-arm criterion below ("a live order that fills in more than one piece must be
