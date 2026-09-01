@@ -955,23 +955,28 @@ export const DISMISSED_SERIES = [
   // shortlisted. NOT built.
   "KXNBANEXTCONTRACT", "KXNBANEXTTEAMOUTLET", // contract-value / news-outlet futures — same
   // news/insider-driven, no-model-surface class as KXNBANEXTTEAM. DISMISS.
-  // NOTE: KXNFLTSPEC ("NFL Team Specials") NOT dismissed — still shortlisted (no SERIES_CONFIG
-  // entry, not built). Full 305-market ladder pulled 2026-07-23 via /api/kalshi-check?limit=500
-  // (blocked earlier same day by a connectivity issue, now resolved). Confirmed a genuine multi-
-  // stat-family bundle, ~14 distinct families across TEAM and PLAYER levels, by live market count:
-  // PLAYER receiving yards (67, largest single family, 16 real-book), TEAM sacks (32, opponent-flip
-  // gotcha applies — see below), TEAM passing yards (32), TEAM shutout/points-allowed (32), PLAYER
-  // passing TDs (29), PLAYER rush+rec-yards combo (29), PLAYER any-TDs (23), PLAYER rushing yards
-  // (21), PLAYER rushing TDs (13), PLAYER sacks — individual defenders (11), PLAYER interceptions
-  // (7), PLAYER season-long passing yards — no "in a single game" qualifier, different target than
-  // the single-game family above (6), PLAYER pass+rush-TD combo (2), PLAYER tackles (1, too thin to
-  // model alone). None of these map cleanly onto the originally-assumed "just a higher KXNFLTDS
-  // rung" — TDs is one family of ~14, not the whole series. TEAM sacks keeps the same opponent-flip
-  // gotcha found 2026-07-23 (a team's own boxscore stat is sacks ALLOWED, not recorded — must read
-  // the opponent's row). Building this would mean ≥3-4 separate models (team-level Poisson count
-  // for sacks/points-allowed, a team-total-yards Normal, a player-yardage/TD hit-rate stack reusing
-  // the existing NFL prop hit-rate approach) — a multi-model NFL build, not a single-rung addition.
-  // See project_nfltspec_vet_2026_07_23 memory for the full vet + why it's not built yet.
+  "KXNFLTSPEC", // ("NFL Team Specials") DISMISSED 2026-09-01, superseding the 2026-07-23 "not
+  // built yet" note (which reasoned from a since-deleted assumption — see below). Re-checked live
+  // via /api/kalshi-check?limit=500: 306 markets, 100% real-book, median spread 8¢, ~$61.8k total
+  // volume — genuinely liquid, so liquidity was never the blocker. The real disqualifier, found
+  // 2026-09-01 by reading `closeTime` on the full sample: EVERY market shares one of two
+  // end-of-season close times (286 @ 2027-01-18T15:00Z, 20 @ 2027-01-25T15:00Z) — there is no
+  // per-game closeTime and no week/opponent segment in the ticker (`KXNFLTSPEC-27{TEAM}-{STATCODE}`,
+  // season prefix + team + stat only). Subtitles phrased "records 500+ rushing yards in a single
+  // game" describe the WIN CONDITION (did this ever happen in any one game this season), not a
+  // per-game market — this is a season-long achievement/futures-shaped contract, one outcome for
+  // the whole season, not the per-game repeating prop every other family in SERIES_CONFIG is. Same
+  // exclusion class kalshi-series-check.js already warns about ("most high-volume finds turn out to
+  // be season FUTURES, not per-game markets — filter on a GAME/MATCH shape before treating a find as
+  // buildable"), just not caught until a market-shape check was actually run. DISMISS: this
+  // codebase's whole capture/analysis stack (shadowId keyed on gameDate, day-clustered CIs, the
+  // pre-game gameTime capture gate) assumes one row = one game's outcome; a season-long contract has
+  // no per-game structure to hang any of that off. Building it would mean new capture architecture
+  // for a market shape this repo has never needed, not a SERIES_CONFIG/subtitle-parser addition —
+  // not attempted here. The 2026-07-23 "not built" reasoning (needs ≥3-4 separate predictive models)
+  // is ALSO stale independent of this — it predates the 2026-08-04 model teardown; the app is
+  // capture-all model-free now, so a per-game version of this series (if one existed) would need no
+  // model at all. See project_nfltspec_vet_2026_07_23 (superseded) + project_nfltspec_dismissed_2026_09_01 memory.
   // 7/23 triage (36 detected — 11 Kalshi + 25 Polymarket):
   "KXSOCCERRETIRE", "KXSOCCERINTLRETIRE", // player retirement announcements — a retirement
   // decision isn't a competitive sporting outcome, no model surface exists or ever will (same
