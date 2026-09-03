@@ -60,6 +60,8 @@ const LEGACY_TEAM_NORM = {
   // "POT" collision) live in CANONICAL_TO_ESPN, not TEAM_NORM.
   belgianpl: {}, // canonical = Kalshi abbrs (from event sub_title, e.g. "BRU vs CER"), no
   // aliases; the 13 espnScore remaps live in CANONICAL_TO_ESPN, not TEAM_NORM.
+  efll1: {}, // canonical = Kalshi abbrs, no aliases; the 10 espnScore remaps live in
+  // CANONICAL_TO_ESPN, not TEAM_NORM.
 };
 
 const LEGACY_VALID_TEAMS = {
@@ -91,6 +93,7 @@ const LEGACY_VALID_TEAMS = {
   eerstediv: ["ALM","PSV","EIN","MAA","HER","DBO","BRE","VEN","WAA","DOR","ROD","HEL","VOL","OSS","GRA","AZ","AJA","EMM","UTR","VIT"],
   bolpd: ["IND","CLU","CNP","ABB","ARE","POT"],
   belgianpl: ["BRU","CER","LOM","WES","RAFC","GEN","KAA","OHL","RCH","YRM","ZUL","BEV","STA","RAAL","STT","KOR","USG","RSC"],
+  efll1: ["BAR","BLP","BRA","BRO","BURA","CAM","DR","HUD","LEI","LEY","LUT","MAT","MKD","NOC","OXU","PA","PET","REA","SHW","STE","STO","WIG","WIM","WYW"],
 };
 
 const LEGACY_CANONICAL_TO_ESPN = {
@@ -118,6 +121,7 @@ const LEGACY_CANONICAL_TO_ESPN = {
   eerstediv: { PSV: "JPS", MAA: "MVV", BRE: "NAC", VEN: "VVV", WAA: "RKC", ROD: "RJC", OSS: "TOP", AZ: "JAZ", AJA: "JAJ", UTR: "JUT" },
   bolpd: { IND: "CIP", CLU: "GVSJ", CNP: "POT", ARE: "CAR", POT: "RPO" },
   belgianpl: { CER: "CBK", WES: "KVCW", RAFC: "ANT", GEN: "GENK", KAA: "GENT", RCH: "CHA", YRM: "KVM", BEV: "WAA", STA: "STL", RAAL: "RLL", STT: "STVV", KOR: "KVK", RSC: "AND" },
+  efll1: { BRA: "BRD", BURA: "BRT", DR: "DON", LUT: "LTN", MAT: "MNF", NOC: "NCO", OXU: "OXF", PA: "PLY", WIG: "WGA", WYW: "WYC" },
 };
 
 const LEGACY_WNBA_TEAM_IDS = {

@@ -677,6 +677,40 @@ export const TEAMS = {
     { abbr: "USG" },                    // Union St.-Gilloise
     { abbr: "RSC", espnScore: "AND" },  // Anderlecht (Kalshi: Royal Sporting Club Anderlecht)
   ],
+  // EFL League One (English 3rd tier) — model-free maker (KXEFLL1GAME, built 2026-09-03). ESPN
+  // slug eng.3 verified live: 3/3 sampled fixtures matched exactly on date+teams. All 24 codes
+  // come from the 42 live GAME markets (14 fixtures, full roster — confirmed by count against
+  // ESPN's own 24-team eng.3 teams list). No ESPN-internal collision (all 24 ESPN abbrs mutually
+  // distinct) — the high mismatch rate (10/24) is naming-convention drift only, verified by
+  // same-date fixture cross-reference. Two 2-char Kalshi codes (PA = Plymouth, DR = Doncaster) and
+  // one 4-char (BURA = Burton) mixed with 3-char everywhere else — `efll1` added to
+  // parseGameTeams' variable-length-split allowlist for this reason (tonight/parse-teams.js).
+  efll1: [
+    { abbr: "BAR" },                    // Barnsley
+    { abbr: "BLP" },                    // Blackpool
+    { abbr: "BRA", espnScore: "BRD" },  // Bradford City
+    { abbr: "BRO" },                    // Bromley
+    { abbr: "BURA", espnScore: "BRT" }, // Burton Albion (4-char Kalshi code)
+    { abbr: "CAM" },                    // Cambridge United
+    { abbr: "DR", espnScore: "DON" },   // Doncaster Rovers (2-char Kalshi code)
+    { abbr: "HUD" },                    // Huddersfield Town
+    { abbr: "LEI" },                    // Leicester City
+    { abbr: "LEY" },                    // Leyton Orient
+    { abbr: "LUT", espnScore: "LTN" },  // Luton Town
+    { abbr: "MAT", espnScore: "MNF" },  // Mansfield Town
+    { abbr: "MKD" },                    // Milton Keynes Dons
+    { abbr: "NOC", espnScore: "NCO" },  // Notts County
+    { abbr: "OXU", espnScore: "OXF" },  // Oxford United
+    { abbr: "PA", espnScore: "PLY" },   // Plymouth Argyle (2-char Kalshi code)
+    { abbr: "PET" },                    // Peterborough United
+    { abbr: "REA" },                    // Reading
+    { abbr: "SHW" },                    // Sheffield Wednesday
+    { abbr: "STE" },                    // Stevenage
+    { abbr: "STO" },                    // Stockport County
+    { abbr: "WIG", espnScore: "WGA" },  // Wigan Athletic
+    { abbr: "WIM" },                    // AFC Wimbledon
+    { abbr: "WYW", espnScore: "WYC" },  // Wycombe Wanderers
+  ],
   // English Premier League — model-free maker (KXEPLGAME, built 2026-08-10). ESPN slug eng.1
   // verified live. All 20 teams confirmed from KXPREMIERLEAGUE season-futures tickers 2026-08-10.
   // 5 ESPN-side mismatches: BRI→BHA, CFC→CHE, LFC→LIV, MCI→MNC, MUN→MAN.

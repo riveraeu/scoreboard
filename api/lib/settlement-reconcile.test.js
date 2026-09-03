@@ -31,14 +31,16 @@ test("authoritative set covers the shadow-only sports + mlb/wnba/nfl; nba/nhl st
   // +1 2026-08-14: eerstediv (KXEERSTEDIVGAME), Dutch 2nd tier, 19th model-free soccer league.
   // +1 2026-08-16: bolpd (KXBOLPDIVGAME), Bolivian Primera Division, 20th model-free soccer league.
   // +1 2026-08-17: belgianpl (KXBELGIANPLGAME), Belgian Pro League, 21st model-free soccer league.
-  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 38);
+  // +1 2026-09-03: efll1 (KXEFLL1GAME), EFL League One (English 3rd tier), 22nd model-free soccer
+  // league.
+  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 39);
   for (const s of ["tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb",
                    "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem", "dimayor",
                    "copadobrasil", "eredivisie", "eerstediv",
                    "epl", "laliga", "seriea", "ligue1", "jleague",
                    "laliga2", "usl", "copalib", "ligaportugal",
                    "mlb", "wnba", "dota2", "kleague", "kbo",
-                   "ufc", "boxing", "nfl", "leaguescup", "bolpd", "belgianpl"]) {
+                   "ufc", "boxing", "nfl", "leaguescup", "bolpd", "belgianpl", "efll1"]) {
     assert.ok(isSettlementAuthoritative(s), `${s} should be authoritative`);
   }
   // nba/nhl stay ESPN-graded FOR NOW — off-season, no Poly overlap. Fold the same way when they

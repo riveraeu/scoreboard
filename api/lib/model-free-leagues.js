@@ -196,6 +196,13 @@ export const MODEL_FREE_LEAGUES = {
   // straight 1:1 naming-convention remap, not a shared abbr needing wrapCanonTeam). RAFC/RAAL
   // (4-char) → belgianpl in parseGameTeams' variable-length allowlist (this commit).
   belgianpl: { espnSlug: "bel.1" },
+  // 22nd league, adopted 2026-09-03 — EFL League One, English 3rd tier (KXEFLL1GAME). ESPN slug
+  // eng.3 verified live: 3/3 sampled fixtures matched exactly (Wimbledon@Bromley 9/7,
+  // Reading@Oxford Utd 9/8, Luton@Stevenage 9/10). 42/42 real books, 4¢ median spread. Default
+  // canonTeam suffices — no ESPN-internal abbr collision (all 24 ESPN abbrs mutually distinct).
+  // Mixed-length Kalshi codes (PA/DR 2-char, BURA 4-char) → efll1 added to parseGameTeams'
+  // variable-length allowlist in tonight/parse-teams.js.
+  efll1: { espnSlug: "eng.3" },
 };
 
 export const MODEL_FREE_LEAGUE_KEYS = Object.keys(MODEL_FREE_LEAGUES);

@@ -212,6 +212,12 @@ export const SERIES_CONFIG = {
   // ESPN slug bel.1, exact same-date fixture match. See model-free-leagues.js + teams.js for the
   // team-code mapping (mostly Kalshi-vs-ESPN naming-convention drift, no collision).
   KXBELGIANPLGAME:      { sport: "belgianpl", league: "belgianpl", stat: "game", col: "ML", gameType: "modelFreeMl" },
+  // EFL League One (KXEFLL1GAME, adopted 2026-09-03) — 42/42 real books, 4c median spread.
+  // ESPN slug eng.3, exact same-date fixture match. See model-free-leagues.js + teams.js for the
+  // team-code mapping (10/24 naming-convention mismatches, no collision). Threshold siblings
+  // (1H/BTTS/SPREAD/TOTAL/ADVANCE) already in DISMISSED_SERIES from an earlier batch screen —
+  // never auto-revived, candidates to reconsider now that the base league is adopted.
+  KXEFLL1GAME:          { sport: "efll1", league: "efll1", stat: "game", col: "ML", gameType: "modelFreeMl" },
   KXEERSTEDIVSPREAD:    { sport: "eerstediv", league: "eerstediv", stat: "spread", col: "G",  gameType: "clubSoccerThreshold", subtype: "spread" },
   KXEERSTEDIVTOTAL:     { sport: "eerstediv", league: "eerstediv", stat: "total",  col: "G",  gameType: "clubSoccerThreshold", subtype: "total" },
   KXCOPADOBRASILTOTAL:  { sport: "copadobrasil", league: "copadobrasil", stat: "total",  col: "G", gameType: "clubSoccerThreshold", subtype: "total" },

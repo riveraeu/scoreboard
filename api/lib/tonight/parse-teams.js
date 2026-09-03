@@ -53,8 +53,10 @@ export function parseGameTeams(eventTicker, sport) {
   // belgianpl joined 2026-08-17: "RAFC" (Antwerp) and "RAAL" (La Louvière) are 4-char, everything
   // else 3-char — RAFCGEN/STARAAL etc (7 chars) need this path the same reason mls/leaguescup need
   // it for LAFC/NYRB. No 2-char codes in this registry.
+  // efll1 joined 2026-09-03: "PA" (Plymouth) and "DR" (Doncaster) are 2-char, "BURA" (Burton) is
+  // 4-char, everything else 3-char — DRPA (4 chars) and BURACAM (7 chars) both need this path.
   if ((sport === "wnba" || sport === "mls" || sport === "brasileirao" || sport === "nwsl" || sport === "argprem" || sport === "copadobrasil" || sport === "ligue1" || sport === "usl" || sport === "copalib" || sport === "nfl" || sport === "kbo"
-       || sport === "dimayor" || sport === "leaguescup" || sport === "eerstediv" || sport === "belgianpl") && valid) {
+       || sport === "dimayor" || sport === "leaguescup" || sport === "eerstediv" || sport === "belgianpl" || sport === "efll1") && valid) {
     for (let i = Math.min(4, rest.length - 2); i >= 2; i--) {
       const a = normTeam(sport, rest.slice(0, i));
       for (let j = Math.min(4, rest.length - i); j >= 2; j--) {
