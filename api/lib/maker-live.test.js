@@ -406,6 +406,24 @@ test("liveOrderPassTelemetryCommands: halted groups are recorded as a joined lis
   assert.equal(hset[hset.indexOf("lastHalted") + 1], "wnba3p-killdiag,wnbareb-6569");
 });
 
+// The 2026-09-03 mlb-hrr-negctrl root cause: a "ran" cycle where placeKalshiOrder itself failed on
+// (nearly) every attempt — indistinguishable from a healthy cycle by `errors` count alone without
+// this message. `lastError` (whole-pass throw) and `lastPlaceErrorMsg` (one placement's failure
+// inside an otherwise-healthy cycle) must stay two separate fields, never merged into one.
+test("liveOrderPassTelemetryCommands: a per-placement failure records its own message, distinct from a whole-pass error", () => {
+  const cmds = liveOrderPassTelemetryCommands("2026-09-03",
+    { eligible: 49, opened: 0, capped: 3, canceled: 0, errors: 46,
+      lastPlaceError: "KXMLBHRR-...-CWSJROGERS34-2: 401 unauthorized", halted: [] }, V2_AT);
+  assert.deepEqual(v2CmdFor(cmds, "HINCRBY", "ran"), ["HINCRBY", V2_KEY, "ran", 1]);
+  assert.deepEqual(v2CmdFor(cmds, "HINCRBY", "sumPlaceErrors"), ["HINCRBY", V2_KEY, "sumPlaceErrors", 46]);
+  assert.equal(v2CmdFor(cmds, "HINCRBY", "errors"), undefined, "a healthy-outcome cycle must not touch the whole-pass errors counter");
+  const hset = v2CmdFor(cmds, "HSET");
+  assert.equal(hset[hset.indexOf("lastOutcome") + 1], "ran");
+  assert.equal(hset[hset.indexOf("lastPlaceErrors") + 1], "46");
+  assert.equal(hset[hset.indexOf("lastPlaceErrorMsg") + 1], "KXMLBHRR-...-CWSJROGERS34-2: 401 unauthorized");
+  assert.equal(hset.indexOf("lastError"), -1, "no whole-pass error on a ran cycle");
+});
+
 test("liveOrderPassTelemetryCommands: counters are HINCRBY, never a read-modify-write GET/SET", () => {
   const cmds = liveOrderPassTelemetryCommands("2026-09-03",
     { eligible: 1, opened: 0, capped: 0, canceled: 0, errors: 0, halted: [] }, V2_AT);

@@ -413,7 +413,7 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
   // places new orders — same running-total shape as the per-group cap, just summed across groups.
   let totalExposureRunning = totalExposureCents(allOrders);
 
-  let opened = 0, capped = 0, errors = 0;
+  let opened = 0, capped = 0, errors = 0, lastPlaceError = null;
   for (const { ticker, q, row, series, cell } of toPlaceFiltered) {
     const gk = _gameKey(row);
     const gameCount = gameCounts.get(gk) || 0;
@@ -426,7 +426,16 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
     const res = await placeKalshiOrder(
       { ticker, side: buyOrder.side, price: buyOrder.price, count: cell.sizeContracts, expirationTime }, env
     ).catch(e => ({ ok: false, error: String(e?.message || e) }));
-    if (!res.ok) { errors++; console.error(`[maker-live] place ${ticker} failed: ${res.error}`); continue; }
+    if (!res.ok) {
+      errors++;
+      lastPlaceError = `${ticker}: ${res.error}`; // surfaced in telemetry — a whole-pass throw and a
+      // per-placement failure used to be indistinguishable from outside (both just incremented a
+      // count with no message); found 2026-09-03 diagnosing mlb-hrr-negctrl's 2+ day placement
+      // stall — the FIRST telemetry cycle showed 46/49 eligible rows failing to place with no
+      // reason visible anywhere outside a Vercel log.
+      console.error(`[maker-live] place ${ticker} failed: ${res.error}`);
+      continue;
+    }
     const filled = res.fillCount || 0;
     const status = res.remainingCount === 0 && filled > 0 ? "executed" : "resting";
     await neonQuery(
@@ -446,7 +455,7 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
   }
 
   return { eligible: want.size, canceled: canceledCount, failedCancels: failedCancelTickers.size,
-    expiredLocally: toExpireLocally.length, opened, capped, errors, halted: [...halted] };
+    expiredLocally: toExpireLocally.length, opened, capped, errors, lastPlaceError, halted: [...halted] };
 }
 
 // Durable per-day record of what the V2 real-order placement pass did each cron cycle — the same
@@ -486,7 +495,12 @@ export function liveOrderPassTelemetryCommands(dayPT, meta, nowIso) {
     lastEligible: m.eligible, lastOpened: m.opened, lastCapped: m.capped,
     lastCanceled: m.canceled, lastPlaceErrors: m.errors,
     lastHalted: Array.isArray(m.halted) && m.halted.length ? m.halted.join(",") : null,
-    lastError: m.error,
+    // Two distinct error surfaces, deliberately not merged: `lastError` is a WHOLE-PASS throw
+    // (outcome === "error", the entire cycle aborted); `lastPlaceErrorMsg` is one individual
+    // ticker's placeKalshiOrder failure inside an otherwise-healthy "ran" cycle — the two used to
+    // be indistinguishable from outside (a per-placement failure only incremented `errors` with no
+    // message anywhere), which is exactly what hid the 2026-09-03 mlb-hrr-negctrl stall.
+    lastError: m.error, lastPlaceErrorMsg: m.lastPlaceError,
   };
   const flat = [];
   for (const [k, v] of Object.entries(fields)) {

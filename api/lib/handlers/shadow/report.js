@@ -1190,6 +1190,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       lastEligible: _n(v2qp.lastEligible), lastOpened: _n(v2qp.lastOpened), lastCapped: _n(v2qp.lastCapped),
       lastCanceled: _n(v2qp.lastCanceled), lastPlaceErrors: _n(v2qp.lastPlaceErrors),
       lastHalted: v2qp.lastHalted ?? null, lastError: v2qp.lastError ?? null,
+      lastPlaceErrorMsg: v2qp.lastPlaceErrorMsg ?? null,
     } : null;
 
     let diagnosis = current ? "current"
