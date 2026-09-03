@@ -174,6 +174,13 @@ export const POLY_MARKETS = {
   // stale dismissal. lec was never triaged at all (not in the dismissed list either).
   bel1:   { series: "12351", slug: "bel1",   categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "belgianpl" },
   lec:    { series: "11449", slug: "lec",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "leaguescup" },
+  // el1 added 2026-09-03, found while checking cross-venue parity for the same-session KXEFLL1GAME
+  // build. Catalog `/sports` id (series 11435) verified live via `?series_id=` (not `tag_slug=`,
+  // which returned empty for this one — the standing per-league unreliability, checked both ways):
+  // real events matching Kalshi's own slate exactly (Doncaster vs Plymouth, Burton vs Cambridge,
+  // Reading vs Blackpool, etc., same 8/23 matchday). Never triaged before (not in
+  // POLY_DISMISSED_SPORTS — genuinely new, not a stale dismissal like uslc/bel1 were).
+  el1:    { series: "11435", slug: "el1",    categories: { moneyline: "ml" }, winnerShape: "3wayYesNo", vigSport: "efll1" },
 };
 
 // Sports we capture, as a regex alternation — derived so a new POLY_MARKETS row is admitted by both

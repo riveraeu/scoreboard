@@ -89,7 +89,10 @@ export const KALSHI_VENUE_CATEGORY_PREFIXES = {
              // parity for the Belgian build — leaguescup (8/11) and bolpd (8/16) were never added
              // when built, independent of whether a Poly counterpart exists. Their venueVig
              // Kalshi-side rows were silently uncounted until now.
-             "KXLEAGUESCUPGAME", "KXBOLPDIVGAME", "KXBELGIANPLGAME"],
+             "KXLEAGUESCUPGAME", "KXBOLPDIVGAME", "KXBELGIANPLGAME",
+             // KXEFLL1GAME added same-commit as the 2026-09-03 build (not left to drift like the
+             // three above did) — see api/CLAUDE.md's cross-venue doctrine.
+             "KXEFLL1GAME"],
   total:    ["KXMLBTOTAL", "KXWNBATOTAL", "KXNBATOTAL", "KXNHLTOTAL", "KXNFLTOTAL"],
   spread:   ["KXMLBSPREAD", "KXWNBASPREAD", "KXNBASPREAD", "KXNHLSPREAD"],
   f5:       ["KXMLBF5"],
