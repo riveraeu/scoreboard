@@ -52,6 +52,10 @@ const SCHEDULE_BY_SPORT = {
   // 100% of ligue1 threshold rows' gameTime silently (the `datesBySport[sport]` guard is
   // falsy-safe). MODEL_FREE_LEAGUES already carries ligue1's espnSlug (fra.1, verified live).
   ligue1: leagueSource("ligue1").getSchedule,
+  // efll1 added 2026-09-03 for KXEFLL1SPREAD/TOTAL/BTTS — same argprem-omission trap as every
+  // entry above. MODEL_FREE_LEAGUES already carries efll1's espnSlug (eng.3, verified live for
+  // the same-session KXEFLL1GAME build).
+  efll1: leagueSource("efll1").getSchedule,
 };
 
 export async function emitClubSoccerThresholdPlays(ctx) {

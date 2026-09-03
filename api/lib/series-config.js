@@ -218,6 +218,16 @@ export const SERIES_CONFIG = {
   // (1H/BTTS/SPREAD/TOTAL/ADVANCE) already in DISMISSED_SERIES from an earlier batch screen —
   // never auto-revived, candidates to reconsider now that the base league is adopted.
   KXEFLL1GAME:          { sport: "efll1", league: "efll1", stat: "game", col: "ML", gameType: "modelFreeMl" },
+  // EFL League One full-game threshold siblings (adopted 2026-09-03, same session as the GAME
+  // build) — re-vetted despite sitting in DISMISSED_SERIES since the 7/16 mass dismissal, which
+  // predates model-free/maker-only capture and was a TAKER-viability call (no club Elo), not a
+  // liquidity read. Live re-check: BTTS 11/11 real books, SPREAD 44/44, TOTAL 66/66, all clean
+  // subtitle shapes ("Both Teams To Score" / "TEAM wins by more than N.5 goals" / "Over N.5 goals
+  // scored") matching the existing clubSoccerThreshold regexes exactly. The 1H variants + ADVANCE
+  // + TEAMTOTAL stayed EMPTY_SHELL on the same re-check — deliberately left dismissed.
+  KXEFLL1SPREAD:        { sport: "efll1", league: "efll1", stat: "spread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread" },
+  KXEFLL1TOTAL:         { sport: "efll1", league: "efll1", stat: "total",  col: "G", gameType: "clubSoccerThreshold", subtype: "total" },
+  KXEFLL1BTTS:          { sport: "efll1", league: "efll1", stat: "btts",   col: "G", gameType: "clubSoccerThreshold", subtype: "btts" },
   KXEERSTEDIVSPREAD:    { sport: "eerstediv", league: "eerstediv", stat: "spread", col: "G",  gameType: "clubSoccerThreshold", subtype: "spread" },
   KXEERSTEDIVTOTAL:     { sport: "eerstediv", league: "eerstediv", stat: "total",  col: "G",  gameType: "clubSoccerThreshold", subtype: "total" },
   KXCOPADOBRASILTOTAL:  { sport: "copadobrasil", league: "copadobrasil", stat: "total",  col: "G", gameType: "clubSoccerThreshold", subtype: "total" },
@@ -822,7 +832,7 @@ export const DISMISSED_SERIES = [
   "KXEFLCHAMPIONSHIP1HBTTS", "KXEFLCHAMPIONSHIP1HSPREAD", "KXEFLCHAMPIONSHIP1HTOTAL", "KXEFLCHAMPIONSHIPBTTS",
   "KXEFLCUP1H", "KXEFLCUP1HBTTS", "KXEFLCUP1HSPREAD", "KXEFLCUP1HTOTAL", "KXEFLCUPBTTS", "KXEFLCUPFTTS",
   "KXEFLCUPMOV", "KXEFLCUPSCORE", "KXEFLL11H", "KXEFLL11HBTTS", "KXEFLL11HSPREAD", "KXEFLL11HTOTAL",
-  "KXEFLL1ADVANCE", "KXEFLL1BTTS", "KXEFLL1SPREAD", "KXEFLL1TOTAL", "KXEGYPLADVANCE", "KXEGYPLBTTS",
+  "KXEFLL1ADVANCE", "KXEGYPLADVANCE", "KXEGYPLBTTS",
   "KXEGYPLSPREAD", "KXEGYPLTOTAL", "KXEKSTRAKLASAADVANCE", "KXEKSTRAKLASABTTS", "KXEKSTRAKLASASPREAD",
   "KXEKSTRAKLASATOTAL", "KXELITESERIENADVANCE", "KXEPL1HSCORE", "KXEPL2H", "KXEPL2HBTTS", "KXEPL2HSPREAD",
   "KXEPL2HTOTAL", "KXEPLADVANCE", "KXEPLFTTS", "KXEPLSCORE", "KXEREDIVISIE1H", "KXEREDIVISIE1HBTTS",
