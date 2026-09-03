@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert";
 import { isArmed, setArmed, gameKeyFor, sellAsBuy, matchLiveCell, candidateLiveCells,
   computeWantedMakerQuotes, groupExposureCents, groupRealizedCents, haltedGroups,
-  totalExposureCents, reconciledFilledCount } from "./maker-live.js";
+  totalExposureCents, reconciledFilledCount,
+  liveOrderPassTelemetryCommands, MAKER_V2_QUOTEPASS_KEY_PREFIX, MAKER_V2_QUOTEPASS_TTL_S } from "./maker-live.js";
 import { MAKER_V2_LIVE_CELLS, MAKER_V2_GLOBAL_CAP_CENTS } from "./config.js";
 
 const TEST_CELLS = [
@@ -344,4 +345,79 @@ test("2026-08-27 wnbareb-6569 cell is present with the documented reduced sizing
   const wnbareb6569 = MAKER_V2_LIVE_CELLS.find(c => c.group === "wnbareb-6569");
   assert.deepEqual(wnbareb6569, { group: "wnbareb-6569", sport: "wnba", category: "rebounds", band: [65, 69],
     sizeContracts: 25, capCents: 1500, stopLossCents: -750, resumeFrom: "2026-08-27" });
+});
+
+// liveOrderPassTelemetryCommands — the V2 real-order placement pass's own durable per-day record
+// (2026-09-03), mirroring quotePassTelemetryCommands (maker.js) exactly: same blind spot (the
+// pass's return value otherwise lives only in the discarded cron HTTP response), same shape, found
+// after mlb-hrr-negctrl went 2+ days with zero orders against a live in-band real book and there
+// was no durable trace to diagnose why.
+const V2_AT = "2026-09-03T16:45:00.000Z";
+const V2_KEY = `${MAKER_V2_QUOTEPASS_KEY_PREFIX}2026-09-03`;
+const v2CmdFor = (cmds, verb, field) =>
+  cmds.find(c => c[0] === verb && (field === undefined || c[2] === field));
+
+test("liveOrderPassTelemetryCommands: a healthy cycle increments ran + the sums", () => {
+  const cmds = liveOrderPassTelemetryCommands("2026-09-03",
+    { eligible: 3, opened: 1, capped: 0, canceled: 0, errors: 0, halted: [] }, V2_AT);
+  assert.deepEqual(v2CmdFor(cmds, "HINCRBY", "cycles"), ["HINCRBY", V2_KEY, "cycles", 1]);
+  assert.deepEqual(v2CmdFor(cmds, "HINCRBY", "ran"), ["HINCRBY", V2_KEY, "ran", 1]);
+  assert.deepEqual(v2CmdFor(cmds, "HINCRBY", "sumEligible"), ["HINCRBY", V2_KEY, "sumEligible", 3]);
+  assert.deepEqual(v2CmdFor(cmds, "HINCRBY", "sumOpened"), ["HINCRBY", V2_KEY, "sumOpened", 1]);
+  assert.deepEqual(v2CmdFor(cmds, "HINCRBY", "sumCapped"), ["HINCRBY", V2_KEY, "sumCapped", 0]);
+  assert.deepEqual(v2CmdFor(cmds, "HINCRBY", "sumCanceled"), ["HINCRBY", V2_KEY, "sumCanceled", 0]);
+  assert.deepEqual(v2CmdFor(cmds, "HINCRBY", "sumPlaceErrors"), ["HINCRBY", V2_KEY, "sumPlaceErrors", 0]);
+  for (const f of ["skippedDisarmed", "skippedNoStaging", "skippedNoSnaps", "errors"]) {
+    assert.equal(v2CmdFor(cmds, "HINCRBY", f), undefined, `${f} must not increment`);
+  }
+  const hset = v2CmdFor(cmds, "HSET");
+  assert.equal(hset[hset.indexOf("lastOutcome") + 1], "ran");
+  assert.equal(hset[hset.indexOf("lastEligible") + 1], "3");
+  assert.equal(hset[hset.indexOf("lastOpened") + 1], "1");
+  assert.deepEqual(cmds.at(-1), ["EXPIRE", V2_KEY, MAKER_V2_QUOTEPASS_TTL_S]);
+  assert.ok(MAKER_V2_QUOTEPASS_TTL_S >= 86400, "TTL must survive at least one night");
+});
+
+test("liveOrderPassTelemetryCommands: every skip branch (incl. disarmed) increments its OWN counter, never ran", () => {
+  for (const [skipped, field] of [["disarmed", "skippedDisarmed"], ["no_staging", "skippedNoStaging"], ["no_snaps", "skippedNoSnaps"]]) {
+    const cmds = liveOrderPassTelemetryCommands("2026-09-03", { skipped }, V2_AT);
+    assert.deepEqual(v2CmdFor(cmds, "HINCRBY", field), ["HINCRBY", V2_KEY, field, 1]);
+    assert.deepEqual(v2CmdFor(cmds, "HINCRBY", "cycles"), ["HINCRBY", V2_KEY, "cycles", 1]);
+    assert.equal(v2CmdFor(cmds, "HINCRBY", "ran"), undefined, "a skipped cycle never counts as ran");
+    assert.equal(v2CmdFor(cmds, "HINCRBY", "sumEligible"), undefined);
+    const hset = v2CmdFor(cmds, "HSET");
+    assert.equal(hset[hset.indexOf("lastOutcome") + 1], skipped);
+  }
+});
+
+test("liveOrderPassTelemetryCommands: an error cycle records the message", () => {
+  const cmds = liveOrderPassTelemetryCommands("2026-09-03", { error: "boom" }, V2_AT);
+  assert.deepEqual(v2CmdFor(cmds, "HINCRBY", "errors"), ["HINCRBY", V2_KEY, "errors", 1]);
+  assert.equal(v2CmdFor(cmds, "HINCRBY", "ran"), undefined);
+  const hset = v2CmdFor(cmds, "HSET");
+  assert.equal(hset[hset.indexOf("lastOutcome") + 1], "error");
+  assert.equal(hset[hset.indexOf("lastError") + 1], "boom");
+});
+
+test("liveOrderPassTelemetryCommands: halted groups are recorded as a joined list", () => {
+  const cmds = liveOrderPassTelemetryCommands("2026-09-03",
+    { eligible: 1, opened: 0, capped: 0, canceled: 2, errors: 0, halted: ["wnba3p-killdiag", "wnbareb-6569"] }, V2_AT);
+  const hset = v2CmdFor(cmds, "HSET");
+  assert.equal(hset[hset.indexOf("lastHalted") + 1], "wnba3p-killdiag,wnbareb-6569");
+});
+
+test("liveOrderPassTelemetryCommands: counters are HINCRBY, never a read-modify-write GET/SET", () => {
+  const cmds = liveOrderPassTelemetryCommands("2026-09-03",
+    { eligible: 1, opened: 0, capped: 0, canceled: 0, errors: 0, halted: [] }, V2_AT);
+  const verbs = new Set(cmds.map(c => c[0]));
+  assert.ok(!verbs.has("GET") && !verbs.has("SET"), "no read-modify-write on the counter key");
+  assert.deepEqual([...verbs].sort(), ["EXPIRE", "HINCRBY", "HSET"]);
+});
+
+test("liveOrderPassTelemetryCommands: absent fields are omitted, not stringified to 'null'", () => {
+  const cmds = liveOrderPassTelemetryCommands("2026-09-03", { skipped: "no_staging" }, V2_AT);
+  const hset = v2CmdFor(cmds, "HSET");
+  assert.ok(!hset.includes("null") && !hset.includes("undefined"));
+  assert.equal(hset.indexOf("lastEligible"), -1);
+  assert.equal(hset.indexOf("lastHalted"), -1);
 });

@@ -22,7 +22,8 @@ import { enrichSeries, checkSeriesLiquidity, fetchSeriesMeta, SCREEN_AUTO_DISMIS
 import { updateLiveMakerOrders, emergencyKillLive, setArmed, computeWantedMakerQuotes,
   gradeResolvedMakerPositions,
   isArmed as isMakerV2Armed, ensureMakerLiveTables, MAKER_V2_SHELVED,
-  groupExposureCents, groupRealizedCents, haltedGroups } from "../maker-live.js";
+  groupExposureCents, groupRealizedCents, haltedGroups,
+  liveOrderPassTelemetryCommands } from "../maker-live.js";
 import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
 import { MAKER_V2_MAX_CONCURRENT, MAKER_V2_SAME_GAME_CAP, MAKER_V2_LIVE_CELLS } from "../config.js";
 
@@ -326,6 +327,18 @@ export async function handleKalshiRoutes(ctx) {
     } catch (e) {
       _makerLiveMeta = { error: String(e?.message || e) };
       console.error(`[kalshi-snapshot] maker-live order pass failed: ${_makerLiveMeta.error}`);
+    }
+
+    // Durable per-day record of what the pass above just did (api/lib/maker-live.js). Same
+    // rationale as V1's telemetry write above: the result lives only in this response, which the
+    // cron runner discards. Failure-closed and LAST — telemetry must never be the reason a cron
+    // that already placed/canceled real orders reports a failure.
+    try {
+      await _pipeWrite(liveOrderPassTelemetryCommands(
+        new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }),
+        _makerLiveMeta, new Date().toISOString()));
+    } catch (e) {
+      console.error(`[kalshi-snapshot] V2 quote-pass telemetry write failed: ${String(e?.message || e)}`);
     }
 
     // ── V2 real-money grading fast path (2026-07-22) ── the main shadow-resolver only resolves

@@ -449,6 +449,55 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
     expiredLocally: toExpireLocally.length, opened, capped, errors, halted: [...halted] };
 }
 
+// Durable per-day record of what the V2 real-order placement pass did each cron cycle — the same
+// blind spot V1 hit and fixed 2026-08-12 (quotePassTelemetryCommands, maker.js). Without this, the
+// pass's return value lives only in the kalshi-snapshot cron's own HTTP response, which the cron
+// runner discards — so a silent multi-day placement stall (found 2026-09-03: mlb-hrr-negctrl had a
+// live, in-band, tight-spread real book and zero orders for 2+ days) leaves no trace by the time
+// anyone asks "why didn't this fill," and CRON_SECRET can't be pulled from `vercel env` to replay
+// the cron call for a live read either (a Vercel "sensitive" var). Mirrors
+// quotePassTelemetryCommands's shape/HINCRBY-sums pattern exactly so a reader already familiar
+// with dataFreshness.quotePass needs no new mental model. `meta` is whatever
+// updateLiveMakerOrders (or the kalshi-snapshot handler's own pre-check) produced this cycle:
+// `{skipped:"disarmed"|"no_staging"|"no_snaps"}`, `{error}`, or the full result object above.
+export const MAKER_V2_QUOTEPASS_KEY_PREFIX = "maker:v2quotepass:";
+export const MAKER_V2_QUOTEPASS_TTL_S = 172800; // 48h — mirrors V1's QUOTEPASS_TTL_S
+export function liveOrderPassTelemetryCommands(dayPT, meta, nowIso) {
+  const key = `${MAKER_V2_QUOTEPASS_KEY_PREFIX}${dayPT}`;
+  const m = meta || {};
+  const outcome = m.skipped || (m.error ? "error" : "ran");
+  const cmds = [["HINCRBY", key, "cycles", 1]];
+  if (outcome === "disarmed") cmds.push(["HINCRBY", key, "skippedDisarmed", 1]);
+  else if (outcome === "no_staging") cmds.push(["HINCRBY", key, "skippedNoStaging", 1]);
+  else if (outcome === "no_snaps") cmds.push(["HINCRBY", key, "skippedNoSnaps", 1]);
+  else if (outcome === "error") cmds.push(["HINCRBY", key, "errors", 1]);
+  else {
+    // Sums, not a max — same reasoning as V1: "was placement healthy ALL day" needs a sum/count
+    // pair (sumEligible / ran), a max only proves it was healthy once.
+    cmds.push(["HINCRBY", key, "ran", 1]);
+    cmds.push(["HINCRBY", key, "sumEligible", Math.round(m.eligible || 0)]);
+    cmds.push(["HINCRBY", key, "sumOpened", Math.round(m.opened || 0)]);
+    cmds.push(["HINCRBY", key, "sumCapped", Math.round(m.capped || 0)]);
+    cmds.push(["HINCRBY", key, "sumCanceled", Math.round(m.canceled || 0)]);
+    cmds.push(["HINCRBY", key, "sumPlaceErrors", Math.round(m.errors || 0)]);
+  }
+  const fields = {
+    lastAt: nowIso, lastOutcome: outcome,
+    lastEligible: m.eligible, lastOpened: m.opened, lastCapped: m.capped,
+    lastCanceled: m.canceled, lastPlaceErrors: m.errors,
+    lastHalted: Array.isArray(m.halted) && m.halted.length ? m.halted.join(",") : null,
+    lastError: m.error,
+  };
+  const flat = [];
+  for (const [k, v] of Object.entries(fields)) {
+    if (v == null) continue; // absent field beats a "null" string a reader has to special-case
+    flat.push(k, String(v));
+  }
+  if (flat.length) cmds.push(["HSET", key, ...flat]);
+  cmds.push(["EXPIRE", key, MAKER_V2_QUOTEPASS_TTL_S]);
+  return cmds;
+}
+
 // PnL grading — date-agnostic (grades ANY executed+ungraded position the instant its
 // shadow_plays row resolves, whatever day it's dated). Split out so it can run standalone on
 // the 2min cron tick (via resolveOpenMakerPositions, api/lib/handlers/shadow.js — that pass

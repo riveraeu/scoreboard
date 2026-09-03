@@ -30,7 +30,7 @@ import { errorResponse, jsonResponse } from "../../utils.js";
 import { CAPTURE_MAX_SPREAD } from "../../config.js";
 import { POLY_MARKETS } from "../../polymarket.js";
 import { verifyJWT } from "../../auth-utils.js";
-import { isArmed as isMakerV2Armed } from "../../maker-live.js";
+import { isArmed as isMakerV2Armed, MAKER_V2_QUOTEPASS_KEY_PREFIX } from "../../maker-live.js";
 import { fetchKalshiSettlements, resolveTickerSideViaKalshi } from "../../kalshi-settlement.js";
 import { PREREG_CELLS, evaluatePrereg } from "../../maker-prereg.js";
 import { QUOTEPASS_KEY_PREFIX } from "../../maker.js";
@@ -1168,6 +1168,30 @@ async function handleShadowReport({ path, request, env, cache }) {
       lastError: qp.lastError ?? null,
     } : null;
 
+    // V2 real-order placement telemetry (api/lib/maker-live.js, added 2026-09-03 — the same blind
+    // spot V1's quotePass fixed on 2026-08-12, applied to the live sub-50 trial after a 2+ day
+    // placement stall on mlb-hrr-negctrl couldn't be diagnosed from outside: a live, in-band,
+    // tight-spread real book existed and zero orders were placed, with no durable trace of why).
+    // Surfaced RAW, not folded into `diagnosis` above — that string is V1-specific wording; V2's
+    // own health already has a dedicated read (`/api/maker-v2-board`'s `armed`/`groups[]`), so this
+    // is the missing "was the pass even running, and how often" layer underneath that board.
+    const v2qp = cache?.hgetall
+      ? await cache.hgetall(`${MAKER_V2_QUOTEPASS_KEY_PREFIX}${reportDate}`).catch(() => null)
+      : null;
+    const makerV2Pass = v2qp ? {
+      cycles: _n(v2qp.cycles) || 0, ran: _n(v2qp.ran) || 0,
+      skippedDisarmed: _n(v2qp.skippedDisarmed) || 0,
+      skippedNoStaging: _n(v2qp.skippedNoStaging) || 0, skippedNoSnaps: _n(v2qp.skippedNoSnaps) || 0,
+      errors: _n(v2qp.errors) || 0,
+      avgEligible: _n(v2qp.ran) > 0 ? Math.round((_n(v2qp.sumEligible) || 0) / _n(v2qp.ran)) : null,
+      sumOpened: _n(v2qp.sumOpened) || 0, sumCapped: _n(v2qp.sumCapped) || 0,
+      sumCanceled: _n(v2qp.sumCanceled) || 0, sumPlaceErrors: _n(v2qp.sumPlaceErrors) || 0,
+      lastAt: v2qp.lastAt ?? null, lastOutcome: v2qp.lastOutcome ?? null,
+      lastEligible: _n(v2qp.lastEligible), lastOpened: _n(v2qp.lastOpened), lastCapped: _n(v2qp.lastCapped),
+      lastCanceled: _n(v2qp.lastCanceled), lastPlaceErrors: _n(v2qp.lastPlaceErrors),
+      lastHalted: v2qp.lastHalted ?? null, lastError: v2qp.lastError ?? null,
+    } : null;
+
     let diagnosis = current ? "current"
       : (latestFill != null && latestFill >= expectedThrough)
         ? "fills detected but NOT graded — grading stalled (Kalshi rate-limit; tape walk didn't reach end)"
@@ -1192,7 +1216,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     dataFreshness = {
       expectedThrough, latestGradedMakerDay: latestGraded, latestMakerFillDay: latestFill,
       ungradedFills: Number(mf?.ungraded || 0), latestResolvedShadowDay: _d(sp?.latest_resolved),
-      makerTableCurrent: current, daysBehind, diagnosis, quotePass,
+      makerTableCurrent: current, daysBehind, diagnosis, quotePass, makerV2Pass,
     };
   } catch (e) { console.error("[shadow-report] dataFreshness skipped:", e?.message); }
 
